@@ -32,6 +32,14 @@ swift build
 swift test
 ```
 
+Build a macOS `.app` bundle with the app icon:
+
+```bash
+./scripts/build-app.sh            # debug -> build/myKikau.app
+./scripts/build-app.sh --release  # release -> build/myKikau.app
+open build/myKikau.app
+```
+
 Lint (optional, install once with `brew install swiftformat swiftlint`):
 
 ```bash

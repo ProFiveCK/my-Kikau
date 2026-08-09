@@ -17,7 +17,8 @@ let package = Package(
                 "Features",
                 "UI",
             ],
-            path: "Sources/App"
+            path: "Sources/App",
+            exclude: ["Info.plist"]
         ),
         .target(
             name: "Core",
