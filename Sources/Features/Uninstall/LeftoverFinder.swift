@@ -34,16 +34,25 @@ public enum LeftoverFinder {
     /// Finds all leftover files for the given bundle ID.
     /// Matching is exact: the path component must equal the bundle ID,
     /// or a file name must be `<bundleID>.plist` / `<bundleID>.<ext>`.
-    ///
-    /// - Parameter home: Home directory to resolve `~/Library` against. Defaults to
-    ///   the current user's home; tests pass a temp directory to avoid touching real data.
     public static func findLeftovers(
         bundleID: String,
-        deleter: SafeFileDeleter = .shared,
-        home: URL? = nil
+        deleter: SafeFileDeleter = .shared
+    ) -> [URL] {
+        findLeftovers(
+            bundleID: bundleID,
+            home: FileManager.default.homeDirectoryForCurrentUser,
+            deleter: deleter
+        )
+    }
+
+    /// Home-injectable variant for testing against a temp HOME without
+    /// touching the real `~/Library`.
+    public static func findLeftovers(
+        bundleID: String,
+        home: URL,
+        deleter: SafeFileDeleter = .shared
     ) -> [URL] {
         var results: [URL] = []
-        let home = home ?? FileManager.default.homeDirectoryForCurrentUser
         let fm = FileManager.default
 
         // 1. ~/Library subdirectories — match by exact bundle ID in path components.
@@ -78,8 +87,10 @@ public enum LeftoverFinder {
         }
 
         // 3. Launch agents/daemons — match plist files containing the bundle ID
-        //    in ProgramArguments or the file name.
-        for path in launchPaths + userLaunchPaths {
+        //    in ProgramArguments or the file name. User agents use the injected
+        //    home; system paths stay absolute (filtered for protection below).
+        let userLaunch = home.appendingPathComponent("Library/LaunchAgents").path
+        for path in launchPaths + [userLaunch] {
             guard let entries = try? fm.contentsOfDirectory(
                 at: URL(fileURLWithPath: path),
                 includingPropertiesForKeys: nil,
@@ -101,11 +112,24 @@ public enum LeftoverFinder {
         app: AppInventory.AppInfo,
         deleter: SafeFileDeleter = .shared
     ) -> (appPlan: SafeFileDeleter.Plan, leftoverPlan: SafeFileDeleter.Plan) {
+        uninstallPlan(
+            app: app,
+            home: FileManager.default.homeDirectoryForCurrentUser,
+            deleter: deleter
+        )
+    }
+
+    /// Home-injectable variant for testing.
+    public static func uninstallPlan(
+        app: AppInventory.AppInfo,
+        home: URL,
+        deleter: SafeFileDeleter = .shared
+    ) -> (appPlan: SafeFileDeleter.Plan, leftoverPlan: SafeFileDeleter.Plan) {
         let appPlan = deleter.preview([app.url], category: .app)
 
         let leftovers: [URL]
         if let bundleID = app.bundleID {
-            leftovers = findLeftovers(bundleID: bundleID, deleter: deleter)
+            leftovers = findLeftovers(bundleID: bundleID, home: home, deleter: deleter)
         } else {
             leftovers = []
         }
