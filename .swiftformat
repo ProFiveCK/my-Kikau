@@ -1,0 +1,29 @@
+# SwiftFormat config — https://github.com/nicklockwood/SwiftFormat
+# myKikau: macOS 14+ Swift app. Keep rules conservative; safety > style churn.
+
+--swiftversion 5.10
+
+# Where to look for source files (used by `swiftformat .` runs).
+--exclude .build,Tests
+
+# Style
+--indent 4
+--tabwidth 4
+--wrapparameters beforefirst
+--wraparguments beforefirst
+--allman false
+--semicolons inline
+--trimwhitespace always
+--insertblanklines false
+
+# Keep code intent unchanged where it doesn't hurt readability.
+--disable organizeDeclarations
+--disable sortImports
+--disable sortTypealiases
+--disable sortDeclarations
+
+# Don't rewrite trailing closure style aggressively.
+--enable trailingClosures
+
+# Prefer Swift types over Foundation equivalents where idiomatic.
+--enable typeSugar

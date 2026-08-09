@@ -1,0 +1,39 @@
+# SwiftLint config — https://github.com/realm/SwiftLint
+# myKikau: conservative ruleset. Safety-critical app; prefer explicit over clever.
+
+included:
+  - Sources
+  - Tests
+excluded:
+  - .build
+
+opt_in_rules:
+  - empty_count
+  - empty_string
+  - first_where
+  - last_where
+  - operator_usage_whitespace
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+
+# Disable rules that fight Swift Testing / SwiftUI idioms or add noise.
+disabled_rules:
+  - trailing_whitespace
+  - type_name
+  - file_length
+  - function_body_length
+  - cyclomatic_complexity
+
+line_length:
+  warning: 140
+  error: 200
+
+type_body_length:
+  warning: 400
+  error: 800
+
+identifier_name:
+  min_length: 1
+  max_length: 60
+  allowed_symbols: ["_"]

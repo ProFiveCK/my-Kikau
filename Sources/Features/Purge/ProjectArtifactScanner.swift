@@ -54,8 +54,12 @@ public enum ProjectArtifactScanner {
     }
 
     /// Reads custom purge paths from config file (~/.config/myKikau/purge_paths).
-    public static func configuredPaths() -> [URL] {
-        let configDir = FileManager.default.homeDirectoryForCurrentUser
+    ///
+    /// - Parameter home: Home directory to resolve `~/.config` against. Defaults to
+    ///   the current user's home; tests pass a temp directory.
+    public static func configuredPaths(home: URL? = nil) -> [URL] {
+        let home = home ?? FileManager.default.homeDirectoryForCurrentUser
+        let configDir = home
             .appendingPathComponent(".config/myKikau")
         let configFile = configDir.appendingPathComponent("purge_paths")
         guard let content = try? String(contentsOf: configFile) else { return [] }
@@ -66,21 +70,28 @@ public enum ProjectArtifactScanner {
     }
 
     /// Returns all search paths (configured or default).
-    public static func searchPaths() -> [URL] {
-        let configured = configuredPaths()
+    ///
+    /// Default paths like `~/Projects` are resolved against `home` when provided
+    /// (tests pass a temp home), otherwise against the current user's home.
+    public static func searchPaths(home: URL? = nil) -> [URL] {
+        let configured = configuredPaths(home: home)
         if !configured.isEmpty { return configured }
-        return defaultSearchPaths.map {
-            URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath)
+        let resolvedHome = home ?? FileManager.default.homeDirectoryForCurrentUser
+        return defaultSearchPaths.map { raw -> URL in
+            if raw.hasPrefix("~/") {
+                return resolvedHome.appendingPathComponent(String(raw.dropFirst(2)))
+            }
+            return URL(fileURLWithPath: NSString(string: raw).expandingTildeInPath)
         }
     }
 
     /// Scans search paths for purgeable artifacts.
-    public static func scan(deleter: SafeFileDeleter = .shared) -> [Artifact] {
+    public static func scan(deleter: SafeFileDeleter = .shared, home: URL? = nil) -> [Artifact] {
         var results: [Artifact] = []
         let sevenDaysAgo = Date().addingTimeInterval(-7 * 86400)
         let fm = FileManager.default
 
-        for searchPath in searchPaths() {
+        for searchPath in searchPaths(home: home) {
             guard fm.fileExists(atPath: searchPath.path) else { continue }
             guard let projects = try? fm.contentsOfDirectory(
                 at: searchPath,

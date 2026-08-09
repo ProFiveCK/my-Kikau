@@ -190,18 +190,22 @@ public final class SafeFileDeleter {
 
     /// Measures the total size of a file or directory (recursive).
     public func directorySize(_ url: URL) -> Int64 {
-        guard let enumerator = fileManager.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            // Not a directory or no access — try single file size.
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir) else { return 0 }
+        // Single file — return its size directly (the enumerator path below
+        // returns 0 for non-directories).
+        if !isDir.boolValue {
             if let attrs = try? fileManager.attributesOfItem(atPath: url.path),
-               let size = attrs[.size] as? Int64 {
+               let size = (attrs[.size] as? NSNumber)?.int64Value {
                 return size
             }
             return 0
         }
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
         var total: Int64 = 0
         for case let fileURL as URL in enumerator {
             if let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
