@@ -13,6 +13,7 @@ struct OptimizeView: View {
     @State private var running = false
     @State private var results: [String: MaintenanceRunner.Result] = [:]
     @State private var inFlight: Set<String> = []
+    @State private var lastRuns: [String: MaintenanceRunStatus] = [:]
 
     private let tint = ContentView.SidebarItem.optimize.tint
 
@@ -56,11 +57,13 @@ struct OptimizeView: View {
                 TaskRow(
                     task: task,
                     result: results[task.id],
+                    lastRun: lastRuns[task.id],
                     inFlight: inFlight.contains(task.id)
                 )
                 .tag(task.id)
             }
         }
+        .onAppear { reloadLastRuns() }
     }
 
     private func runSelected() async {
@@ -74,16 +77,46 @@ struct OptimizeView: View {
             inFlight.insert(id)
             let result = await runner.run(taskID: id, dryRun: isDryRun)
             results[id] = result
+            lastRuns[id] = MaintenanceRunStatus(
+                timestamp: Date(),
+                outcome: result.outcome.label,
+                detail: result.outcome.detail,
+                dryRun: isDryRun
+            )
             inFlight.remove(id)
         }
 
         running = false
     }
+
+    private func reloadLastRuns() {
+        let prefix = "optimize."
+        var statuses: [String: MaintenanceRunStatus] = [:]
+        for entry in OperationLog.shared.recent(limit: 10_000) where entry.action.hasPrefix(prefix) {
+            let id = String(entry.action.dropFirst(prefix.count))
+            guard statuses[id] == nil else { continue }
+            statuses[id] = MaintenanceRunStatus(
+                timestamp: entry.timestamp,
+                outcome: entry.outcome.displayLabel,
+                detail: entry.detail,
+                dryRun: entry.dryRun
+            )
+        }
+        lastRuns = statuses
+    }
+}
+
+private struct MaintenanceRunStatus: Hashable {
+    let timestamp: Date
+    let outcome: String
+    let detail: String?
+    let dryRun: Bool
 }
 
 private struct TaskRow: View {
     let task: MaintenanceCatalog.Task
     let result: MaintenanceRunner.Result?
+    let lastRun: MaintenanceRunStatus?
     let inFlight: Bool
 
     var body: some View {
@@ -114,6 +147,16 @@ private struct TaskRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if let lastRun {
+                Text("Last run \(lastRun.timestamp.formatted(date: .abbreviated, time: .shortened)) · \(lastRun.outcome)\(lastRun.dryRun ? " · dry run" : "")")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Never run")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
             if let result, let detail = result.outcome.detail, !detail.isEmpty {
                 Text(detail)
                     .font(.caption2)
@@ -122,6 +165,17 @@ private struct TaskRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+private extension OperationLog.Outcome {
+    var displayLabel: String {
+        switch self {
+        case .success: "Applied"
+        case .failed: "Failed"
+        case .skipped: "Skipped"
+        case .dryRun: "Dry Run"
+        }
     }
 }
 

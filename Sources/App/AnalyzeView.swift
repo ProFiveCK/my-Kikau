@@ -12,9 +12,7 @@ struct AnalyzeView: View {
         var id: String { rawValue }
     }
 
-    @State private var entries: [DiskScanner.Entry] = []
-    @State private var currentDir: URL?
-    @State private var scanning = false
+    @ObservedObject private var session = AnalyzeScanSession.shared
     @State private var mode: ViewMode = .chart
 
     private let tint = ContentView.SidebarItem.analyze.tint
@@ -26,7 +24,7 @@ struct AnalyzeView: View {
                     .foregroundStyle(tint)
                 Text("Disk Analyser").font(.title2).bold()
                 Spacer()
-                if !entries.isEmpty {
+                if !session.entries.isEmpty {
                     Picker("View", selection: $mode) {
                         ForEach(ViewMode.allCases) { m in
                             Text(m.rawValue).tag(m)
@@ -36,71 +34,71 @@ struct AnalyzeView: View {
                     .labelsHidden()
                     .frame(width: 200)
                 }
-                if let dir = currentDir {
+                if let dir = session.currentDir {
                     Button("Back") {
-                        currentDir = dir.deletingLastPathComponent()
-                        scanCurrent()
+                        session.scan(dir.deletingLastPathComponent())
                     }
                 }
-                Button(scanning ? "Scanning..." : "Scan Home") {
-                    currentDir = FileManager.default.homeDirectoryForCurrentUser
-                    scanCurrent()
+                Button(session.isScanning ? "Scanning..." : (session.hasResults ? "Rescan" : "Scan Home")) {
+                    session.scan(session.currentDir ?? FileManager.default.homeDirectoryForCurrentUser)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
-                .disabled(scanning)
+                .disabled(session.isScanning)
             }
             .padding()
 
-            if let dir = currentDir, !entries.isEmpty {
-                Text(dir.path)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
+            if let dir = session.currentDir, !session.entries.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(dir.path)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                    if let lastScanAt = session.lastScanAt {
+                        Text("Last scanned \(lastScanAt.formatted(date: .abbreviated, time: .shortened))")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
             }
 
-            if entries.isEmpty && !scanning {
+            if session.entries.isEmpty && !session.isScanning {
                 ContentUnavailableView(
                     "No Scan Yet",
                     systemImage: "chart.bar.doc.horizontal",
-                    description: Text("Click Scan Home to analyse disk usage and find large files.")
+                    description: Text("Click Scan Home to analyse allocated disk usage and find large files.")
                 )
             } else if mode == .chart {
-                PieChartSection(entries: entries) { entry in
+                PieChartSection(entries: session.entries) { entry in
                     if entry.isDirectory {
-                        currentDir = entry.url
-                        scanCurrent()
+                        session.scan(entry.url)
                     }
                 }
                 .padding([.horizontal, .bottom])
             } else if mode == .map {
                 TreemapView(
-                    items: entries,
+                    items: session.entries,
                     value: { Double($0.sizeBytes) },
-                    color: { _, rank in cellColor(rank: rank, total: entries.count) },
+                    color: { _, rank in cellColor(rank: rank, total: session.entries.count) },
                     label: { $0.name },
                     sublabel: { ByteSizeFormatter.format($0.sizeBytes) },
                     onSelect: { entry in
                         if entry.isDirectory {
-                            currentDir = entry.url
-                            scanCurrent()
+                            session.scan(entry.url)
                         }
                     }
                 )
                 .padding([.horizontal, .bottom])
             } else {
-                let maxSize = entries.map(\.sizeBytes).max() ?? 1
-                List(entries) { entry in
+                let maxSize = session.entries.map(\.sizeBytes).max() ?? 1
+                List(session.entries) { entry in
                     AnalyzeRow(entry: entry, tint: tint, maxSize: maxSize)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             if entry.isDirectory {
-                                currentDir = entry.url
-                                scanCurrent()
+                                session.scan(entry.url)
                             }
                         }
                 }
@@ -119,18 +117,6 @@ struct AnalyzeView: View {
         let eased = min(t, 1)
         let hue = 0.5 + eased * 0.06
         return Color(hue: hue, saturation: 0.75 - eased * 0.25, brightness: 0.30 + eased * 0.32)
-    }
-
-    private func scanCurrent() {
-        guard let dir = currentDir else { return }
-        scanning = true
-        Task.detached(priority: .userInitiated) {
-            let result = DiskScanner.scan(dir)
-            await MainActor.run {
-                entries = result
-                scanning = false
-            }
-        }
     }
 }
 

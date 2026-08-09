@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Core
 import Features
@@ -7,12 +8,17 @@ import UI
 @main
 struct myKikauApp: App {
     @StateObject private var updaterViewModel = UpdaterViewModel()
+    @AppStorage("myKikau.showDockIcon") private var showDockIcon = true
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .frame(minWidth: 800, minHeight: 500)
                 .environmentObject(updaterViewModel)
+                .onAppear { DockIconController.apply(showDockIcon: showDockIcon) }
+                .onChange(of: showDockIcon) { _, value in
+                    DockIconController.apply(showDockIcon: value)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -24,9 +30,25 @@ struct myKikauApp: App {
         MenuBarExtra {
             HUDView()
         } label: {
-            Image(systemName: "sparkles")
+            Image(nsImage: DockIconController.menuBarImage())
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+enum DockIconController {
+    static func apply(showDockIcon: Bool) {
+        NSApplication.shared.setActivationPolicy(showDockIcon ? .regular : .accessory)
+    }
+
+    static func menuBarImage() -> NSImage {
+        let source = NSImage(named: "AppIcon")
+            ?? NSApplication.shared.applicationIconImage
+            ?? NSImage(systemSymbolName: "internaldrive", accessibilityDescription: "myKikau")
+            ?? NSImage()
+        let image = source.copy() as? NSImage ?? source
+        image.size = NSSize(width: 18, height: 18)
+        return image
     }
 }
 

@@ -115,11 +115,10 @@ public enum NetworkMonitor {
             // the original 6-column assumption here was wrong and silently read
             // Ipkts as bytes-in and Ierrs as bytes-out, which is why throughput
             // always showed ~0):
-            //   Name(0) Mtu(1) Network(2) Address(3) Ipkts(4) Ierrs(5) Ibytes(6) Opkts(7) Oerrs(8) Obytes(9) Coll(10)
-            // The Address field may be a MAC address, IP, or "*" but never contains
-            // spaces, so field positions stay stable. Require at least 10 fields.
+            //   Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll
+            // Some rows omit Address, so byte fields are parsed from the end.
             let fields = trimmed.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-            guard fields.count >= 10 else { continue }
+            guard fields.count >= 9 else { continue }
 
             let name = fields[0]
             guard !name.isEmpty, name != "Name" else { continue }
@@ -134,10 +133,11 @@ public enum NetworkMonitor {
         return (rxByName, txByName)
     }
 
-    /// Extracts Ibytes(6)/Obytes(9) from a `netstat -ib` field array.
+    /// Extracts Ibytes/Obytes from a `netstat -ib` field array.
     static func parseByteFields(_ fields: [String]) -> (rx: UInt64, tx: UInt64)? {
-        guard fields.count >= 10 else { return nil }
-        guard let rx = UInt64(fields[6]), let tx = UInt64(fields[9]) else { return nil }
+        guard fields.count >= 9 else { return nil }
+        guard let rx = UInt64(fields[fields.count - 5]),
+              let tx = UInt64(fields[fields.count - 2]) else { return nil }
         return (rx, tx)
     }
 

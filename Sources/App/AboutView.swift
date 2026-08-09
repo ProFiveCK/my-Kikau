@@ -8,6 +8,7 @@ import SwiftUI
 /// log is still one click away via "Reveal Log File" rather than gone.
 struct AboutView: View {
     @EnvironmentObject private var updaterViewModel: UpdaterViewModel
+    @AppStorage("myKikau.showDockIcon") private var showDockIcon = true
     @State private var totalFreed: Int64 = 0
     @State private var operationCount: Int = 0
 
@@ -68,6 +69,16 @@ struct AboutView: View {
                         }
                         .font(.caption)
                     }
+                }
+
+                InfoCard(title: "Appearance") {
+                    Toggle("Show Dock icon", isOn: $showDockIcon)
+                        .onChange(of: showDockIcon) { _, value in
+                            DockIconController.apply(showDockIcon: value)
+                        }
+                    Text("When disabled, myKikau stays in the menu bar and no longer appears in the Dock or app switcher.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 InfoCard(title: "About") {

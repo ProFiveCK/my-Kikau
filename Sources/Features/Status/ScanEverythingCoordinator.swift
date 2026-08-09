@@ -26,28 +26,51 @@ public final class ScanEverythingCoordinator: ObservableObject {
 
     @Published public private(set) var isScanning = false
     @Published public private(set) var cleanPlans: [CleanScanner.Section: SafeFileDeleter.Plan]?
+    @Published public private(set) var apps: [AppInventory.AppInfo]?
+    @Published public private(set) var duplicateGroups: [DuplicateFinder.DuplicateGroup]?
+    @Published public private(set) var largeFiles: [DuplicateFinder.FileEntry]?
     @Published public private(set) var purgeArtifacts: [ProjectArtifactScanner.Artifact]?
     @Published public private(set) var lastScanAt: Date?
 
     private init() {}
 
-    public var hasResults: Bool { cleanPlans != nil || purgeArtifacts != nil }
+    public var hasResults: Bool {
+        cleanPlans != nil || apps != nil || duplicateGroups != nil || largeFiles != nil || purgeArtifacts != nil
+    }
 
     public var combinedReclaimableBytes: Int64 {
         let cleanTotal = cleanPlans?.values.reduce(Int64(0)) { $0 + $1.totalReclaimable } ?? 0
+        let duplicateTotal = duplicateGroups?.reduce(Int64(0)) { $0 + $1.reclaimableBytes } ?? 0
         let purgeTotal = purgeArtifacts?.reduce(Int64(0)) { $0 + $1.sizeBytes } ?? 0
-        return cleanTotal + purgeTotal
+        return cleanTotal + duplicateTotal + purgeTotal
     }
 
     public var combinedItemCount: Int {
         let cleanCount = cleanPlans?.values.reduce(0) { $0 + $1.items.count } ?? 0
+        let duplicateCount = duplicateGroups?.reduce(0) { $0 + max(0, $1.files.count - 1) } ?? 0
+        let largeCount = largeFiles?.count ?? 0
         let purgeCount = purgeArtifacts?.count ?? 0
-        return cleanCount + purgeCount
+        return cleanCount + duplicateCount + largeCount + purgeCount
+    }
+
+    public var appFootprintBytes: Int64 {
+        apps?.reduce(Int64(0)) { $0 + $1.sizeBytes } ?? 0
     }
 
     public func scanEverything() async {
         isScanning = true
-        cleanPlans = await Task.detached(priority: .userInitiated) { CleanScanner.scanAll() }.value
+        let result = await Task.detached(priority: .userInitiated) {
+            let clean = CleanScanner.scanAll()
+            let installedApps = AppInventory.scan()
+            let files = DuplicateFinder.walk()
+            let duplicates = DuplicateFinder.findDuplicates(allFiles: files)
+            let large = DuplicateFinder.findLargeFiles(allFiles: files)
+            return (clean, installedApps, duplicates, large)
+        }.value
+        cleanPlans = result.0
+        apps = result.1
+        duplicateGroups = result.2
+        largeFiles = result.3
         lastScanAt = Date()
         isScanning = false
     }

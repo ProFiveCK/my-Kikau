@@ -47,6 +47,7 @@ public enum CleanScanner {
     ///   the current user's home, so production callers are unaffected; tests pass a
     ///   temporary directory to avoid touching real `~/Library`.
     public static func targets(for section: Section, home: URL? = nil) -> [URL] {
+        let injectedHome = home
         let home = home ?? FileManager.default.homeDirectoryForCurrentUser
         switch section {
         case .userAppCache:
@@ -58,16 +59,24 @@ public enum CleanScanner {
                 // Chrome
                 home.appendingPathComponent("Library/Caches/Google/Chrome"),
                 home.appendingPathComponent("Library/Application Support/Google/Chrome/Service Worker"),
-                // Safari
-                home.appendingPathComponent("Library/Caches/com.apple.Safari"),
+                // Safari — sandboxed since Safari 13 (all currently supported
+                // macOS versions), so its real cache lives under its
+                // Container, not the old unsandboxed ~/Library/Caches path
+                // (which no longer exists and made this entry permanently
+                // report "missing").
+                home.appendingPathComponent("Library/Containers/com.apple.Safari/Data/Library/Caches"),
                 home.appendingPathComponent("Library/Safari/CloudTabs.db"),
                 // Firefox
                 home.appendingPathComponent("Library/Caches/Firefox"),
                 home.appendingPathComponent("Library/Application Support/Firefox/Profiles"),
-                // Edge
-                home.appendingPathComponent("Library/Caches/com.microsoft.edgemac"),
-                // Brave
-                home.appendingPathComponent("Library/Caches/com.brave.Browser"),
+                // Edge — Chromium-based browsers don't cache under their
+                // bundle ID like sandboxed apps do; they use their own
+                // product-name folder. Was "com.microsoft.edgemac", which
+                // never existed.
+                home.appendingPathComponent("Library/Caches/Microsoft Edge"),
+                // Brave — same story: real cache folder is nested under
+                // BraveSoftware/Brave-Browser, not the bundle ID directly.
+                home.appendingPathComponent("Library/Caches/BraveSoftware/Brave-Browser"),
             ]
 
         case .devTools:
@@ -98,21 +107,52 @@ public enum CleanScanner {
             return [
                 home.appendingPathComponent("Library/Logs"),
                 home.appendingPathComponent("Library/Caches/com.apple.helpd"),
-                home.appendingPathComponent("private/tmp"),
+                // Was `home.appendingPathComponent("private/tmp")` — that
+                // resolves to ~/private/tmp, which never exists (it's a
+                // home-relative typo for the real system temp dir). Real
+                // per-user temp files live under NSTemporaryDirectory()
+                // (a $TMPDIR path like /var/folders/.../T/), which is safe
+                // and meaningful for a normal user process to clear.
+                injectedHome == nil
+                    ? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+                    : home.appendingPathComponent("private/tmp"),
             ]
 
         case .appSpecificCache:
+            // Verified each of these against how that vendor's app actually
+            // stores its cache on macOS today — several assumptions here
+            // were wrong, and not in the same way:
+            //   Spotify -> real cache: ~/Library/Caches/com.spotify.client (unchanged, correct)
+            //   Dropbox -> was the truncated "com.dropbox"; real bundle ID
+            //              is com.getdropbox.dropbox
+            //   Slack   -> Electron app; doesn't cache under ~/Library/Caches
+            //              at all. Real cache: ~/Library/Application Support/Slack/Cache
+            //   Discord -> same story, real cache: ~/Library/Application Support/discord/Cache
+            //   Teams   -> "new Teams" is sandboxed; real data is under its
+            //              Container and Group Container, not ~/Library/Caches
+            //   Zoom    -> the one exception that *does* use ~/Library/Caches
+            //              directly, but under its real bundle ID us.zoom.xos
+            //              (was the wrong com.zoom.us), plus its separate
+            //              Application Support data folder
+            //   Safari  -> handled under .browserCache, not here
             return [
                 home.appendingPathComponent("Library/Caches/com.spotify.client"),
-                home.appendingPathComponent("Library/Caches/com.dropbox"),
-                home.appendingPathComponent("Library/Caches/com.tinyspeck.chat.slack"),
-                home.appendingPathComponent("Library/Caches/com.microsoft.teams"),
-                home.appendingPathComponent("Library/Caches/com.discord"),
-                home.appendingPathComponent("Library/Caches/com.zoom.us"),
+                home.appendingPathComponent("Library/Caches/com.getdropbox.dropbox"),
+                home.appendingPathComponent("Library/Application Support/Slack/Cache"),
+                home.appendingPathComponent("Library/Containers/com.microsoft.teams2/Data/Library/Caches"),
+                home.appendingPathComponent("Library/Group Containers/UBF8T346G9.com.microsoft.teams"),
+                home.appendingPathComponent("Library/Application Support/discord/Cache"),
+                home.appendingPathComponent("Library/Caches/us.zoom.xos"),
+                home.appendingPathComponent("Library/Application Support/zoom.us/data/Cache"),
             ]
 
         case .trash:
-            return [home.appendingPathComponent(".Trash")]
+            // The individual *contents* of ~/.Trash, not the folder itself.
+            // Emptying Trash has to permanently delete what's inside it — see
+            // SafeFileDeleter.execute, which forces .trash-category items to
+            // .permanent regardless of the caller's requested mode, since
+            // "move ~/.Trash to the Trash" is meaningless (and macOS rejects it).
+            return contents(of: home.appendingPathComponent(".Trash"))
 
         case .recentItems:
             let sharedDir = home.appendingPathComponent("Library/Application Support/com.apple.sharedfilelist")

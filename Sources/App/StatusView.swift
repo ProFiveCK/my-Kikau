@@ -35,7 +35,7 @@ struct StatusView: View {
                     VStack(spacing: 12) {
                         HeroHealthCard(snapshot: snap, onNavigate: onNavigate)
 
-                        ScanEverythingCard(onNavigate: onNavigate)
+                        FullSystemScanCard(onNavigate: onNavigate)
 
                         QuickActionsGrid(onNavigate: onNavigate)
 
@@ -221,8 +221,8 @@ private struct Sparkline: View {
     }
 }
 
-/// Combined Clean + Purge scan, the "Smart Care"-equivalent single entry point.
-private struct ScanEverythingCard: View {
+/// Full dashboard scan, the "Smart Care"-equivalent single entry point.
+private struct FullSystemScanCard: View {
     let onNavigate: (ContentView.SidebarItem) -> Void
 
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
@@ -230,7 +230,7 @@ private struct ScanEverythingCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Scan Everything", systemImage: "sparkle.magnifyingglass")
+                Label("Full System Scan", systemImage: "sparkle.magnifyingglass")
                     .font(.headline)
                 Spacer()
                 Button(coordinator.isScanning ? "Scanning…" : (coordinator.hasResults ? "Rescan" : "Scan")) {
@@ -241,25 +241,62 @@ private struct ScanEverythingCard: View {
             }
 
             if coordinator.isScanning {
-                ProgressView()
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView()
+                    Text("Scanning cleanable data, apps, duplicate files, and large user files.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if coordinator.hasResults {
                 Text("\(coordinator.combinedItemCount) items · \(ByteSizeFormatter.format(coordinator.combinedReclaimableBytes)) reclaimable")
                     .font(.title3.bold())
                     .foregroundStyle(coordinator.combinedReclaimableBytes > 0 ? Color.green : .secondary)
+                if let lastScanAt = coordinator.lastScanAt {
+                    Text("Last scanned \(lastScanAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-                HStack(spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
                     if let cleanPlans = coordinator.cleanPlans {
                         let cleanTotal = cleanPlans.values.reduce(Int64(0)) { $0 + $1.totalReclaimable }
-                        Button("Review Clean (\(ByteSizeFormatter.format(cleanTotal)))") {
-                            onNavigate(.clean)
-                        }
-                        .tint(ContentView.SidebarItem.clean.tint)
+                        SummaryPill(
+                            title: "Clean",
+                            value: ByteSizeFormatter.format(cleanTotal),
+                            tint: ContentView.SidebarItem.clean.tint,
+                            action: { onNavigate(.clean) }
+                        )
+                    }
+                    if let apps = coordinator.apps {
+                        SummaryPill(
+                            title: "Apps",
+                            value: "\(apps.count) · \(ByteSizeFormatter.format(coordinator.appFootprintBytes))",
+                            tint: ContentView.SidebarItem.uninstall.tint,
+                            action: { onNavigate(.uninstall) }
+                        )
+                    }
+                    if let duplicateGroups = coordinator.duplicateGroups {
+                        let total = duplicateGroups.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+                        SummaryPill(
+                            title: "Duplicates",
+                            value: "\(duplicateGroups.count) · \(ByteSizeFormatter.format(total))",
+                            tint: ContentView.SidebarItem.duplicates.tint,
+                            action: { onNavigate(.duplicates) }
+                        )
+                    }
+                    if let largeFiles = coordinator.largeFiles {
+                        let total = largeFiles.reduce(Int64(0)) { $0 + $1.sizeBytes }
+                        SummaryPill(
+                            title: "Large Files",
+                            value: "\(largeFiles.count) · \(ByteSizeFormatter.format(total))",
+                            tint: ContentView.SidebarItem.analyze.tint,
+                            action: { onNavigate(.duplicates) }
+                        )
                     }
                 }
-                .buttonStyle(.bordered)
             } else {
-                Text("Scans caches, logs, and trash in one pass.")
+                Text("Scans cleanable data, installed apps, duplicates, and large user files, then sends each category to its review screen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -267,6 +304,31 @@ private struct ScanEverythingCard: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct SummaryPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.bold())
+                    .foregroundStyle(.primary)
+                Text(value)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -429,9 +491,7 @@ private struct HeroHealthCard: View {
                 GlassTile(
                     icon: "memorychip.fill",
                     title: "Memory",
-                    value: "\(Int(snapshot.memory.usedPercent))% used",
-                    actionLabel: "Free Up",
-                    action: { onNavigate(.clean) }
+                    value: "\(Int(snapshot.memory.usedPercent))% used · \(snapshot.memory.pressure)"
                 )
                 if let battery = snapshot.batteries.first {
                     GlassTile(
