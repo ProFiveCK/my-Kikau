@@ -31,7 +31,7 @@ public struct TreemapView<Item: Identifiable>: View {
         GeometryReader { geo in
             let rects = SquarifiedTreemap.layout(
                 values: items.map(value),
-                in: CGRect(origin: .zero, size: geo.size)
+                in: CGRect(origin: .zero, size: geo.size).insetBy(dx: 1, dy: 1)
             )
             ZStack(alignment: .topLeading) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -44,6 +44,7 @@ public struct TreemapView<Item: Identifiable>: View {
                     }
                 }
             }
+            .background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }
@@ -59,15 +60,15 @@ private struct TreemapCell: View {
     // tell what they were short of hovering every single one. Two tiers
     // instead: title-only down to a much smaller size, full title+subtitle
     // only where there's real room.
-    private var showSubtitle: Bool { size.width > 60 && size.height > 34 }
-    private var showTitleOnly: Bool { size.width > 24 && size.height > 14 }
+    private var showSubtitle: Bool { size.width > 86 && size.height > 46 }
+    private var showTitleOnly: Bool { size.width > 58 && size.height > 26 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 3)
                 .fill(color)
             RoundedRectangle(cornerRadius: 3)
-                .strokeBorder(Color.black.opacity(0.18), lineWidth: 1)
+                .strokeBorder(Color.white.opacity(0.65), lineWidth: 1.5)
             if showSubtitle {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)

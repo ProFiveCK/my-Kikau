@@ -78,18 +78,33 @@ struct AnalyzeView: View {
                 }
                 .padding([.horizontal, .bottom])
             } else if mode == .map {
-                TreemapView(
-                    items: session.entries,
-                    value: { Double($0.sizeBytes) },
-                    color: { _, rank in cellColor(rank: rank, total: session.entries.count) },
-                    label: { $0.name },
-                    sublabel: { ByteSizeFormatter.format($0.sizeBytes) },
-                    onSelect: { entry in
-                        if entry.isDirectory {
-                            session.scan(entry.url)
+                let mapEntries = condensedMapEntries(session.entries)
+                HSplitView {
+                    TreemapView(
+                        items: mapEntries,
+                        value: { Double($0.sizeBytes) },
+                        color: { _, rank in cellColor(rank: rank, total: mapEntries.count) },
+                        label: { $0.name },
+                        sublabel: { ByteSizeFormatter.format($0.sizeBytes) },
+                        onSelect: { entry in
+                            if entry.isDirectory, entry.id != "__smaller_items" {
+                                session.scan(entry.url)
+                            }
                         }
+                    )
+                    .frame(minWidth: 360)
+
+                    List(mapEntries) { entry in
+                        AnalyzeRow(entry: entry, tint: tint, maxSize: mapEntries.map(\.sizeBytes).max() ?? 1)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if entry.isDirectory, entry.id != "__smaller_items" {
+                                    session.scan(entry.url)
+                                }
+                            }
                     }
-                )
+                    .frame(minWidth: 260, idealWidth: 320)
+                }
                 .padding([.horizontal, .bottom])
             } else {
                 let maxSize = session.entries.map(\.sizeBytes).max() ?? 1
@@ -117,6 +132,22 @@ struct AnalyzeView: View {
         let eased = min(t, 1)
         let hue = 0.5 + eased * 0.06
         return Color(hue: hue, saturation: 0.75 - eased * 0.25, brightness: 0.30 + eased * 0.32)
+    }
+
+    private func condensedMapEntries(_ entries: [DiskScanner.Entry]) -> [DiskScanner.Entry] {
+        let visibleCount = 24
+        guard entries.count > visibleCount else { return entries }
+        let visible = Array(entries.prefix(visibleCount))
+        let rest = entries.dropFirst(visibleCount)
+        let restTotal = rest.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        guard restTotal > 0 else { return visible }
+        let aggregate = DiskScanner.Entry(
+            url: URL(fileURLWithPath: "/Smaller Items"),
+            sizeBytes: restTotal,
+            isDirectory: false,
+            childCount: rest.count
+        )
+        return visible + [aggregate]
     }
 }
 

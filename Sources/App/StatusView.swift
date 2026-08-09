@@ -11,6 +11,8 @@ struct StatusView: View {
     @ObservedObject private var metricsService = MetricsService.shared
     @State private var totalFreed: Int64 = 0
     @State private var hasFullDiskAccess = FullDiskAccessCheck.probe()
+    @State private var freeingMemory = false
+    @State private var memoryActionMessage: String?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -33,61 +35,19 @@ struct StatusView: View {
             if let snap = metricsService.snapshot {
                 ScrollView {
                     VStack(spacing: 12) {
-                        HeroHealthCard(snapshot: snap, onNavigate: onNavigate)
+                        HeroHealthCard(
+                            snapshot: snap,
+                            onNavigate: onNavigate,
+                            freeingMemory: freeingMemory,
+                            memoryActionMessage: memoryActionMessage,
+                            onFreeMemory: freeInactiveMemory
+                        )
 
                         FullSystemScanCard(onNavigate: onNavigate)
 
                         QuickActionsGrid(onNavigate: onNavigate)
 
-                        StatCard(title: "CPU") {
-                            MetricRow(label: "Usage", percent: snap.cpu.usage, color: .blue)
-                            Sparkline(values: metricsService.history.map(\.cpu.usage), color: .blue)
-                                .frame(height: 28)
-                            if !snap.cpu.perCore.isEmpty {
-                                Text("\(snap.cpu.logicalCPU) logical cores")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        StatCard(title: "Memory") {
-                            MetricRow(label: "Used", percent: snap.memory.usedPercent,
-                                      color: SizeBar.color(for: snap.memory.usedPercent))
-                            Sparkline(values: metricsService.history.map(\.memory.usedPercent), color: .purple)
-                                .frame(height: 28)
-                            HStack {
-                                Text("Used \(ByteSizeFormatter.format(Int64(snap.memory.used)))")
-                                Spacer()
-                                Text("Total \(ByteSizeFormatter.format(Int64(snap.memory.total)))")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-
-                        StatCard(title: "Disk") {
-                            ForEach(snap.disks, id: \.mount) { disk in
-                                MetricRow(label: disk.mount, percent: disk.usedPercent,
-                                          color: SizeBar.color(for: disk.usedPercent))
-                            }
-                        }
-
-                        HStack(spacing: 12) {
-                            StatCard(title: "Uptime") {
-                                Text(HealthScore.formatUptime(snap.uptimeSeconds))
-                                    .font(.title3)
-                                    .monospacedDigit()
-                            }
-                            if let battery = snap.batteries.first {
-                                StatCard(title: "Battery") {
-                                    Text("\(Int(battery.percent))%")
-                                        .font(.title3)
-                                        .monospacedDigit()
-                                    Text(battery.status)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
+                        LiveSignalsCard(snapshot: snap)
 
                         if !snap.network.isEmpty {
                             StatCard(title: "Network") {
@@ -189,6 +149,19 @@ struct StatusView: View {
         .onDisappear { metricsService.unsubscribe() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             hasFullDiskAccess = FullDiskAccessCheck.probe()
+        }
+    }
+
+    private func freeInactiveMemory() {
+        guard !freeingMemory else { return }
+        freeingMemory = true
+        memoryActionMessage = nil
+        Task {
+            let result = await MemoryOptimizer.freeInactiveMemory()
+            await MainActor.run {
+                freeingMemory = false
+                memoryActionMessage = result.message
+            }
         }
     }
 }
@@ -332,6 +305,76 @@ private struct SummaryPill: View {
     }
 }
 
+private struct LiveSignalsCard: View {
+    let snapshot: MetricsSnapshot
+
+    var body: some View {
+        StatCard(title: "Live Signals") {
+            VStack(spacing: 10) {
+                CompactMetricRow(
+                    icon: "cpu",
+                    title: "CPU",
+                    value: "\(Int(snapshot.cpu.usage))%",
+                    percent: snapshot.cpu.usage,
+                    color: .blue
+                )
+                CompactMetricRow(
+                    icon: "memorychip",
+                    title: "Memory",
+                    value: "\(ByteSizeFormatter.format(Int64(snapshot.memory.available))) available",
+                    percent: snapshot.memory.usedPercent,
+                    color: SizeBar.color(for: snapshot.memory.usedPercent)
+                )
+                if let disk = snapshot.disks.first {
+                    CompactMetricRow(
+                        icon: "internaldrive",
+                        title: disk.mount == "/" ? "Disk" : disk.mount,
+                        value: "\(ByteSizeFormatter.format(Int64(disk.total - disk.used))) free",
+                        percent: disk.usedPercent,
+                        color: SizeBar.color(for: disk.usedPercent)
+                    )
+                }
+                HStack {
+                    Label(HealthScore.formatUptime(snapshot.uptimeSeconds), systemImage: "clock")
+                    Spacer()
+                    if let battery = snapshot.batteries.first {
+                        Label("\(Int(battery.percent))% \(battery.status)", systemImage: battery.status == "Charging" ? "battery.100.bolt" : "battery.100")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct CompactMetricRow: View {
+    let icon: String
+    let title: String
+    let value: String
+    let percent: Double
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(title).font(.subheadline)
+                    Spacer()
+                    Text(value)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                SizeBar(percent: percent, color: color)
+            }
+        }
+    }
+}
+
 /// Dashboard hub — one card per feature screen, launched from Status.
 private struct QuickActionsGrid: View {
     let onNavigate: (ContentView.SidebarItem) -> Void
@@ -415,6 +458,9 @@ private struct FullDiskAccessBanner: View {
 private struct HeroHealthCard: View {
     let snapshot: MetricsSnapshot
     let onNavigate: (ContentView.SidebarItem) -> Void
+    let freeingMemory: Bool
+    let memoryActionMessage: String?
+    let onFreeMemory: () -> Void
 
     private var statusWord: String {
         snapshot.healthScoreMsg.components(separatedBy: ":").first ?? snapshot.healthScoreMsg
@@ -491,7 +537,10 @@ private struct HeroHealthCard: View {
                 GlassTile(
                     icon: "memorychip.fill",
                     title: "Memory",
-                    value: "\(Int(snapshot.memory.usedPercent))% used · \(snapshot.memory.pressure)"
+                    value: "\(Int(snapshot.memory.usedPercent))% used · \(snapshot.memory.pressure)",
+                    actionLabel: freeingMemory ? "Freeing..." : "Free Up",
+                    action: onFreeMemory,
+                    isBusy: freeingMemory
                 )
                 if let battery = snapshot.batteries.first {
                     GlassTile(
@@ -501,6 +550,12 @@ private struct HeroHealthCard: View {
                     )
                 }
                 GlassTile(icon: "cpu.fill", title: "CPU", value: cpuValue)
+            }
+
+            if let memoryActionMessage {
+                Text(memoryActionMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.6))
             }
 
             if let net = snapshot.network.first(where: { $0.rxRateMBs > 0 || $0.txRateMBs > 0 }) ?? snapshot.network.first {
@@ -534,6 +589,7 @@ private struct GlassTile: View {
     let value: String
     var actionLabel: String?
     var action: (() -> Void)?
+    var isBusy = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -553,6 +609,7 @@ private struct GlassTile: View {
                     .font(.caption.bold())
                     .buttonStyle(.plain)
                     .foregroundStyle(Color(red: 0.42, green: 0.94, blue: 0.86))
+                    .disabled(isBusy)
             }
         }
         .padding(12)
