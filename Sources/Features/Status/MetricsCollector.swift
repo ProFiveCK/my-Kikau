@@ -12,6 +12,15 @@ public final class MetricsCollector {
     private var prevCPUIdle: UInt64 = 0
     private var lastCPUAt: Date = .distantPast
 
+    // Network rate collection state (per-instance to diff successive samples).
+    private let networkBox = NetworkSampleBox()
+    // Thermal fan-source cache.
+    private let thermalBox = ThermalSampleBox()
+    // GPU static info + usage cache.
+    private let gpuBox = GPUSampleBox()
+    // Disk IO rate collection state.
+    private let diskIOBox = DiskIOSampleBox()
+
     public init() {}
 
     /// Collects a full metrics snapshot.
@@ -22,6 +31,10 @@ public final class MetricsCollector {
         async let batteries = collectBatteries()
         async let uptime = collectUptime()
         async let host = collectHost()
+        async let network = collectNetwork()
+        async let thermal = collectThermal()
+        async let gpu = collectGPU()
+        async let diskIO = collectDiskIO()
 
         let snapshot = MetricsSnapshot(
             host: await host,
@@ -29,7 +42,11 @@ public final class MetricsCollector {
             cpu: await cpu,
             memory: await memory,
             disks: await disks,
-            batteries: await batteries
+            diskIO: await diskIO,
+            network: await network,
+            gpu: await gpu,
+            batteries: await batteries,
+            thermal: await thermal
         )
 
         var withScore = snapshot
@@ -181,5 +198,29 @@ public final class MetricsCollector {
 
     private func collectHost() async -> String {
         ProcessInfo.processInfo.hostName
+    }
+
+    // MARK: - Network
+
+    private func collectNetwork() async -> [NetworkStatus] {
+        NetworkMonitor.collect(into: networkBox)
+    }
+
+    // MARK: - Thermal
+
+    private func collectThermal() async -> ThermalStatus {
+        ThermalMonitor.collect(from: thermalBox)
+    }
+
+    // MARK: - GPU
+
+    private func collectGPU() async -> [GPUStatus] {
+        GPUMonitor.collect(from: gpuBox)
+    }
+
+    // MARK: - Disk IO
+
+    private func collectDiskIO() async -> DiskIOStatus {
+        DiskIOMonitor.collect(from: diskIOBox)
     }
 }

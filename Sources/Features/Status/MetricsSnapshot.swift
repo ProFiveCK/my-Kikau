@@ -14,6 +14,8 @@ public struct MetricsSnapshot: Codable, Hashable {
     public var memory: MemoryStatus
     public var disks: [DiskStatus]
     public var diskIO: DiskIOStatus
+    public var network: [NetworkStatus]
+    public var gpu: [GPUStatus]
     public var batteries: [BatteryStatus]
     public var thermal: ThermalStatus
 
@@ -28,6 +30,8 @@ public struct MetricsSnapshot: Codable, Hashable {
         memory: MemoryStatus = MemoryStatus(),
         disks: [DiskStatus] = [],
         diskIO: DiskIOStatus = DiskIOStatus(),
+        network: [NetworkStatus] = [],
+        gpu: [GPUStatus] = [],
         batteries: [BatteryStatus] = [],
         thermal: ThermalStatus = ThermalStatus()
     ) {
@@ -41,6 +45,8 @@ public struct MetricsSnapshot: Codable, Hashable {
         self.memory = memory
         self.disks = disks
         self.diskIO = diskIO
+        self.network = network
+        self.gpu = gpu
         self.batteries = batteries
         self.thermal = thermal
     }
@@ -129,11 +135,70 @@ public struct BatteryStatus: Codable, Hashable {
 }
 
 public struct ThermalStatus: Codable, Hashable {
-    public var cpuTemp: Double    // Celsius
-    public var fanSpeed: Int      // RPM
+    public var cpuTemp: Double       // Celsius (left 0 on macOS; not synthesized)
+    public var batteryTemp: Double  // Battery temperature in Celsius
+    public var fanSpeed: Int         // RPM
+    public var fanCount: Int
+    public var systemPower: Double   // System power consumption in Watts
+    public var adapterPower: Double  // AC adapter max power in Watts
+    public var batteryPower: Double  // Battery charge/discharge power in Watts (positive = discharging)
 
-    public init(cpuTemp: Double = 0, fanSpeed: Int = 0) {
+    public init(
+        cpuTemp: Double = 0,
+        batteryTemp: Double = 0,
+        fanSpeed: Int = 0,
+        fanCount: Int = 0,
+        systemPower: Double = 0,
+        adapterPower: Double = 0,
+        batteryPower: Double = 0
+    ) {
         self.cpuTemp = cpuTemp
+        self.batteryTemp = batteryTemp
         self.fanSpeed = fanSpeed
+        self.fanCount = fanCount
+        self.systemPower = systemPower
+        self.adapterPower = adapterPower
+        self.batteryPower = batteryPower
+    }
+}
+
+/// Per-interface network throughput. Mirrors Mole's `NetworkStatus`.
+public struct NetworkStatus: Codable, Hashable {
+    public var name: String
+    public var rxRateMBs: Double
+    public var txRateMBs: Double
+    public var ip: String
+
+    public init(name: String = "", rxRateMBs: Double = 0, txRateMBs: Double = 0, ip: String = "") {
+        self.name = name
+        self.rxRateMBs = rxRateMBs
+        self.txRateMBs = txRateMBs
+        self.ip = ip
+    }
+}
+
+/// GPU status. Mirrors Mole's `GPUStatus`.
+public struct GPUStatus: Codable, Hashable {
+    public var name: String
+    public var usage: Double        // Percent; -1 means unavailable
+    public var memoryUsed: Double
+    public var memoryTotal: Double
+    public var coreCount: Int
+    public var note: String
+
+    public init(
+        name: String = "",
+        usage: Double = 0,
+        memoryUsed: Double = 0,
+        memoryTotal: Double = 0,
+        coreCount: Int = 0,
+        note: String = ""
+    ) {
+        self.name = name
+        self.usage = usage
+        self.memoryUsed = memoryUsed
+        self.memoryTotal = memoryTotal
+        self.coreCount = coreCount
+        self.note = note
     }
 }
