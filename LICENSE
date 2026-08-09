@@ -1,0 +1,11 @@
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+myKikau is licensed under GPL-3.0. Logic reimplemented natively in Swift,
+informed by Mole (https://github.com/tw93/Mole), also GPL-3.0.
+
+For the full license text, see https://www.gnu.org/licenses/gpl-3.0.txt
