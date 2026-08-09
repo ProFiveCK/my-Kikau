@@ -66,6 +66,91 @@ struct StatusView: View {
                                 }
                             }
                         }
+
+                        if !snap.network.isEmpty {
+                            StatCard(title: "Network") {
+                                ForEach(snap.network, id: \.name) { net in
+                                    NetworkRow(net: net)
+                                }
+                            }
+                        }
+
+                        if !snap.gpu.isEmpty {
+                            StatCard(title: "GPU") {
+                                ForEach(snap.gpu, id: \.name) { gpu in
+                                    GPURow(gpu: gpu)
+                                }
+                            }
+                        }
+
+                        if snap.diskIO.readRate > 0 || snap.diskIO.writeRate > 0 {
+                            StatCard(title: "Disk IO") {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text("↓ Read")
+                                        Spacer()
+                                        Text(String(format: "%.2f MB/s", snap.diskIO.readRate))
+                                            .monospacedDigit()
+                                    }
+                                    HStack {
+                                        Text("↑ Write")
+                                        Spacer()
+                                        Text(String(format: "%.2f MB/s", snap.diskIO.writeRate))
+                                            .monospacedDigit()
+                                    }
+                                }
+                                .font(.subheadline)
+                            }
+                        }
+
+                        let t = snap.thermal
+                        if t.fanSpeed > 0 || t.batteryTemp > 0 || t.systemPower > 0 || t.adapterPower > 0 || t.batteryPower != 0 {
+                            StatCard(title: "Thermal / Power") {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if t.fanSpeed > 0 {
+                                        HStack {
+                                            Text("Fan")
+                                            Spacer()
+                                            Text("\(t.fanSpeed) rpm")
+                                                .monospacedDigit()
+                                        }
+                                    }
+                                    if t.batteryTemp > 0 {
+                                        HStack {
+                                            Text("Battery temp")
+                                            Spacer()
+                                            Text(String(format: "%.1f °C", t.batteryTemp))
+                                                .monospacedDigit()
+                                        }
+                                    }
+                                    if t.systemPower > 0 {
+                                        HStack {
+                                            Text("System")
+                                            Spacer()
+                                            Text(String(format: "%.2f W", t.systemPower))
+                                                .monospacedDigit()
+                                        }
+                                    }
+                                    if t.adapterPower > 0 {
+                                        HStack {
+                                            Text("Adapter")
+                                            Spacer()
+                                            Text(String(format: "%.1f W", t.adapterPower))
+                                                .monospacedDigit()
+                                        }
+                                    }
+                                    if t.batteryPower != 0 {
+                                        HStack {
+                                            Text("Battery")
+                                            Spacer()
+                                            Text(String(format: "%.2f W", t.batteryPower))
+                                                .monospacedDigit()
+                                        }
+                                    }
+                                }
+                                .font(.subheadline)
+                            }
+                        }
                     }
                     .padding()
                 }
@@ -154,6 +239,60 @@ private struct MetricRow: View {
                     .monospacedDigit()
             }
             SizeBar(percent: percent, color: color)
+        }
+    }
+}
+
+private struct NetworkRow: View {
+    let net: NetworkStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(net.name).font(.subheadline)
+                Spacer()
+                if !net.ip.isEmpty {
+                    Text(net.ip)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+            HStack {
+                Text("↓ \(String(format: "%.2f", net.rxRateMBs)) MB/s")
+                Spacer()
+                Text("↑ \(String(format: "%.2f", net.txRateMBs)) MB/s")
+            }
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct GPURow: View {
+    let gpu: GPUStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(gpu.name).font(.subheadline)
+                Spacer()
+                Text(gpu.usage >= 0 ? String(format: "%.0f%%", gpu.usage) : "N/A")
+                    .font(.subheadline)
+                    .monospacedDigit()
+                    .foregroundStyle(gpu.usage >= 0 ? .primary : .secondary)
+            }
+            if !gpu.note.isEmpty {
+                Text(gpu.note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if gpu.coreCount > 0 {
+                Text("\(gpu.coreCount) cores")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
