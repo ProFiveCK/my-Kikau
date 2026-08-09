@@ -168,6 +168,9 @@ struct HUDView: View {
 
         let result = SafeFileDeleter.shared.execute(plan, mode: .permanent, dryRun: false, action: "menubar.emptyTrash")
         trashStatus = "Freed \(ByteSizeFormatter.format(result.freedBytes))"
+        if result.failed == 0 {
+            ScanEverythingCoordinator.shared.clearCleanPlan(for: .trash)
+        }
     }
 
     private func freeInactiveMemory() {

@@ -37,9 +37,11 @@ public enum ProcessMonitor {
         } catch {
             return []
         }
+        // Read before waitUntilExit. `ps` output can exceed a pipe buffer on
+        // busy systems; waiting first can deadlock the UI sheet indefinitely.
+        guard let data = try? pipe.fileHandleForReading.readToEnd() else { return [] }
         process.waitUntilExit()
         guard process.terminationStatus == 0,
-              let data = try? pipe.fileHandleForReading.readToEnd(),
               let output = String(data: data, encoding: .utf8) else { return [] }
 
         let rows = output

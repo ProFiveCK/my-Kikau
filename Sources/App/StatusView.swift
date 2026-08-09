@@ -714,6 +714,7 @@ private struct GlassTile: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 92, alignment: .topLeading)
         .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1), lineWidth: 1))
     }

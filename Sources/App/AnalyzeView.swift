@@ -40,7 +40,11 @@ struct AnalyzeView: View {
                     }
                 }
                 Button(session.isScanning ? "Scanning..." : (session.hasResults ? "Rescan" : "Scan Home")) {
-                    session.scan(session.currentDir ?? FileManager.default.homeDirectoryForCurrentUser)
+                    if session.hasResults {
+                        session.rescanCurrent()
+                    } else {
+                        session.scan(FileManager.default.homeDirectoryForCurrentUser)
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(tint)

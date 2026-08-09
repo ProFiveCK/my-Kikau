@@ -74,4 +74,8 @@ public final class ScanEverythingCoordinator: ObservableObject {
         lastScanAt = Date()
         isScanning = false
     }
+
+    public func clearCleanPlan(for section: CleanScanner.Section) {
+        cleanPlans?[section] = SafeFileDeleter.Plan(items: [], protectedItems: [], missingItems: [])
+    }
 }

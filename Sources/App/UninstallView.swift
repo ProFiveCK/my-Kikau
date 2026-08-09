@@ -180,6 +180,9 @@ struct UninstallView: View {
             let deleter = SafeFileDeleter.shared
             let appResult = deleter.execute(plan, mode: .trash, dryRun: false, action: "uninstall.app")
             await MainActor.run {
+                if appResult.failed == 0 {
+                    apps.removeAll { $0.id == app.id }
+                }
                 teardownResult = teardown
                 executionSummary = summary.isEmpty ? "App removed; no teardown actions" : summary.joined(separator: ", ")
                 executing = false
