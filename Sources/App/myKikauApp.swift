@@ -11,7 +11,7 @@ struct myKikauApp: App {
     @AppStorage("myKikau.showDockIcon") private var showDockIcon = true
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             RootView()
                 .frame(minWidth: 800, minHeight: 500)
                 .environmentObject(updaterViewModel)

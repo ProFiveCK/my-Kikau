@@ -5,6 +5,14 @@ import Features
 @Suite("StatusMetrics")
 struct StatusMetricsTests {
 
+    // MARK: - Memory optimizer
+
+    @Test("memory purge availability checks for an executable tool")
+    func memoryPurgeAvailability() {
+        #expect(MemoryOptimizer.isPurgeAvailable(path: "/bin/ls"))
+        #expect(!MemoryOptimizer.isPurgeAvailable(path: "/tmp/mykikau-definitely-missing-purge-tool"))
+    }
+
     // MARK: - Network parsing
 
     @Test("parseNetstatIB sums duplicate interface rows and skips header")

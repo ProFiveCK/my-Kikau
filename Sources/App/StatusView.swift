@@ -131,6 +131,11 @@ struct StatusView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             hasFullDiskAccess = FullDiskAccessCheck.probe()
         }
+        .onReceive(AppNavigation.shared.$pendingProcessMode) { pending in
+            guard let pending else { return }
+            processSheet = ProcessSheet(mode: pending)
+            AppNavigation.shared.pendingProcessMode = nil
+        }
         .sheet(item: $processSheet) { sheet in
             ProcessListSheet(mode: sheet.mode)
         }
@@ -403,6 +408,7 @@ private struct HeroHealthCard: View {
     let onFreeMemory: () -> Void
     let onShowCPU: () -> Void
     let onShowMemory: () -> Void
+    private let canPurgeMemory = MemoryOptimizer.isPurgeAvailable()
 
     private var statusWord: String {
         switch snapshot.healthScore {
@@ -495,10 +501,10 @@ private struct HeroHealthCard: View {
                     icon: "memorychip.fill",
                     title: "Memory",
                     value: "\(Int(snapshot.memory.usedPercent))% used · \(snapshot.memory.pressure)",
-                    actionLabel: freeingMemory ? "Freeing..." : "Free Up",
-                    action: onFreeMemory,
-                    secondaryActionLabel: "View",
-                    secondaryAction: onShowMemory,
+                    actionLabel: memoryActionLabel,
+                    action: canPurgeMemory ? onFreeMemory : onShowMemory,
+                    secondaryActionLabel: canPurgeMemory ? "View" : nil,
+                    secondaryAction: canPurgeMemory ? onShowMemory : nil,
                     isBusy: freeingMemory
                 )
                 if let battery = snapshot.batteries.first {
@@ -545,6 +551,11 @@ private struct HeroHealthCard: View {
             in: RoundedRectangle(cornerRadius: 20)
         )
     }
+
+    private var memoryActionLabel: String {
+        if freeingMemory { return "Freeing..." }
+        return canPurgeMemory ? "Free Up" : "View Usage"
+    }
 }
 
 private struct ProcessListSheet: View {
@@ -552,6 +563,8 @@ private struct ProcessListSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var rows: [ProcessMonitor.ProcessInfo] = []
     @State private var loading = true
+    @State private var actionMessage: String?
+    @State private var confirmQuit: ProcessMonitor.ProcessInfo?
 
     private var title: String {
         switch mode {
@@ -565,6 +578,7 @@ private struct ProcessListSheet: View {
             HStack {
                 Text(title).font(.title3.bold())
                 Spacer()
+                Button("Activity Monitor") { openActivityMonitor() }
                 Button("Refresh") { load() }
                 Button("Done") { dismiss() }
             }
@@ -574,6 +588,14 @@ private struct ProcessListSheet: View {
                 ProgressView("Collecting processes...")
                     .frame(width: 520, height: 320)
             } else {
+                if let actionMessage {
+                    Text(actionMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.bottom, 6)
+                }
                 List(rows) { row in
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -608,21 +630,84 @@ private struct ProcessListSheet: View {
                                 .foregroundStyle(.secondary)
                                 .frame(width: 82, alignment: .trailing)
                         }
+                        if mode == .memory {
+                            Button("Quit") {
+                                confirmQuit = row
+                            }
+                            .disabled(!canQuit(row))
+                        }
                     }
                 }
-                .frame(width: 560, height: 360)
+                .frame(width: 640, height: 380)
             }
         }
         .onAppear { load() }
+        .confirmationDialog(
+            "Quit \(confirmQuit?.command ?? "process")?",
+            isPresented: Binding(
+                get: { confirmQuit != nil },
+                set: { if !$0 { confirmQuit = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let row = confirmQuit {
+                Button("Quit \(row.command)", role: .destructive) {
+                    quit(row)
+                    confirmQuit = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                confirmQuit = nil
+            }
+        } message: {
+            Text("This asks the app to quit normally. Unsaved work in that app may be lost if it does not handle quit cleanly.")
+        }
     }
 
     private func load() {
         loading = true
+        actionMessage = nil
         Task {
             let result = await ProcessMonitor.top(sort: mode)
             await MainActor.run {
                 rows = result
                 loading = false
+            }
+        }
+    }
+
+    private func canQuit(_ row: ProcessMonitor.ProcessInfo) -> Bool {
+        guard row.pid != Int(Foundation.ProcessInfo.processInfo.processIdentifier),
+              let app = NSRunningApplication(processIdentifier: pid_t(row.pid)) else {
+            return false
+        }
+        return !app.isTerminated
+    }
+
+    private func quit(_ row: ProcessMonitor.ProcessInfo) {
+        guard let app = NSRunningApplication(processIdentifier: pid_t(row.pid)) else {
+            actionMessage = "\(row.command) is no longer running."
+            load()
+            return
+        }
+        let appName = app.localizedName ?? row.command
+        if app.terminate() {
+            actionMessage = "Asked \(appName) to quit."
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                load()
+            }
+        } else {
+            actionMessage = "\(appName) did not accept the quit request. Open Activity Monitor for force quit options."
+        }
+    }
+
+    private func openActivityMonitor() {
+        let url = URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app")
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+            if let error {
+                DispatchQueue.main.async {
+                    actionMessage = "Could not open Activity Monitor: \(error.localizedDescription)"
+                }
             }
         }
     }

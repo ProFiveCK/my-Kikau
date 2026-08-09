@@ -6,10 +6,12 @@ import UI
 
 /// Menu bar HUD showing live system metrics plus a couple of one-tap actions.
 struct HUDView: View {
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject private var metricsService = MetricsService.shared
     @State private var trashStatus: String?
     @State private var freeingMemory = false
     @State private var memoryStatus: String?
+    private let canPurgeMemory = MemoryOptimizer.isPurgeAvailable()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -101,7 +103,7 @@ struct HUDView: View {
             Button {
                 freeInactiveMemory()
             } label: {
-                Label(freeingMemory ? "Freeing Memory..." : "Free Inactive Memory", systemImage: "memorychip")
+                Label(memoryActionTitle, systemImage: "memorychip")
             }
             .disabled(freeingMemory)
             if let memoryStatus {
@@ -136,9 +138,14 @@ struct HUDView: View {
     }
 
     private func openMainWindow() {
+        openWindow(id: "main")
         NSApplication.shared.activate(ignoringOtherApps: true)
-        if let window = NSApplication.shared.windows.first(where: { $0.title == "myKikau" }) {
-            window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.unhide(nil)
+        DispatchQueue.main.async {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            NSApplication.shared.windows
+                .filter { $0.canBecomeMain || $0.canBecomeKey }
+                .forEach { $0.makeKeyAndOrderFront(nil) }
         }
     }
 
@@ -175,6 +182,13 @@ struct HUDView: View {
 
     private func freeInactiveMemory() {
         guard !freeingMemory else { return }
+        guard canPurgeMemory else {
+            AppNavigation.shared.pendingSelection = .status
+            AppNavigation.shared.pendingProcessMode = .memory
+            openMainWindow()
+            memoryStatus = "Showing apps using the most memory."
+            return
+        }
         freeingMemory = true
         memoryStatus = nil
         Task {
@@ -184,6 +198,11 @@ struct HUDView: View {
                 memoryStatus = result.message
             }
         }
+    }
+
+    private var memoryActionTitle: String {
+        if freeingMemory { return "Freeing Memory..." }
+        return canPurgeMemory ? "Free Inactive Memory" : "View Memory Users"
     }
 
     private func healthColor(_ score: Int) -> Color {

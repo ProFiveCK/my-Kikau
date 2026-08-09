@@ -6,6 +6,8 @@ import Foundation
 /// It asks the system to purge inactive file caches, which can help when memory
 /// pressure is high without pretending app-owned memory is cleanable junk.
 public enum MemoryOptimizer {
+    public static let purgePath = "/usr/bin/purge"
+
     public struct Result: Sendable, Hashable {
         public let succeeded: Bool
         public let message: String
@@ -16,9 +18,20 @@ public enum MemoryOptimizer {
         }
     }
 
+    public static func isPurgeAvailable(fileManager: FileManager = .default, path: String = purgePath) -> Bool {
+        fileManager.isExecutableFile(atPath: path)
+    }
+
     public static func freeInactiveMemory() async -> Result {
+        guard isPurgeAvailable() else {
+            return Result(
+                succeeded: false,
+                message: "Memory purge is not available on this macOS version. Use View Memory Users to find heavy apps."
+            )
+        }
+
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/purge")
+        process.executableURL = URL(fileURLWithPath: purgePath)
         process.standardOutput = Pipe()
         let errorPipe = Pipe()
         process.standardError = errorPipe
@@ -26,7 +39,10 @@ public enum MemoryOptimizer {
         do {
             try process.run()
         } catch {
-            return Result(succeeded: false, message: "Memory purge is unavailable on this Mac.")
+            return Result(
+                succeeded: false,
+                message: "Memory purge could not start. Use View Memory Users to find heavy apps."
+            )
         }
 
         process.waitUntilExit()
