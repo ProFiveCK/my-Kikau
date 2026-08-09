@@ -100,8 +100,9 @@ scripts/prepare-deploy.sh
 This cleans and regenerates the canonical `build/release/` folder, copies the
 versioned DMGs into it, writes `build/release/appcast.xml`, creates
 `build/release/release-notes-${VERSION}.md`, creates a versioned
-`website-upload/${VERSION}/` handoff folder, and creates/updates the GitHub
-Release when `gh` is installed and authenticated.
+`website-upload/${VERSION}/` handoff folder, pushes the current branch to
+`origin`, and creates/updates the GitHub Release when `gh` is installed and
+authenticated.
 
 Do not run `scripts/update-appcast.sh build` directly. That creates a duplicate
 `build/appcast.xml` and root-level delta files. `build/release/appcast.xml` is
@@ -161,6 +162,12 @@ To intentionally skip the GitHub release during a dry run:
 MYKIKAU_SKIP_GITHUB_RELEASE=1 scripts/prepare-deploy.sh
 ```
 
+To create/update the GitHub Release without pushing first:
+
+```bash
+MYKIKAU_SKIP_GIT_PUSH=1 scripts/prepare-deploy.sh
+```
+
 ## 8. Final verification **[AGENT, via web_fetch]**
 
 Once steps 5–7 are done, an agent can confirm everything landed correctly
@@ -203,8 +210,9 @@ scripts/prepare-deploy.sh
 
 That covers build, Developer ID signing, DMG packaging, notarization, copying
 the DMG into `build/release`, regenerating `appcast.xml`, preparing release
-notes, preparing the versioned `website-upload/${VERSION}/` folder, and
-creating/updating the GitHub Release when `gh` is authenticated.
+notes, preparing the versioned `website-upload/${VERSION}/` folder, pushing
+the current branch, and creating/updating the GitHub Release when `gh` is
+authenticated.
 
 The remaining manual parts are external-service writes:
 - uploading the DMG to `projectfive.co.ck/downloads/`

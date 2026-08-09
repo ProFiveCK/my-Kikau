@@ -9,6 +9,7 @@
 #
 # Environment:
 #   MYKIKAU_SKIP_GITHUB_RELEASE=1  Prepare artifacts but skip gh release.
+#   MYKIKAU_SKIP_GIT_PUSH=1        Do not push the current branch before release.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -70,12 +71,18 @@ PY
 if [[ "${MYKIKAU_SKIP_GITHUB_RELEASE:-0}" != "1" ]]; then
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     TAG="v${VERSION}"
+    TARGET_COMMIT="$(git rev-parse HEAD)"
+    CURRENT_BRANCH="$(git branch --show-current)"
+    if [[ -n "$CURRENT_BRANCH" && "${MYKIKAU_SKIP_GIT_PUSH:-0}" != "1" ]]; then
+      echo "› pushing ${CURRENT_BRANCH} to origin for GitHub release target"
+      git push origin "HEAD:${CURRENT_BRANCH}"
+    fi
     echo "› creating/updating GitHub release ${TAG}"
     if gh release view "$TAG" >/dev/null 2>&1; then
       gh release upload "$TAG" "$DMG" --clobber
       gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
     else
-      gh release create "$TAG" "$DMG" --title "$TAG" --notes-file "$NOTES_FILE" --target "$(git rev-parse HEAD)"
+      gh release create "$TAG" "$DMG" --title "$TAG" --notes-file "$NOTES_FILE" --target "$TARGET_COMMIT"
     fi
   else
     echo "⚠ gh is not installed/authenticated; skipping GitHub release"
