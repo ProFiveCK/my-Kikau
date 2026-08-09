@@ -99,7 +99,8 @@ scripts/prepare-deploy.sh
 
 This cleans and regenerates the canonical `build/release/` folder, copies the
 versioned DMGs into it, writes `build/release/appcast.xml`, creates
-`build/release/release-notes-${VERSION}.md`, and creates/updates the GitHub
+`build/release/release-notes-${VERSION}.md`, creates a versioned
+`website-upload/${VERSION}/` handoff folder, and creates/updates the GitHub
 Release when `gh` is installed and authenticated.
 
 Do not run `scripts/update-appcast.sh build` directly. That creates a duplicate
@@ -117,11 +118,14 @@ scripts/prepare-deploy.sh "build/myKikau-${VERSION}.dmg" https://www.projectfive
 
 Two files, two different locations on projectfive.co.ck:
 
-- `build/myKikau-${VERSION}.dmg` → wherever the download-url-prefix above says
+- `website-upload/${VERSION}/myKikau-${VERSION}.dmg` → wherever the download-url-prefix above says
   (currently `/downloads/`)
-- `build/release/appcast.xml` → **must** land at `/apps/appcast.xml` exactly
+- `website-upload/${VERSION}/appcast.xml` → **must** land at `/apps/appcast.xml` exactly
   — that's `SUFeedURL` in `Info.plist`, and Sparkle only ever checks that one
   fixed URL
+
+The same folder also includes `wordpress-page.html`, which mirrors the current
+download-page content for the manual WordPress update.
 
 This is a manual upload today (FTP/hosting panel/WordPress media, whatever
 projectfive.co.ck uses) — no connector is set up for it yet. If this
@@ -182,9 +186,8 @@ Report back a short pass/fail list rather than assuming success.
 2. Bump Info.plist version
 3. scripts/release.sh
 4. scripts/prepare-deploy.sh
-5. Upload DMG + appcast.xml to their respective URLs        [human]
-6. Update WEBSITE_COPY.md + download-page-mockup.html, then
-   paste into the live WordPress page                        [human]
+5. Upload files from website-upload/${VERSION}/              [human]
+6. Update the live WordPress page from wordpress-page.html    [human]
 7. GitHub release is created/updated by prepare-deploy.sh     [agent]
 8. Verify all three URLs reflect the new release              [agent]
 ```
@@ -200,7 +203,8 @@ scripts/prepare-deploy.sh
 
 That covers build, Developer ID signing, DMG packaging, notarization, copying
 the DMG into `build/release`, regenerating `appcast.xml`, preparing release
-notes, and creating/updating the GitHub Release when `gh` is authenticated.
+notes, preparing the versioned `website-upload/${VERSION}/` folder, and
+creating/updating the GitHub Release when `gh` is authenticated.
 
 The remaining manual parts are external-service writes:
 - uploading the DMG to `projectfive.co.ck/downloads/`

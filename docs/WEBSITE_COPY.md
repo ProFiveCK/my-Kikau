@@ -8,7 +8,7 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.3.0 · 3.8 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.3.0 · 2.8 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)

@@ -18,6 +18,8 @@ DMG="${1:-build/myKikau-${VERSION}.dmg}"
 DOWNLOAD_URL_PREFIX="${2:-https://www.projectfive.co.ck/downloads/}"
 RELEASE_DIR="build/release"
 NOTES_FILE="${RELEASE_DIR}/release-notes-${VERSION}.md"
+UPLOAD_DIR="website-upload/${VERSION}"
+WORDPRESS_PAGE="${UPLOAD_DIR}/wordpress-page.html"
 
 if [[ ! -f "$DMG" ]]; then
   echo "✘ DMG not found: $DMG"
@@ -80,6 +82,12 @@ if [[ "${MYKIKAU_SKIP_GITHUB_RELEASE:-0}" != "1" ]]; then
   fi
 fi
 
+rm -rf "$UPLOAD_DIR"
+mkdir -p "$UPLOAD_DIR"
+cp "$DMG" "$UPLOAD_DIR/"
+cp "${RELEASE_DIR}/appcast.xml" "$UPLOAD_DIR/"
+cp "docs/download-page-mockup.html" "$WORDPRESS_PAGE"
+
 cat <<EOF
 
 ✓ deploy artifacts prepared
@@ -89,14 +97,19 @@ Files to publish:
   ${RELEASE_DIR}/appcast.xml -> https://www.projectfive.co.ck/apps/appcast.xml
   GitHub release notes: ${NOTES_FILE}
 
+Website upload folder:
+  ${UPLOAD_DIR}/
+  - ${DMG_NAME}
+  - appcast.xml
+  - wordpress-page.html
+
 Website update checklist:
   - Update /apps/mykikau/ download button to version ${VERSION}
   - Show DMG size: ${DMG_SIZE}
-  - Copy release notes from docs/WEBSITE_COPY.md
-  - Keep docs/download-page-mockup.html in sync
+  - Use ${WORDPRESS_PAGE} as the WordPress page reference
 
 Manual steps remaining:
-  - Upload DMG
-  - Upload appcast.xml
-  - Update WordPress page
+  - Upload ${UPLOAD_DIR}/${DMG_NAME}
+  - Upload ${UPLOAD_DIR}/appcast.xml
+  - Update WordPress page from ${WORDPRESS_PAGE}
 EOF

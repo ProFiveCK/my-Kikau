@@ -20,6 +20,7 @@ xcuserdata/
 
 # Build artifacts
 build/
+website-upload/
 *.o
 *.a
 
