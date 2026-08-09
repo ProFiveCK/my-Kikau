@@ -32,7 +32,13 @@ swift build
 swift test
 ```
 
-Open in Xcode for the full app bundle experience (menu bar HUD, App Sandbox, signing).
+Open in Xcode for the full app bundle experience (menu bar HUD, App Sandbox, signing):
+
+```bash
+open Package.swift
+```
+
+For detailed setup, architecture, and safety design, see [docs/SETUP.md](docs/SETUP.md).
 
 ## License
 
