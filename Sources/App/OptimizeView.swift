@@ -53,14 +53,25 @@ struct OptimizeView: View {
                     .padding(.bottom, 8)
             }
 
-            List(MaintenanceCatalog.tasks, selection: $selectedTasks) { task in
-                TaskRow(
-                    task: task,
-                    result: results[task.id],
-                    lastRun: lastRuns[task.id],
-                    inFlight: inFlight.contains(task.id)
-                )
-                .tag(task.id)
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
+                    ForEach(MaintenanceCatalog.tasks) { task in
+                        MaintenanceTaskCard(
+                            task: task,
+                            selected: selectedTasks.contains(task.id),
+                            result: results[task.id],
+                            lastRun: lastRuns[task.id],
+                            inFlight: inFlight.contains(task.id)
+                        ) {
+                            if selectedTasks.contains(task.id) {
+                                selectedTasks.remove(task.id)
+                            } else {
+                                selectedTasks.insert(task.id)
+                            }
+                        }
+                    }
+                }
+                .padding()
             }
         }
         .onAppear { reloadLastRuns() }
@@ -111,6 +122,124 @@ private struct MaintenanceRunStatus: Hashable {
     let outcome: String
     let detail: String?
     let dryRun: Bool
+}
+
+private struct MaintenanceTaskCard: View {
+    let task: MaintenanceCatalog.Task
+    let selected: Bool
+    let result: MaintenanceRunner.Result?
+    let lastRun: MaintenanceRunStatus?
+    let inFlight: Bool
+    let onToggle: () -> Void
+
+    private var category: (label: String, icon: String, color: Color) {
+        switch task.id {
+        case "finder_cache", "launch_services", "shared_file_lists":
+            return ("Finder", "sparkles.rectangle.stack", .blue)
+        case "saved_state", "quarantine":
+            return ("Privacy", "clock.arrow.circlepath", .purple)
+        case "broken_configs", "legacy_overrides", "spotlight_orphans":
+            return ("Repair", "wrench.and.screwdriver", .orange)
+        case "prevent_dsstore", "launch_agents":
+            return ("Startup", "bolt.horizontal.circle", .green)
+        default:
+            return ("Maintenance", "checkmark.shield", .secondary)
+        }
+    }
+
+    var body: some View {
+        Button(action: onToggle) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(category.color.opacity(0.16))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: category.icon)
+                            .foregroundStyle(category.color)
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(task.name)
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        Text(category.label)
+                            .font(.caption2.bold())
+                            .foregroundStyle(category.color)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(selected ? tintColor : .secondary)
+                }
+
+                Text(task.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .frame(minHeight: 44, alignment: .topLeading)
+
+                HStack(spacing: 8) {
+                    if inFlight {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else if let result {
+                        OutcomeBadge(outcome: result.outcome)
+                    } else if let lastRun {
+                        Label(lastRun.outcome, systemImage: "clock")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Label("Ready", systemImage: "play.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if task.safeForAuto {
+                        Image(systemName: "checkmark.shield.fill")
+                            .foregroundStyle(.green)
+                            .help("Safe — bounded, reversible, vetted for unattended use")
+                    }
+                    if task.requiresSudo {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.orange)
+                            .help("Needs your admin password to run")
+                    }
+                }
+                .font(.caption)
+
+                if let lastRun {
+                    Text("Last run \(lastRun.timestamp.formatted(date: .abbreviated, time: .shortened))\(lastRun.dryRun ? " · dry run" : "")")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                } else {
+                    Text("Never run")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                if let result, let detail = result.outcome.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(result.outcome.color)
+                        .lineLimit(2)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(selected ? tintColor.opacity(0.7) : .clear, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var tintColor: Color { ContentView.SidebarItem.optimize.tint }
 }
 
 private struct TaskRow: View {

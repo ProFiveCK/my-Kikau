@@ -53,7 +53,12 @@ public enum ProcessMonitor {
         case .cpu:
             sorted = rows.sorted { $0.cpuPercent > $1.cpuPercent }
         case .memory:
-            sorted = rows.sorted { $0.residentBytes > $1.residentBytes }
+            sorted = rows.sorted {
+                if $0.residentBytes == $1.residentBytes {
+                    return $0.memoryPercent > $1.memoryPercent
+                }
+                return $0.residentBytes > $1.residentBytes
+            }
         }
         return Array(sorted.prefix(limit))
     }

@@ -479,7 +479,21 @@ private struct HeroHealthCard: View {
     let onShowMemory: () -> Void
 
     private var statusWord: String {
-        snapshot.healthScoreMsg.components(separatedBy: ":").first ?? snapshot.healthScoreMsg
+        switch snapshot.healthScore {
+        case 90...: "Great"
+        case 75..<90: "Good"
+        case 60..<75: "OK"
+        default: "Needs Maintenance"
+        }
+    }
+
+    private var statusExplanation: String {
+        switch snapshot.healthScore {
+        case 90...: "No urgent issues detected"
+        case 75..<90: "Minor pressure detected"
+        case 60..<75: "Some maintenance is worth reviewing"
+        default: "Action recommended"
+        }
     }
 
     /// Everything after the first ":" in e.g. "Fair: High CPU, Heavy Disk IO" —
@@ -516,9 +530,6 @@ private struct HeroHealthCard: View {
                         Text(statusWord)
                             .font(.system(size: 26, weight: .bold))
                             .foregroundStyle(statusColor)
-                        Text("· \(snapshot.healthScore)/100")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.7))
                     }
                     Text(snapshot.host)
                         .font(.caption)
@@ -527,8 +538,12 @@ private struct HeroHealthCard: View {
                         Text(issuesDetail)
                             .font(.caption2)
                             .foregroundStyle(statusColor.opacity(0.9))
+                    } else {
+                        Text(statusExplanation)
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.55))
                     }
-                    Text("Combines CPU load, memory pressure, disk space, temperature & battery wear into one score.")
+                    Text("Based on CPU, memory pressure, disk space, temperature, disk activity, battery, and uptime.")
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.45))
                 }
@@ -644,15 +659,29 @@ private struct ProcessListSheet: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(String(format: "%.1f%% CPU", row.cpuPercent))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundStyle(mode == .cpu ? .blue : .secondary)
-                        Text(ByteSizeFormatter.format(row.residentBytes))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundStyle(mode == .memory ? .purple : .secondary)
-                            .frame(width: 82, alignment: .trailing)
+                        if mode == .memory {
+                            Text(ByteSizeFormatter.format(row.residentBytes))
+                                .font(.caption.bold())
+                                .monospacedDigit()
+                                .foregroundStyle(.purple)
+                                .frame(width: 86, alignment: .trailing)
+                            Text(String(format: "%.1f%% MEM", row.memoryPercent))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 72, alignment: .trailing)
+                        } else {
+                            Text(String(format: "%.1f%% CPU", row.cpuPercent))
+                                .font(.caption.bold())
+                                .monospacedDigit()
+                                .foregroundStyle(.blue)
+                                .frame(width: 76, alignment: .trailing)
+                            Text(ByteSizeFormatter.format(row.residentBytes))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 82, alignment: .trailing)
+                        }
                     }
                 }
                 .frame(width: 560, height: 360)
