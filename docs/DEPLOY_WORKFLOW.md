@@ -47,7 +47,7 @@ explicitly and ask the user to run it, or to report back the exact error if
 `scripts/build-app.sh --release` fails later in this workflow. Don't assume
 a build succeeds just because the edits looked reasonable.
 
-## 2. Decide the version bump **[AGENT + HUMAN judgment call]**
+## 2. Decide and apply the version bump **[AGENT + HUMAN judgment call]**
 
 Bump both keys in `Sources/App/Info.plist`:
 
@@ -56,9 +56,19 @@ Bump both keys in `Sources/App/Info.plist`:
 - `CFBundleVersion` — a strictly increasing build number, bump on every
   build even between semver releases
 
-The agent can make this edit, but which number to bump (patch vs. minor) is
-a judgment call about what actually changed — ask the user if it's not
-obvious from the changes made.
+Use the helper script so the release version is controlled and repeatable:
+
+```bash
+scripts/bump-version.sh patch       # fix-only release, e.g. 0.2.1 -> 0.2.2
+scripts/bump-version.sh minor       # feature release, e.g. 0.2.1 -> 0.3.0
+scripts/bump-version.sh major       # breaking/major release, e.g. 0.2.1 -> 1.0.0
+scripts/bump-version.sh 0.3.0       # explicit version, build auto-increments
+scripts/bump-version.sh 0.3.0 7     # explicit version and build number
+```
+
+The script updates both `CFBundleShortVersionString` and `CFBundleVersion`.
+Which semver bump to use is still a product judgment call; ask the user if
+it's not obvious from the changes made.
 
 ## 3. Build, sign, package, notarize **[AGENT triggers, HUMAN's Mac executes]**
 
@@ -86,7 +96,8 @@ existing installs "a newer version exists," not the full history:
 
 ```bash
 mkdir -p build/release
-cp build/myKikau-X.Y.Z.dmg build/release/
+VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/App/Info.plist)
+cp "build/myKikau-${VERSION}.dmg" build/release/
 scripts/update-appcast.sh build/release
 ```
 
@@ -102,7 +113,7 @@ scripts/update-appcast.sh build/release https://www.projectfive.co.ck/downloads/
 
 Two files, two different locations on projectfive.co.ck:
 
-- `build/myKikau-X.Y.Z.dmg` → wherever the download-url-prefix above says
+- `build/myKikau-${VERSION}.dmg` → wherever the download-url-prefix above says
   (currently `/downloads/`)
 - `build/release/appcast.xml` → **must** land at `/apps/appcast.xml` exactly
   — that's `SUFeedURL` in `Info.plist`, and Sparkle only ever checks that one
@@ -133,15 +144,15 @@ version number, download size, and a fresh Release Notes section
 ## 7. Publish a GitHub Release **[HUMAN — GitHub web UI, unless `gh` CLI + auth exists]**
 
 1. `github.com/ProFiveCK/my-Kikau/releases/new`
-2. Tag: `vX.Y.Z`, "Create new tag on publish"
-3. Title: `vX.Y.Z`
+2. Tag: `v${VERSION}`, "Create new tag on publish"
+3. Title: `v${VERSION}`
 4. Paste the same New/Improved/Fixed notes from step 6
 5. Optionally attach the DMG as a release asset
 6. Publish
 
 If a GitHub CLI (`gh`) with an authenticated token is ever available to the
 agent, steps 5–7's tag/release creation becomes scriptable:
-`gh release create vX.Y.Z build/myKikau-X.Y.Z.dmg --title vX.Y.Z --notes-file notes.md`.
+`gh release create "v${VERSION}" "build/myKikau-${VERSION}.dmg" --title "v${VERSION}" --notes-file notes.md`.
 Not set up yet — do it via the web UI for now.
 
 ## 8. Final verification **[AGENT, via web_fetch]**
@@ -168,11 +179,11 @@ Report back a short pass/fail list rather than assuming success.
 1. Make changes, swift build && swift test
 2. Bump Info.plist version
 3. scripts/release.sh
-4. scripts/prepare-deploy.sh build/myKikau-X.Y.Z.dmg
+4. scripts/prepare-deploy.sh
 5. Upload DMG + appcast.xml to their respective URLs        [human]
 6. Update WEBSITE_COPY.md + download-page-mockup.html, then
    paste into the live WordPress page                        [human]
-7. Publish a GitHub Release tagged vX.Y.Z                     [human]
+7. Publish a GitHub Release tagged v${VERSION}                 [human]
 8. Verify all three URLs reflect the new release              [agent]
 ```
 
@@ -182,7 +193,7 @@ The local artifact pipeline is scriptable today:
 
 ```bash
 scripts/release.sh
-scripts/prepare-deploy.sh build/myKikau-X.Y.Z.dmg
+scripts/prepare-deploy.sh
 ```
 
 That covers build, Developer ID signing, DMG packaging, notarization, copying
