@@ -139,7 +139,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(SidebarItem.visibleCases, selection: $selection) { item in
-                Label(item.label, systemImage: item.icon)
+                SidebarRow(item: item, selected: selection == item)
                     .tag(item)
             }
             .navigationTitle("myKikau")
@@ -166,5 +166,27 @@ struct ContentView: View {
             selection = pending
             navigation.pendingSelection = nil
         }
+    }
+}
+
+private struct SidebarRow: View {
+    let item: ContentView.SidebarItem
+    let selected: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(item.tint.opacity(selected ? 0.22 : 0.14))
+                    .frame(width: 28, height: 28)
+                Image(systemName: item.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(item.tint)
+            }
+            Text(item.label)
+                .font(.subheadline)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 3)
     }
 }

@@ -168,10 +168,32 @@ Report back a short pass/fail list rather than assuming success.
 1. Make changes, swift build && swift test
 2. Bump Info.plist version
 3. scripts/release.sh
-4. scripts/update-appcast.sh build/release
+4. scripts/prepare-deploy.sh build/myKikau-X.Y.Z.dmg
 5. Upload DMG + appcast.xml to their respective URLs        [human]
 6. Update WEBSITE_COPY.md + download-page-mockup.html, then
    paste into the live WordPress page                        [human]
 7. Publish a GitHub Release tagged vX.Y.Z                     [human]
 8. Verify all three URLs reflect the new release              [agent]
 ```
+
+## Scriptability status
+
+The local artifact pipeline is scriptable today:
+
+```bash
+scripts/release.sh
+scripts/prepare-deploy.sh build/myKikau-X.Y.Z.dmg
+```
+
+That covers build, Developer ID signing, DMG packaging, notarization, copying
+the DMG into `build/release`, and regenerating `appcast.xml`.
+
+The remaining manual parts are external-service writes:
+- uploading the DMG to `projectfive.co.ck/downloads/`
+- uploading `appcast.xml` to `projectfive.co.ck/apps/appcast.xml`
+- updating the WordPress page at `/apps/mykikau/`
+- creating the GitHub Release, unless `gh` is installed and authenticated
+
+Those can become fully scripted once the machine has an authenticated hosting
+upload method (for example SFTP/rsync/Cloudflare/WordPress CLI, depending on
+how `projectfive.co.ck` is hosted) and an authenticated GitHub CLI or connector.

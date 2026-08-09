@@ -48,8 +48,6 @@ struct StatusView: View {
 
                         FullSystemScanCard(onNavigate: onNavigate)
 
-                        QuickActionsGrid(onNavigate: onNavigate)
-
                         LiveSignalsCard(snapshot: snap)
 
                         if !snap.network.isEmpty {
@@ -65,26 +63,6 @@ struct StatusView: View {
                                 ForEach(snap.gpu, id: \.name) { gpu in
                                     GPURow(gpu: gpu)
                                 }
-                            }
-                        }
-
-                        if snap.diskIO.readRate > 0 || snap.diskIO.writeRate > 0 {
-                            StatCard(title: "Disk IO") {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text("↓ Read")
-                                        Spacer()
-                                        Text(String(format: "%.2f MB/s", snap.diskIO.readRate))
-                                            .monospacedDigit()
-                                    }
-                                    HStack {
-                                        Text("↑ Write")
-                                        Spacer()
-                                        Text(String(format: "%.2f MB/s", snap.diskIO.writeRate))
-                                            .monospacedDigit()
-                                    }
-                                }
-                                .font(.subheadline)
                             }
                         }
 
@@ -384,58 +362,6 @@ private struct CompactMetricRow: View {
                         .monospacedDigit()
                 }
                 SizeBar(percent: percent, color: color)
-            }
-        }
-    }
-}
-
-/// Dashboard hub — one card per feature screen, launched from Status.
-private struct QuickActionsGrid: View {
-    let onNavigate: (ContentView.SidebarItem) -> Void
-
-    private let actions: [(item: ContentView.SidebarItem, title: String, subtitle: String)] = [
-        (.clean, "Clean", "Caches, logs & trash"),
-        (.uninstall, "Uninstall", "Apps & their leftovers"),
-        (.analyze, "Analyse", "Find what's using space"),
-        (.duplicates, "Duplicates", "Duplicate & large files"),
-        (.optimize, "Optimise", "10 maintenance tasks"),
-        (.about, "About", "Version, updates & log"),
-    ]
-
-    private let columns = [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 12)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Quick Actions").font(.headline)
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(actions, id: \.item) { action in
-                    Button {
-                        onNavigate(action.item)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(action.item.tint.opacity(0.15))
-                                    .frame(width: 34, height: 34)
-                                Image(systemName: action.item.icon)
-                                    .foregroundStyle(action.item.tint)
-                                    .font(.system(size: 15, weight: .semibold))
-                            }
-                            Text(action.title)
-                                .font(.subheadline.bold())
-                                .foregroundStyle(.primary)
-                            Text(action.subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(.plain)
-                }
             }
         }
     }
