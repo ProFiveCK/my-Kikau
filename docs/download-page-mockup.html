@@ -171,8 +171,8 @@
       <span class="badge">by Project Five</span>
       <h1>Clean, uninstall, and understand your Mac — without giving up control.</h1>
       <p class="sub">myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.</p>
-      <a class="btn-primary" href="https://www.projectfive.co.ck/apps/myKikau-0.2.1.dmg">
-        ⬇ Download for Mac <span class="sizemeta">v0.2.1 · Apple Silicon & Intel · 1.8 MB</span>
+      <a class="btn-primary" href="https://www.projectfive.co.ck/apps/myKikau-0.3.0.dmg">
+        ⬇ Download for Mac <span class="sizemeta">v0.3.0 · Apple Silicon & Intel · 3.8 MB</span>
       </a>
       <a class="req-link" href="#requirements">Requires macOS 14 Sonoma or later</a>
     </div>
@@ -257,6 +257,31 @@
       <h2>Release notes</h2>
       <div class="rn-card">
         <div class="rn-version">Latest release</div>
+        <h3>Version 0.3.0 — August 2026</h3>
+        <h4>New</h4>
+        <ul>
+          <li>Full System Scan now summarizes cleanup, apps, duplicate files, and large files in one dashboard entry point, then opens each module with cached results</li>
+          <li>Dashboard CPU and memory cards now open live top-process views without needing to rescan</li>
+          <li>Menu bar mode now supports a tray-first workflow with improved status, quick actions, and clearer app identity</li>
+          <li>Release tooling now prepares Sparkle appcasts, release notes, and GitHub Releases from one deploy-prep command</li>
+        </ul>
+        <h4>Improved</h4>
+        <ul>
+          <li>Dashboard simplified: duplicate Quick Actions and the flickering Disk IO card were removed, and module navigation now leans on the colored sidebar</li>
+          <li>Disk Analyse now starts from the top-level disk view, keeps the last scan with a timestamp, and makes the map/list views easier to read</li>
+          <li>Uninstall adopts Full System Scan app results, highlights large apps unused for 3+ or 6+ months, and removes uninstalled apps from the list immediately</li>
+          <li>Optimise now uses clearer visual task cards with per-task status and safer preview language</li>
+          <li>Clean and Trash results now clear from the UI after successful removal instead of requiring a fresh scan</li>
+        </ul>
+        <h4>Fixed</h4>
+        <ul>
+          <li>Local debug app bundles are ad-hoc signed after rpath mutation so macOS no longer kills them for invalid code signatures</li>
+          <li>Top CPU and memory process sheets no longer hang when process output fills a pipe</li>
+          <li>Memory process results are sorted by resident memory use, matching the CPU sheet's highest-usage-first behavior</li>
+        </ul>
+        <a class="changelog-link" href="https://github.com/ProFiveCK/my-Kikau/releases">Full changelog on GitHub →</a>
+      </div>
+      <div class="rn-card">
         <h3>Version 0.2.1 — August 2026</h3>
         <h4>Improved</h4>
         <ul>

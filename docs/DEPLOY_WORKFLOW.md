@@ -90,26 +90,30 @@ continuing.
 
 ## 4. Generate the appcast **[AGENT triggers, HUMAN's Mac executes]**
 
-Keep a local folder with every DMG you want listed in the update feed —
-usually just the newest one is enough, since Sparkle only needs to tell
-existing installs "a newer version exists," not the full history:
+Use the deploy-prep script rather than running `update-appcast.sh` directly
+against `build/`:
 
 ```bash
-mkdir -p build/release
-VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/App/Info.plist)
-cp "build/myKikau-${VERSION}.dmg" build/release/
-scripts/update-appcast.sh build/release
+scripts/prepare-deploy.sh
 ```
 
-This writes `build/release/appcast.xml`, using the download-url-prefix
-default (`https://www.projectfive.co.ck/downloads/`) baked into the script.
-If the DMG is going somewhere else this time, pass it explicitly:
+This cleans and regenerates the canonical `build/release/` folder, copies the
+versioned DMGs into it, writes `build/release/appcast.xml`, creates
+`build/release/release-notes-${VERSION}.md`, and creates/updates the GitHub
+Release when `gh` is installed and authenticated.
+
+Do not run `scripts/update-appcast.sh build` directly. That creates a duplicate
+`build/appcast.xml` and root-level delta files. `build/release/appcast.xml` is
+the file to upload.
+
+If the DMG is going somewhere other than the default downloads URL, pass the
+download URL prefix explicitly:
 
 ```bash
-scripts/update-appcast.sh build/release https://www.projectfive.co.ck/downloads/
+scripts/prepare-deploy.sh "build/myKikau-${VERSION}.dmg" https://www.projectfive.co.ck/downloads/
 ```
 
-## 5. Upload the DMG and appcast.xml **[HUMAN — no hosting access from here]**
+## 5. Upload the DMG and appcast.xml **[HUMAN — hosting access]**
 
 Two files, two different locations on projectfive.co.ck:
 
@@ -143,17 +147,15 @@ version number, download size, and a fresh Release Notes section
 
 ## 7. Publish a GitHub Release **[HUMAN — GitHub web UI, unless `gh` CLI + auth exists]**
 
-1. `github.com/ProFiveCK/my-Kikau/releases/new`
-2. Tag: `v${VERSION}`, "Create new tag on publish"
-3. Title: `v${VERSION}`
-4. Paste the same New/Improved/Fixed notes from step 6
-5. Optionally attach the DMG as a release asset
-6. Publish
+This is scripted by `scripts/prepare-deploy.sh` when `gh` is installed and
+authenticated. It creates or updates tag/release `v${VERSION}`, attaches the
+DMG, and uses release notes extracted from `docs/WEBSITE_COPY.md`.
 
-If a GitHub CLI (`gh`) with an authenticated token is ever available to the
-agent, steps 5–7's tag/release creation becomes scriptable:
-`gh release create "v${VERSION}" "build/myKikau-${VERSION}.dmg" --title "v${VERSION}" --notes-file notes.md`.
-Not set up yet — do it via the web UI for now.
+To intentionally skip the GitHub release during a dry run:
+
+```bash
+MYKIKAU_SKIP_GITHUB_RELEASE=1 scripts/prepare-deploy.sh
+```
 
 ## 8. Final verification **[AGENT, via web_fetch]**
 
@@ -183,7 +185,7 @@ Report back a short pass/fail list rather than assuming success.
 5. Upload DMG + appcast.xml to their respective URLs        [human]
 6. Update WEBSITE_COPY.md + download-page-mockup.html, then
    paste into the live WordPress page                        [human]
-7. Publish a GitHub Release tagged v${VERSION}                 [human]
+7. GitHub release is created/updated by prepare-deploy.sh     [agent]
 8. Verify all three URLs reflect the new release              [agent]
 ```
 
@@ -197,14 +199,14 @@ scripts/prepare-deploy.sh
 ```
 
 That covers build, Developer ID signing, DMG packaging, notarization, copying
-the DMG into `build/release`, and regenerating `appcast.xml`.
+the DMG into `build/release`, regenerating `appcast.xml`, preparing release
+notes, and creating/updating the GitHub Release when `gh` is authenticated.
 
 The remaining manual parts are external-service writes:
 - uploading the DMG to `projectfive.co.ck/downloads/`
 - uploading `appcast.xml` to `projectfive.co.ck/apps/appcast.xml`
 - updating the WordPress page at `/apps/mykikau/`
-- creating the GitHub Release, unless `gh` is installed and authenticated
 
 Those can become fully scripted once the machine has an authenticated hosting
 upload method (for example SFTP/rsync/Cloudflare/WordPress CLI, depending on
-how `projectfive.co.ck` is hosted) and an authenticated GitHub CLI or connector.
+how `projectfive.co.ck` is hosted).

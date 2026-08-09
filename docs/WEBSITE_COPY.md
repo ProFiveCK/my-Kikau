@@ -8,7 +8,7 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.2.1 · 1.8 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.3.0 · 3.8 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
@@ -38,6 +38,28 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes (template — duplicate per version)
+
+### Version 0.3.0 — August 2026
+
+**New**
+- Full System Scan now summarizes cleanup, apps, duplicate files, and large files in one dashboard entry point, then opens each module with cached results
+- Dashboard CPU and memory cards now open live top-process views without needing to rescan
+- Menu bar mode now supports a tray-first workflow with improved status, quick actions, and clearer app identity
+- Release tooling now prepares Sparkle appcasts, release notes, and GitHub Releases from one deploy-prep command
+
+**Improved**
+- Dashboard simplified: duplicate Quick Actions and the flickering Disk IO card were removed, and module navigation now leans on the colored sidebar
+- Disk Analyse now starts from the top-level disk view, keeps the last scan with a timestamp, and makes the map/list views easier to read
+- Uninstall adopts Full System Scan app results, highlights large apps unused for 3+ or 6+ months, and removes uninstalled apps from the list immediately
+- Optimise now uses clearer visual task cards with per-task status and safer preview language
+- Clean and Trash results now clear from the UI after successful removal instead of requiring a fresh scan
+
+**Fixed**
+- Local debug app bundles are ad-hoc signed after rpath mutation so macOS no longer kills them for invalid code signatures
+- Top CPU and memory process sheets no longer hang when process output fills a pipe
+- Memory process results are sorted by resident memory use, matching the CPU sheet's highest-usage-first behavior
+
+*Full changelog: [github.com/ProFiveCK/my-Kikau/releases](https://github.com/ProFiveCK/my-Kikau/releases)*
 
 ### Version 0.2.1 — August 2026
 
