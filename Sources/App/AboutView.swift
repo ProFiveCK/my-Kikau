@@ -64,16 +64,6 @@ struct AboutView: View {
                     .buttonStyle(.bordered)
                 }
 
-                InfoCard(title: "App Details") {
-                    InfoRow(label: "Website", value: "projectfive.co.ck/apps/mykikau")
-                    InfoRow(label: "Requirements", value: "macOS 14 Sonoma or later")
-                    InfoRow(label: "Distribution", value: "Signed & notarized")
-                    InfoRow(label: "Full Disk Access", value: "Recommended for complete scans")
-                    Text("Clean, uninstall, and understand your Mac without giving up control. myKikau previews every cleanup and uninstall plan, moves deletions to the Trash, scans duplicates and large files, shows live system status, and logs actions locally.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
                 InfoCard(title: "This Install") {
                     InfoRow(label: "Trash-recoverable operations logged", value: "\(operationCount)")
                     InfoRow(label: "Total freed to date", value: ByteSizeFormatter.format(totalFreed))
