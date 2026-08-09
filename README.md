@@ -32,6 +32,13 @@ swift build
 swift test
 ```
 
+Lint (optional, install once with `brew install swiftformat swiftlint`):
+
+```bash
+./scripts/lint.sh        # check
+./scripts/lint.sh --fix  # auto-format
+```
+
 Open in Xcode for the full app bundle experience (menu bar HUD, App Sandbox, signing):
 
 ```bash

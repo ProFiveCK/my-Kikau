@@ -42,8 +42,12 @@ public enum CleanScanner {
     }
 
     /// Returns the candidate URLs for a given section.
-    public static func targets(for section: Section) -> [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+    ///
+    /// - Parameter home: The home directory to resolve paths against. Defaults to
+    ///   the current user's home, so production callers are unaffected; tests pass a
+    ///   temporary directory to avoid touching real `~/Library`.
+    public static func targets(for section: Section, home: URL? = nil) -> [URL] {
+        let home = home ?? FileManager.default.homeDirectoryForCurrentUser
         switch section {
         case .userAppCache:
             // ~/Library/Caches/* (user app caches)
@@ -123,8 +127,8 @@ public enum CleanScanner {
     }
 
     /// Scans a section and returns a deletion plan.
-    public static func scan(_ section: Section, deleter: SafeFileDeleter = .shared) -> SafeFileDeleter.Plan {
-        let targets = self.targets(for: section)
+    public static func scan(_ section: Section, deleter: SafeFileDeleter = .shared, home: URL? = nil) -> SafeFileDeleter.Plan {
+        let targets = self.targets(for: section, home: home)
         let category: SafeFileDeleter.Category
         switch section {
         case .trash: category = .trash
@@ -135,10 +139,10 @@ public enum CleanScanner {
     }
 
     /// Scans all sections and returns a dictionary of plans.
-    public static func scanAll(deleter: SafeFileDeleter = .shared) -> [Section: SafeFileDeleter.Plan] {
+    public static func scanAll(deleter: SafeFileDeleter = .shared, home: URL? = nil) -> [Section: SafeFileDeleter.Plan] {
         var plans: [Section: SafeFileDeleter.Plan] = [:]
         for section in Section.allCases {
-            plans[section] = scan(section, deleter: deleter)
+            plans[section] = scan(section, deleter: deleter, home: home)
         }
         return plans
     }
