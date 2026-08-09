@@ -4,39 +4,167 @@ import Features
 
 struct OptimizeView: View {
     @State private var selectedTasks: Set<String> = []
+    @State private var isDryRun = true
     @State private var running = false
+    @State private var results: [String: MaintenanceRunner.Result] = [:]
+    @State private var inFlight: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Text("Maintenance").font(.title2).bold()
                 Spacer()
+                Toggle("Dry Run", isOn: $isDryRun)
+                    .toggleStyle(.switch)
+                    .disabled(running)
                 Button(running ? "Running..." : "Run Selected") {
-                    running = true
-                    // Execute selected tasks (stub — real execution requires Process spawning)
-                    print("Selected: \(selectedTasks)")
-                    running = false
+                    Task { await runSelected() }
                 }
                 .disabled(selectedTasks.isEmpty || running)
+                .buttonStyle(.borderedProminent)
             }
             .padding()
 
+            if !results.isEmpty {
+                SummaryBanner(results: results)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+            }
+
             List(MaintenanceCatalog.tasks, selection: $selectedTasks) { task in
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text(task.name).font(.body)
-                        if task.requiresSudo {
-                            Image(systemName: "lock")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    Text(task.summary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                TaskRow(
+                    task: task,
+                    result: results[task.id],
+                    inFlight: inFlight.contains(task.id)
+                )
                 .tag(task.id)
             }
         }
+    }
+
+    private func runSelected() async {
+        running = true
+        let runner = MaintenanceRunner()
+        let sorted = MaintenanceCatalog.tasks
+            .filter { selectedTasks.contains($0.id) }
+            .map { $0.id }
+
+        for id in sorted {
+            inFlight.insert(id)
+            let result = await runner.run(taskID: id, dryRun: isDryRun)
+            results[id] = result
+            inFlight.remove(id)
+        }
+
+        running = false
+    }
+}
+
+private struct TaskRow: View {
+    let task: MaintenanceCatalog.Task
+    let result: MaintenanceRunner.Result?
+    let inFlight: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(task.name).font(.body)
+                if task.requiresSudo {
+                    Image(systemName: "lock")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Spacer()
+                if inFlight {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if let result {
+                    OutcomeBadge(outcome: result.outcome)
+                }
+            }
+            Text(task.summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let result, let detail = result.outcome.detail, !detail.isEmpty {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(result.outcome.color)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct OutcomeBadge: View {
+    let outcome: MaintenanceOutcome
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: outcome.icon)
+            Text(outcome.label)
+        }
+        .font(.caption)
+        .foregroundStyle(outcome.color)
+    }
+}
+
+private struct SummaryBanner: View {
+    let results: [String: MaintenanceRunner.Result]
+
+    var body: some View {
+        HStack(spacing: 16) {
+            CountBadge(label: "Applied", count: count(.applied(nil)), color: .green)
+            CountBadge(label: "No Change", count: count(.unchanged(nil)), color: .secondary)
+            CountBadge(label: "Skipped", count: skippedCount, color: .blue)
+            CountBadge(label: "Failed", count: count(.failed(nil)), color: .red)
+            Spacer()
+            Text("\(results.count) task(s)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func count(_ outcome: MaintenanceOutcome) -> Int {
+        results.values.filter { sameCase($0.outcome, outcome) }.count
+    }
+
+    private var skippedCount: Int {
+        results.values.filter {
+            if case .skipped = $0.outcome { return true }
+            if case .unavailable = $0.outcome { return true }
+            if case .attention = $0.outcome { return true }
+            return false
+        }.count
+    }
+
+    // Compare by case (ignoring associated detail).
+    private func sameCase(_ a: MaintenanceOutcome, _ b: MaintenanceOutcome) -> Bool {
+        switch (a, b) {
+        case (.applied, .applied), (.unchanged, .unchanged), (.failed, .failed):
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+private struct CountBadge: View {
+    let label: String
+    let count: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("\(count)")
+                .font(.body.bold())
+                .monospacedDigit()
+            Text(label)
+                .font(.caption)
+        }
+        .foregroundStyle(count > 0 ? color : .secondary)
     }
 }
