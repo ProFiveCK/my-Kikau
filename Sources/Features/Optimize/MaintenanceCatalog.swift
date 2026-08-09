@@ -21,11 +21,21 @@ public enum MaintenanceCatalog {
         }
     }
 
-    /// The full catalog of maintenance tasks.
+    /// The catalog of maintenance tasks shown in the UI.
+    ///
+    /// `MaintenanceRunner` has dispatch cases for more task IDs than are listed
+    /// here — 7 sudo-gated tasks (dns_spotlight, network_cache, network_stack,
+    /// disk_permissions, spotlight_index, periodic, disk_verify) and 4 tasks
+    /// deferred for active-database safety (sqlite_vacuum, notifications,
+    /// coreduet, login_items) are real dispatch cases that always return
+    /// `.skipped`/`.unavailable` — they were never actually implemented, just
+    /// stubbed. Listing them here made roughly half the Optimize screen look
+    /// broken ("click Run, nothing happens"). Only the 10 tasks that actually
+    /// do something are listed; the runner's dispatch cases for the rest are
+    /// untouched so they're ready to wire up for real in a future release
+    /// (sudo tasks need a proper privilege-escalation UX first; the deferred
+    /// four need an active-app-safety check).
     public static let tasks: [Task] = [
-        Task(id: "dns_spotlight", name: "DNS & Spotlight Check",
-             summary: "Refresh DNS cache & verify Spotlight status",
-             requiresSudo: true, safeForAuto: true),
         Task(id: "finder_cache", name: "Finder Cache Refresh",
              summary: "Refresh QuickLook thumbnails & icon services cache",
              requiresSudo: false, safeForAuto: true),
@@ -34,12 +44,6 @@ public enum MaintenanceCatalog {
              requiresSudo: false, safeForAuto: true),
         Task(id: "broken_configs", name: "Broken Config Repair",
              summary: "Fix corrupted preferences files",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "network_cache", name: "Network Cache Refresh",
-             summary: "Optimize DNS cache & restart mDNSResponder",
-             requiresSudo: true, safeForAuto: true),
-        Task(id: "sqlite_vacuum", name: "Database Optimization",
-             summary: "Compress SQLite databases for Mail, Safari & Messages (skips if apps are running)",
              requiresSudo: false, safeForAuto: true),
         Task(id: "launch_services", name: "LaunchServices Repair",
              summary: "Repair \"Open with\" menu & file associations",
@@ -50,41 +54,17 @@ public enum MaintenanceCatalog {
         Task(id: "legacy_overrides", name: "Legacy Overrides",
              summary: "Remove hidden App Nap and disk-image verification overrides left by old tweak tools",
              requiresSudo: false, safeForAuto: true),
-        Task(id: "network_stack", name: "Network Stack Refresh",
-             summary: "Flush routing table and ARP cache to resolve network issues",
-             requiresSudo: true, safeForAuto: true),
-        Task(id: "disk_permissions", name: "Permission Repair",
-             summary: "Fix user directory permission issues",
-             requiresSudo: true, safeForAuto: true),
-        Task(id: "spotlight_index", name: "Spotlight Optimization",
-             summary: "Rebuild index if search is slow (smart detection)",
-             requiresSudo: true, safeForAuto: true),
         Task(id: "spotlight_orphans", name: "Spotlight Orphan Rules",
              summary: "Remove Spotlight search-rule entries for apps that are no longer installed",
              requiresSudo: false, safeForAuto: true),
-        Task(id: "periodic", name: "Periodic Maintenance",
-             summary: "Run macOS daily/weekly/monthly maintenance scripts if stale",
-             requiresSudo: true, safeForAuto: true),
         Task(id: "shared_file_lists", name: "Shared File Lists",
-             summary: "Repair corrupted Finder favorites and recent documents",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "disk_verify", name: "Disk Health",
-             summary: "Verify filesystem integrity",
-             requiresSudo: true, safeForAuto: true),
-        Task(id: "login_items", name: "Login Items Audit",
-             summary: "Audit login items for broken entries",
+             summary: "Repair corrupted Finder favourites and recent documents",
              requiresSudo: false, safeForAuto: true),
         Task(id: "quarantine", name: "Quarantine Database Cleanup",
              summary: "Clear Gatekeeper download tracking history",
              requiresSudo: false, safeForAuto: true),
         Task(id: "launch_agents", name: "Launch Agents Cleanup",
              summary: "Remove broken LaunchAgents whose binaries no longer exist",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "notifications", name: "Notifications",
-             summary: "Clean old delivered notifications to reduce database bloat",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "coreduet", name: "Usage Data",
-             summary: "Clean old usage tracking data",
              requiresSudo: false, safeForAuto: true),
     ]
 }

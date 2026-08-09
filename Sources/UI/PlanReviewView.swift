@@ -7,13 +7,20 @@ import Core
 public struct PlanReviewView: View {
     public let plan: SafeFileDeleter.Plan
     public let title: String
-    public let onExecute: (Bool) -> Void  // true = dryRun
+    public let onCancel: () -> Void
+    public let onExecute: (Bool) -> Void  // true = dryRun preview, false = confirmed delete
 
     @State private var isDryRun = false
 
-    public init(plan: SafeFileDeleter.Plan, title: String, onExecute: @escaping (Bool) -> Void) {
+    public init(
+        plan: SafeFileDeleter.Plan,
+        title: String,
+        onCancel: @escaping () -> Void = {},
+        onExecute: @escaping (Bool) -> Void
+    ) {
         self.plan = plan
         self.title = title
+        self.onCancel = onCancel
         self.onExecute = onExecute
     }
 
@@ -70,7 +77,7 @@ public struct PlanReviewView: View {
                         .foregroundStyle(.orange)
                 }
                 Spacer()
-                Button("Cancel") { onExecute(false) }
+                Button("Cancel") { onCancel() }
                     .keyboardShortcut(.cancelAction)
                 Button(isDryRun ? "Preview" : "Confirm Delete") {
                     onExecute(isDryRun)
@@ -118,6 +125,8 @@ private struct PlanItemRow: View {
         case .artifact: "hammer"
         case .app: "app"
         case .installer: "archivebox"
+        case .duplicate: "doc.on.doc"
+        case .largeFile: "doc.badge.arrow.up"
         }
     }
 }

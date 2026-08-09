@@ -4,26 +4,47 @@ import Features
 
 struct OptimizeView: View {
     @State private var selectedTasks: Set<String> = []
-    @State private var isDryRun = true
+    // Defaults to actually running — every task in this catalog is a bounded,
+    // reversible operation (cache refresh, plist repair, etc.), and defaulting
+    // to a no-op preview made "Run Selected" feel broken on first use. Dry Run
+    // stays available as an opt-in for anyone who wants to see what a task
+    // would do before committing.
+    @State private var isDryRun = false
     @State private var running = false
     @State private var results: [String: MaintenanceRunner.Result] = [:]
     @State private var inFlight: Set<String> = []
 
+    private let tint = ContentView.SidebarItem.optimize.tint
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
+                Image(systemName: ContentView.SidebarItem.optimize.icon)
+                    .foregroundStyle(tint)
                 Text("Maintenance").font(.title2).bold()
                 Spacer()
-                Toggle("Dry Run", isOn: $isDryRun)
-                    .toggleStyle(.switch)
-                    .disabled(running)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Toggle("Dry Run", isOn: $isDryRun)
+                        .toggleStyle(.switch)
+                        .disabled(running)
+                    Text(isDryRun ? "Preview only — nothing changes" : "Runs for real")
+                        .font(.caption2)
+                        .foregroundStyle(isDryRun ? Color.blue : Color.secondary)
+                }
                 Button(running ? "Running..." : "Run Selected") {
                     Task { await runSelected() }
                 }
                 .disabled(selectedTasks.isEmpty || running)
                 .buttonStyle(.borderedProminent)
+                .tint(tint)
             }
             .padding()
+
+            Label("All tasks below are bounded and safe to run — myKikau only lists vetted maintenance operations, nothing that could break your Mac.", systemImage: "checkmark.shield")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
 
             if !results.isEmpty {
                 SummaryBanner(results: results)
@@ -69,10 +90,17 @@ private struct TaskRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(task.name).font(.body)
+                if task.safeForAuto {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .help("Safe — bounded, reversible, vetted for unattended use")
+                }
                 if task.requiresSudo {
-                    Image(systemName: "lock")
+                    Image(systemName: "lock.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                        .help("Needs your admin password to run")
                 }
                 Spacer()
                 if inFlight {

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myKikau — Clean, uninstall, and understand your Mac</title>
+<style>
+  :root {
+    --teal-dark: #0b3d3a;
+    --teal: #0f6f68;
+    --teal-light: #1a9c8f;
+    --gold: #d4af37;
+    --gold-light: #e8c766;
+    --ink: #1c2422;
+    --ink-soft: #4a5754;
+    --paper: #fafaf8;
+    --card: #ffffff;
+    --border: #e4e7e5;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.55;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  /* Nav */
+  header.site-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px;
+    max-width: 1040px; margin: 0 auto;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+  .brand .icon-dot {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--teal-light), var(--teal-dark));
+    display: inline-block;
+  }
+  .site-nav nav a {
+    margin-left: 28px; text-decoration: none; font-size: 14px; color: var(--ink-soft); font-weight: 500;
+  }
+  .site-nav nav a:hover { color: var(--teal); }
+
+  /* Hero */
+  .hero {
+    background: radial-gradient(ellipse at top, var(--teal) 0%, var(--teal-dark) 60%, #082826 100%);
+    color: #fff;
+    padding: 72px 24px 88px;
+    text-align: center;
+  }
+  .hero .wrap { max-width: 720px; }
+  .hero .badge {
+    display: inline-block; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 24px; color: var(--gold-light);
+  }
+  .hero h1 {
+    font-size: 42px; line-height: 1.15; margin: 0 0 18px; font-weight: 800; letter-spacing: -0.01em;
+  }
+  .hero p.sub {
+    font-size: 17px; color: rgba(255,255,255,0.82); max-width: 560px; margin: 0 auto 36px;
+  }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: var(--gold); color: #24200a;
+    font-weight: 700; font-size: 16px;
+    padding: 15px 30px; border-radius: 12px; text-decoration: none;
+    box-shadow: 0 8px 24px rgba(212,175,55,0.35);
+    transition: transform 0.15s ease;
+  }
+  .btn-primary:hover { transform: translateY(-2px); }
+  .btn-primary .sizemeta { font-weight: 500; font-size: 13px; opacity: 0.75; }
+  .hero .req-link {
+    display: block; margin-top: 16px; font-size: 13px; color: rgba(255,255,255,0.65); text-decoration: none;
+  }
+
+  /* Sections */
+  section { padding: 72px 24px; }
+  section h2 {
+    font-size: 28px; text-align: center; margin: 0 0 44px; letter-spacing: -0.01em;
+  }
+
+  /* Features grid */
+  .features { background: var(--paper); }
+  .feature-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;
+  }
+  .feature-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 24px 26px;
+  }
+  .feature-card .f-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--teal-light), var(--teal));
+    margin-bottom: 14px;
+  }
+  .feature-card h3 { font-size: 16px; margin: 0 0 8px; }
+  .feature-card p { font-size: 14px; color: var(--ink-soft); margin: 0; }
+
+  /* Trust section */
+  .trust {
+    background: var(--teal-dark); color: #fff;
+  }
+  .trust h2 { color: #fff; }
+  .trust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .trust-grid p { color: rgba(255,255,255,0.82); font-size: 15px; }
+  .trust-grid .callout {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: var(--radius); padding: 22px;
+  }
+  .trust-grid .callout strong { color: var(--gold-light); }
+
+  /* Requirements + open source */
+  .meta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .meta-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 26px;
+  }
+  .meta-card h3 { margin: 0 0 14px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--teal); }
+  .meta-card ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-soft); }
+  .meta-card li { margin-bottom: 6px; }
+  .meta-card .src-link {
+    display: inline-block; margin-top: 4px; font-size: 14px; color: var(--teal); font-weight: 600; text-decoration: none;
+  }
+
+  /* Release notes */
+  .release-notes { background: var(--paper); }
+  .rn-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 28px 30px; max-width: 640px; margin: 0 auto;
+  }
+  .rn-card .rn-version { font-size: 13px; color: var(--ink-soft); margin-bottom: 4px; }
+  .rn-card h3 { margin: 0 0 18px; font-size: 20px; }
+  .rn-card h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--teal); margin: 18px 0 8px; }
+  .rn-card h4:first-of-type { margin-top: 0; }
+  .rn-card ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-soft); }
+  .rn-card .changelog-link { display: block; margin-top: 18px; font-size: 13px; color: var(--teal); text-decoration: none; font-weight: 600; }
+
+  /* Footer */
+  footer {
+    padding: 32px 24px 48px; text-align: center; font-size: 13px; color: var(--ink-soft);
+    border-top: 1px solid var(--border);
+  }
+  footer a { color: var(--teal); text-decoration: none; font-weight: 600; }
+
+  @media (max-width: 640px) {
+    .feature-grid, .trust-grid, .meta-row { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+
+  <header class="site-nav">
+    <div class="brand"><span class="icon-dot"></span> myKikau</div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#trust">Safety</a>
+      <a href="#requirements">Requirements</a>
+      <a href="https://github.com/ProFiveCK/my-Kikau">Source</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div class="wrap">
+      <span class="badge">by Project Five</span>
+      <h1>Clean, uninstall, and understand your Mac — without giving up control.</h1>
+      <p class="sub">myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, dev-project purging, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.</p>
+      <a class="btn-primary" href="https://www.projectfive.co.ck/apps/myKikau-0.2.0.dmg">
+        ⬇ Download for Mac <span class="sizemeta">v0.2.0 · Apple Silicon & Intel · 1.8 MB</span>
+      </a>
+      <a class="req-link" href="#requirements">Requires macOS 14 Sonoma or later</a>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="wrap">
+      <h2>Why myKikau</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <span class="f-icon"></span>
+          <h3>See it before you delete it</h3>
+          <p>Every cleanup and uninstall shows a full preview — file paths, sizes, what's protected — before anything moves to the Trash.</p>
+        </div>
+        <div class="feature-card">
+          <span class="f-icon"></span>
+          <h3>Uninstall actually means uninstall</h3>
+          <p>Removes the app, its LaunchAgents, login items, and leftover files across your whole <code>~/Library</code> — not just the <code>.app</code> bundle.</p>
+        </div>
+        <div class="feature-card">
+          <span class="f-icon"></span>
+          <h3>Bounded, safe maintenance</h3>
+          <p>10 vetted upkeep tasks — LaunchServices repair, cache refresh, orphaned Spotlight rules, and more — no admin password needed, with an optional preview mode.</p>
+        </div>
+        <div class="feature-card">
+          <span class="f-icon"></span>
+          <h3>A real system dashboard</h3>
+          <p>Live CPU, memory, disk, network, GPU, thermal, and battery — actual native metrics, refreshed every 2 seconds, plus a menu bar HUD.</p>
+        </div>
+        <div class="feature-card">
+          <span class="f-icon"></span>
+          <h3>Duplicates & large files</h3>
+          <p>Content-hash-verified duplicate detection plus a large-files view across Downloads, Documents, Desktop, Pictures, and Movies.</p>
+        </div>
+        <div class="feature-card">
+          <span class="f-icon"></span>
+          <h3>Nothing hidden</h3>
+          <p>Every action is logged locally (<code>~/Library/Logs/myKikau/operations.log</code>) so you can see exactly what ran and when.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="trust" id="trust">
+    <div class="wrap">
+      <h2>Built to be trusted with your Mac</h2>
+      <div class="trust-grid">
+        <p>myKikau never touches macOS system files, and protects ~90 critical Apple bundle IDs (Finder, Dock, System Settings, and more) from accidental removal — including apps you didn't even know were protected. It also recognises and skips endpoint-security agents (CrowdStrike, SentinelOne, Jamf, and others) so it won't trip tamper detection on managed Macs.</p>
+        <div class="callout">
+          <strong>Full Disk Access</strong>
+          <p style="margin-top:8px;">Requested on first launch and explained plainly — myKikau needs it to see other apps' caches and leftovers, the same as any Mac cleaner. You can grant it later from Settings if you skip it initially.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="requirements">
+    <div class="wrap">
+      <h2>Requirements &amp; source</h2>
+      <div class="meta-row">
+        <div class="meta-card">
+          <h3>System Requirements</h3>
+          <ul>
+            <li>macOS 14 (Sonoma) or later — Apple Silicon or Intel</li>
+            <li>~2 MB disk space (installer download)</li>
+            <li>Full Disk Access permission (requested on first launch; some features are limited without it)</li>
+          </ul>
+        </div>
+        <div class="meta-card">
+          <h3>Open Source</h3>
+          <ul>
+            <li>myKikau's source is public and licensed under GPL-3.0.</li>
+          </ul>
+          <a class="src-link" href="https://github.com/ProFiveCK/my-Kikau">github.com/ProFiveCK/my-Kikau →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="release-notes">
+    <div class="wrap">
+      <h2>Release notes</h2>
+      <div class="rn-card">
+        <div class="rn-version">Latest release</div>
+        <h3>Version 0.2.0 — August 2026</h3>
+        <h4>New</h4>
+        <ul>
+          <li>Status dashboard is now the home screen, with quick-launch cards into every module and a one-click "Scan Everything"</li>
+          <li>Duplicate and large-file finder (content-hash verified)</li>
+          <li>Visual storage map (treemap) in Analyse</li>
+          <li>Auto-updates via Sparkle</li>
+        </ul>
+        <h4>Improved</h4>
+        <ul>
+          <li>Per-module accent colors and live sparklines on system stats</li>
+          <li>Menu bar HUD gains quick actions (Empty Trash, Open Clean)</li>
+          <li>Real app icons throughout the Uninstaller</li>
+        </ul>
+        <h4>Fixed</h4>
+        <ul>
+          <li>Cancel on a delete confirmation could not trigger a deletion</li>
+        </ul>
+        <a class="changelog-link" href="https://github.com/ProFiveCK/my-Kikau/releases">Full changelog on GitHub →</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    myKikau is signed and notarized by Apple. © 2026 Project Five. Licensed under GPL-3.0 —
+    <a href="https://github.com/ProFiveCK/my-Kikau">source code</a>.
+  </footer>
+
+</body>
+</html>

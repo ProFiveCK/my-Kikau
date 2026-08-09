@@ -9,9 +9,13 @@ struct PurgeView: View {
     @State private var scanning = false
     @State private var purgePlan: SafeFileDeleter.Plan?
 
+    private let tint = ContentView.SidebarItem.purge.tint
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
+                Image(systemName: ContentView.SidebarItem.purge.icon)
+                    .foregroundStyle(tint)
                 Text("Project Purge").font(.title2).bold()
                 Spacer()
                 Button(scanning ? "Scanning..." : "Scan Projects") {
@@ -24,6 +28,8 @@ struct PurgeView: View {
                         }
                     }
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
                 .disabled(scanning)
             }
             .padding()
@@ -36,7 +42,10 @@ struct PurgeView: View {
                 )
             } else {
                 List(artifacts) { artifact in
+                    let isSelected = selectedArtifacts.contains(artifact.id)
                     HStack {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(isSelected ? tint : .secondary)
                         Image(systemName: artifact.isRecent ? "clock" : "hammer")
                             .foregroundStyle(artifact.isRecent ? .orange : .secondary)
                         VStack(alignment: .leading) {
@@ -47,9 +56,15 @@ struct PurgeView: View {
                         }
                         Spacer()
                     }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .background(
+                        isSelected ? tint.opacity(0.12) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if selectedArtifacts.contains(artifact.id) {
+                        if isSelected {
                             selectedArtifacts.remove(artifact.id)
                         } else {
                             selectedArtifacts.insert(artifact.id)
@@ -74,10 +89,17 @@ struct PurgeView: View {
             }
         }
         .sheet(item: $purgePlan) { plan in
-            PlanReviewView(plan: plan, title: "Purge") { dryRun in
+            PlanReviewView(plan: plan, title: "Purge", onCancel: { purgePlan = nil }) { dryRun in
                 let result = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: "purge")
                 print("Purge \(dryRun ? "preview" : "done"): freed \(ByteSizeFormatter.format(result.freedBytes))")
                 purgePlan = nil
+            }
+        }
+        .onAppear {
+            // Adopt a scan already run from the Status dashboard's "Scan
+            // Everything" instead of forcing a redundant rescan.
+            if artifacts.isEmpty, let cached = ScanEverythingCoordinator.shared.purgeArtifacts {
+                artifacts = cached
             }
         }
     }

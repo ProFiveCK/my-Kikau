@@ -8,7 +8,7 @@
 #   ./scripts/build-app.sh              # debug build -> build/myKikau.app
 #   ./scripts/build-app.sh --release    # release build -> build/myKikau.app
 #
-# Requires: swift, iconutil (macOS built-in).
+# Requires: swift, iconutil, otool, install_name_tool (all macOS/Xcode-CLT built-in).
 
 set -euo pipefail
 
@@ -44,6 +44,39 @@ echo "› assembling $app_bundle"
 # Copy the executable.
 cp "$executable" "$app_bundle/Contents/MacOS/myKikau"
 chmod +x "$app_bundle/Contents/MacOS/myKikau"
+
+# Embed Sparkle.framework.
+#
+# Sparkle ships as a binary xcframework. `swift build` resolves it and copies
+# the macOS .framework slice into the build products directory so `swift run`
+# and Xcode can find it at runtime — but a hand-assembled .app bundle needs
+# that framework physically embedded in Contents/Frameworks, plus an rpath
+# telling the executable to look there. Skipping this produces an app that
+# builds, signs, and notarizes cleanly but crashes instantly on launch with
+# "Library not loaded: @rpath/Sparkle.framework".
+frameworks_dir="$app_bundle/Contents/Frameworks"
+mkdir -p "$frameworks_dir"
+
+sparkle_framework="$(find "$bin_dir" -maxdepth 2 -name "Sparkle.framework" -print -quit 2>/dev/null || true)"
+if [[ -z "$sparkle_framework" ]]; then
+  # Fall back to searching the whole .build tree in case SwiftPM's layout differs.
+  sparkle_framework="$(find .build -name "Sparkle.framework" -path "*macos*" -print -quit 2>/dev/null || true)"
+fi
+
+if [[ -z "$sparkle_framework" ]]; then
+  echo "✘ could not locate Sparkle.framework under .build — the app would crash on launch"
+  echo "  try: swift build $swift_flags   (to make sure the Sparkle package resolved)"
+  exit 1
+fi
+
+echo "› embedding Sparkle.framework ($sparkle_framework)"
+rm -rf "$frameworks_dir/Sparkle.framework"
+cp -R "$sparkle_framework" "$frameworks_dir/Sparkle.framework"
+
+# Make sure the executable actually looks in Contents/Frameworks for @rpath loads.
+if ! otool -l "$app_bundle/Contents/MacOS/myKikau" | grep -F -q "@executable_path/../Frameworks"; then
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$app_bundle/Contents/MacOS/myKikau"
+fi
 
 # Copy the Info.plist.
 cp Sources/App/Info.plist "$app_bundle/Contents/Info.plist"

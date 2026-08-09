@@ -42,6 +42,8 @@ public final class SafeFileDeleter {
         case artifact
         case app
         case installer
+        case duplicate
+        case largeFile
     }
 
     /// A single item to be deleted.

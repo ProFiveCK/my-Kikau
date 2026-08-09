@@ -59,8 +59,16 @@ public final class MetricsCollector {
     // MARK: - CPU
 
     private func collectCPU() async -> CPUStatus {
-        var cpuInfo: host_cpu_load_info?
-        var count = UInt32(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
+        // NOTE: must be a plain (non-Optional) zero-initialized struct. Wrapping it in
+        // `host_cpu_load_info?` and reinterpreting *that* pointer's memory as an
+        // `integer_t` buffer (the previous approach) relies on Optional<T> having the
+        // exact same memory layout as T, which Swift does not guarantee for a plain C
+        // struct like this one — host_statistics ended up writing into the wrong
+        // offsets, so `usage` silently computed as ~0 every tick instead of throwing
+        // or crashing. A non-Optional struct's layout is exactly its fields, no
+        // discriminator, so the raw pointer reinterpretation is well-defined.
+        var cpuInfo = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
 
         let result = withUnsafeMutablePointer(to: &cpuInfo) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebPtr in
@@ -68,12 +76,12 @@ public final class MetricsCollector {
             }
         }
 
-        guard result == KERN_SUCCESS, let info = cpuInfo else {
+        guard result == KERN_SUCCESS else {
             return CPUStatus(usage: 0, coreCount: ProcessInfo.processInfo.activeProcessorCount)
         }
 
-        let total = UInt64(info.cpu_ticks.0) + UInt64(info.cpu_ticks.1) + UInt64(info.cpu_ticks.2) + UInt64(info.cpu_ticks.3)
-        let idle = UInt64(info.cpu_ticks.2)
+        let total = UInt64(cpuInfo.cpu_ticks.0) + UInt64(cpuInfo.cpu_ticks.1) + UInt64(cpuInfo.cpu_ticks.2) + UInt64(cpuInfo.cpu_ticks.3)
+        let idle = UInt64(cpuInfo.cpu_ticks.2)
 
         var usage: Double = 0
         let now = Date()

@@ -4,7 +4,7 @@ This file is the shared source of truth for any AI agent working on this repo. L
 
 ## Project
 
-myKikau is a native Swift macOS 14+ system cleanup and optimization app. It performs file cleanup, app uninstall, disk analysis, maintenance, live status monitoring, and dev artifact purge. Safety rules matter more than speed.
+myKikau is a native Swift macOS 14+ system cleanup and optimisation app. It performs file cleanup, app uninstall, disk analysis, maintenance, and live status monitoring (a dev artifact purge scanner exists in the codebase but is held back from the current release — not shown in the UI). Safety rules matter more than speed.
 
 ## Architecture
 

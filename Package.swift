@@ -9,6 +9,12 @@ let package = Package(
     products: [
         .executable(name: "myKikau", targets: ["App"])
     ],
+    dependencies: [
+        // Auto-update framework for direct (non-App-Store) distribution.
+        // Floor pinned to the 2.9 line (current stable as of writing); SPM will
+        // resolve the newest compatible 2.x release.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0")
+    ],
     targets: [
         .executableTarget(
             name: "App",
@@ -16,6 +22,7 @@ let package = Package(
                 "Core",
                 "Features",
                 "UI",
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/App",
             exclude: ["Info.plist"]

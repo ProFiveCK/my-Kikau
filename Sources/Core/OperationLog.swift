@@ -16,6 +16,10 @@ public final class OperationLog {
     /// User-facing toggle. When false, no entries are written.
     public var enabled: Bool
 
+    /// The log file's location on disk — used by the About screen's "Reveal
+    /// Log File" action.
+    public var fileURL: URL { logURL }
+
     public init(logURL: URL? = nil, enabled: Bool = true) {
         if let url = logURL {
             self.logURL = url

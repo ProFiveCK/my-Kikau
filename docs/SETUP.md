@@ -60,7 +60,7 @@ Xcode resolves the SwiftPM package automatically. Select the `myKikau` scheme an
 
 ### First Run
 
-1. The main window opens with a sidebar: Clean, Uninstall, Analyze, Optimize, Status, Purge, History
+1. The main window opens on the Status dashboard (sidebar: Status, Clean, Uninstall, Analyse, Duplicates, Optimise, History) — Status doubles as a hub with quick-launch cards into every other screen
 2. The menu bar HUD icon (✨ sparkles) appears in the menu bar with live CPU/memory/disk/battery stats
 3. On first scan, macOS may prompt for access to `~/Library` subdirectories — approve these to enable cleanup features
 
@@ -157,6 +157,59 @@ Key Mole files referenced during porting:
 - `lib/uninstall/*.sh` — leftover teardown logic
 - `lib/optimize/catalog.sh` — maintenance task catalog
 - `cmd/status/metrics.go` + `metrics_health.go` — metrics + health score
+
+## Release Process
+
+myKikau is distributed directly from the website (not the Mac App Store) — see
+`docs/MODERNIZATION_REVIEW.md` §5 for why. Every release ships as a signed,
+notarized, stapled DMG.
+
+### Versioning
+
+Bump both keys in `Sources/App/Info.plist` before tagging a release:
+
+- `CFBundleShortVersionString` — the user-facing semver (`0.2.0`)
+- `CFBundleVersion` — a strictly increasing build number (`2`, `3`, ...), bumped on
+  every build even between semver releases
+
+Tag the release commit `vX.Y.Z` to match.
+
+### Build → sign → package → notarize
+
+One command runs the whole pipeline:
+
+```bash
+./scripts/release.sh
+```
+
+It fails fast (before building anything) if it can't find a signing identity,
+and prints the final DMG path when done. Under the hood it's the same four
+steps, still available individually for debugging a specific stage:
+
+```bash
+./scripts/build-app.sh --release
+./scripts/sign.sh "Developer ID Application: Teu Teulilo (P523Y49P5B)"
+./scripts/make-dmg.sh
+./scripts/notarize.sh "build/myKikau-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/myKikau.app/Contents/Info.plist).dmg" \
+  "Developer ID Application: Teu Teulilo (P523Y49P5B)"
+```
+
+One-time prerequisites (see comments at the top of each script for exact steps):
+
+1. Apple Developer Program membership + a **Developer ID Application** certificate
+   in your login keychain.
+2. An app-specific Apple ID password, stored once via
+   `xcrun notarytool store-credentials`.
+3. Add this to `~/.zshrc` so you never have to pass the identity manually:
+   ```bash
+   export MYKIKAU_SIGN_IDENTITY="Developer ID Application: Teu Teulilo (P523Y49P5B)"
+   ```
+
+### Publishing
+
+Upload the stapled DMG to the website's download location and update the Sparkle
+`appcast.xml` entry (see `docs/IMPLEMENTATION_PLAN.md` Phase 0.6) so existing
+installs pick up the update automatically.
 
 ## Contributing
 

@@ -1,8 +1,8 @@
 # myKikau
 
-A native Swift macOS app to replace CleanMyMac — cleanup, uninstaller, disk analyzer, live status HUD, maintenance, and dev artifact purge.
+A native Swift macOS app to replace CleanMyMac — cleanup, uninstaller, disk analyser, live status HUD, and maintenance.
 
-Built for macOS 14+ (Sonoma), fully native Swift, no external binary dependencies.
+Built for macOS 14+ (Sonoma), fully native Swift. One external dependency: [Sparkle](https://github.com/sparkle-project/Sparkle) for self-updating (direct distribution, not the Mac App Store — see `docs/MODERNIZATION_REVIEW.md` §5).
 
 ## Origin
 
@@ -12,10 +12,12 @@ Logic reimplemented natively in Swift, informed by [Mole](https://github.com/tw9
 
 - **Clean** — caches, logs, trash, leftovers (browser, dev tools, system, user apps)
 - **Uninstall** — app inventory + exact bundle-ID leftover teardown
-- **Analyze** — disk space explorer with treemap visualization
-- **Status** — live CPU / memory / disk / network / battery / thermal dashboard + menu bar HUD
-- **Optimize** — bounded maintenance tasks (LaunchServices, Spotlight, DNS, etc.)
-- **Purge** — dev project artifacts (node_modules, target, build, dist, venv)
+- **Analyse** — disk space explorer with a donut chart, squarified treemap, and sorted list views, folder-by-folder drill-down
+- **Duplicates** — content-hash-verified duplicate files, plus a large-files mode, across Downloads/Documents/Desktop/Pictures/Movies
+- **Status** — live CPU / memory / disk / network / battery / thermal dashboard + menu bar HUD, with a one-click "Scan Everything"
+- **Optimise** — 10 bounded, no-sudo maintenance tasks (LaunchServices repair, Finder cache, broken config/plist repair, orphaned Spotlight rules, etc.)
+
+Also in the codebase but not exposed in this release: a dev-project-artifact purge scanner (`node_modules`, `target`, `build`, `dist`, `venv`) — see `docs/IMPLEMENTATION_PLAN.md` for why it's held back.
 
 ## Safety Design
 

@@ -81,7 +81,7 @@ public final class MaintenanceRunner {
 
         // Active-database / complex tasks — deferred for safety.
         case "sqlite_vacuum":
-            return .unavailable("Database optimization deferred — active-app safety check pending")
+            return .unavailable("Database optimisation deferred — active-app safety check pending")
         case "notifications":
             return .unavailable("Notification cleanup deferred — active-database safety concerns")
         case "coreduet":

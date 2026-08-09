@@ -1,10 +1,13 @@
 import Foundation
+import IOKit
 
 /// GPU collector. Ports Mole's `metrics_gpu.go` to native Swift.
 ///
 /// Static GPU info comes from `system_profiler -json SPDisplaysDataType` (cached 10 min).
-/// Real-time GPU usage comes from `powermetrics --samplers gpu_power` (cached 5s) but
-/// requires root, so on a normal unprivileged app it returns -1 ("N/A").
+/// Real-time GPU usage is read directly from IORegistry (`IOAccelerator`'s
+/// `PerformanceStatistics`) — this works for any unprivileged process, unlike
+/// `powermetrics` which needs root. `powermetrics` is kept as a fallback in case
+/// the IORegistry key isn't present on a given macOS/GPU combination.
 /// `memoryUsed`/`memoryTotal` are not exposed by `system_profiler` on macOS and stay 0.
 public enum GPUMonitor {
 
@@ -120,14 +123,58 @@ public enum GPUMonitor {
         return output.data(using: .utf8)
     }
 
-    /// Captures `powermetrics --samplers gpu_power -i 500 -n 1` and parses usage.
-    /// Requires root; returns -1 when the command fails (normal for unprivileged apps).
+    /// Captures live GPU usage. Tries IORegistry first (works unprivileged),
+    /// falls back to `powermetrics` (requires root — only ever succeeds if
+    /// myKikau is somehow already running elevated, which it normally isn't).
     static func captureGPUUsage() -> Double {
+        let viaIOKit = captureGPUUsageViaIOKit()
+        if viaIOKit >= 0 { return viaIOKit }
+
         guard let output = NetworkMonitor.runSync("/usr/bin/powermetrics",
                                                    ["--samplers", "gpu_power", "-i", "500", "-n", "1"]) else {
             return -1
         }
         return parseGPUUsage(output)
+    }
+
+    /// Reads live GPU utilization from IORegistry's `IOAccelerator` service —
+    /// the same mechanism menu-bar system monitors (e.g. Stats, iStat Menus)
+    /// use, and unlike `powermetrics`, it doesn't require root. Returns -1 if
+    /// the expected key isn't present (e.g. a macOS version that names it
+    /// differently) so callers fall back cleanly rather than showing a wrong number.
+    static func captureGPUUsageViaIOKit() -> Double {
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &iterator) == KERN_SUCCESS else {
+            return -1
+        }
+        defer { IOObjectRelease(iterator) }
+
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            defer {
+                IOObjectRelease(service)
+                service = IOIteratorNext(iterator)
+            }
+
+            var propsUnmanaged: Unmanaged<CFMutableDictionary>?
+            guard IORegistryEntryCreateCFProperties(service, &propsUnmanaged, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+                  let props = propsUnmanaged?.takeRetainedValue() as? [String: Any],
+                  let perfStats = props["PerformanceStatistics"] as? [String: Any] else {
+                continue
+            }
+
+            // Key name has drifted across macOS versions in the wild; check
+            // the known variants rather than betting on just one.
+            for key in ["Device Utilization %", "GPU Activity(%)", "GPU Core Utilization"] {
+                if let value = perfStats[key] as? Int {
+                    return Double(value)
+                }
+                if let value = perfStats[key] as? Double {
+                    return value
+                }
+            }
+        }
+        return -1
     }
 }
 

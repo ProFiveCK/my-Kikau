@@ -9,18 +9,23 @@ struct StatusMetricsTests {
 
     @Test("parseNetstatIB sums duplicate interface rows and skips header")
     func parseNetstatIBSumsDuplicates() {
+        // Real `netstat -ib` column layout (verified against actual macOS output):
+        // Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll
+        // Each interface gets one row per assigned address (link layer, IPv4,
+        // IPv6...) and every row repeats the same cumulative Ibytes/Obytes —
+        // this fixture mirrors that shape rather than a simplified 6-column guess.
         let output = """
-        Name  Mtu  Network  Address  Ibytes  Obytes
-        en0   1500  <link#4>  ab:cd:ef:12:34:56  1048576  2097152
-        en0   1500  fe80::   10.0.0.5            1048576  1048576
-        lo0   16384 <lo0>    ::1                 512      512
+        Name  Mtu   Network    Address            Ipkts  Ierrs  Ibytes   Opkts  Oerrs  Obytes   Coll
+        en0   1500  <Link#4>   ab:cd:ef:12:34:56   5000   0      1048576  6000   0      2097152  0
+        en0   1500  10.0.0     10.0.0.5            5000   -      1048576  6000   -      2097152  -
+        lo0   16384 <Link#1>                       100    0      512      100    0      512      0
         """
         let result = NetworkMonitor.parseNetstatIB(output)
         #expect(result != nil)
         let rx = result?.rxByName["en0"]
         let tx = result?.txByName["en0"]
-        #expect(rx == 2_097_152)            // 1048576 + 1048576
-        #expect(tx == 3_145_728)            // 2097152 + 1048576
+        #expect(rx == 2_097_152)            // 1048576 + 1048576 (two rows for en0)
+        #expect(tx == 4_194_304)            // 2097152 + 2097152
         #expect(result?.rxByName["lo0"] == 512)
         #expect(result?.txByName["lo0"] == 512)
     }

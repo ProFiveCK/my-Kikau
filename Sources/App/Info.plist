@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon.icns</string>
     <key>LSMinimumSystemVersion</key>
@@ -32,5 +32,20 @@
     <false/>
     <key>NSSupportsSuddenTermination</key>
     <false/>
+
+    <!--
+      Sparkle auto-update config (docs/IMPLEMENTATION_PLAN.md Phase 0.6).
+      The PRIVATE key stays out of the repo — Sparkle's tool stores it in your
+      login keychain and `sign_update`/`generate_appcast` read it from there
+      when you sign each release.
+    -->
+    <key>SUFeedURL</key>
+    <string>https://www.projectfive.co.ck/apps/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>2kThk3D7f9IzQZOZxdyAV554R0X7NHbpdWdutkbO0p4=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>

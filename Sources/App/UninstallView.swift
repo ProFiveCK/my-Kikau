@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import Core
 import Features
 import UI
@@ -13,9 +14,13 @@ struct UninstallView: View {
     @State private var executing = false
     @State private var executionSummary: String?
 
+    private let tint = ContentView.SidebarItem.uninstall.tint
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
+                Image(systemName: ContentView.SidebarItem.uninstall.icon)
+                    .foregroundStyle(tint)
                 Text("Uninstaller").font(.title2).bold()
                 Spacer()
                 Button(scanning ? "Scanning..." : "Scan Apps") {
@@ -28,6 +33,8 @@ struct UninstallView: View {
                         }
                     }
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
                 .disabled(scanning)
             }
             .padding()
@@ -61,6 +68,11 @@ struct UninstallView: View {
             PlanReviewView(
                 plan: plan,
                 title: "Uninstall \(selectedApp?.name ?? "")",
+                onCancel: {
+                    appPlan = nil
+                    leftoverPlan = nil
+                    selectedApp = nil
+                },
                 onExecute: { dryRun in
                     handleAppPlanConfirm(dryRun: dryRun)
                 }
@@ -70,6 +82,7 @@ struct UninstallView: View {
             PlanReviewView(
                 plan: plan,
                 title: "Leftovers — \(selectedApp?.name ?? "")",
+                onCancel: { leftoverPlan = nil },
                 onExecute: { dryRun in
                     handleLeftoverPlanConfirm(dryRun: dryRun)
                 }
@@ -164,8 +177,18 @@ private struct AppRow: View {
 
     var body: some View {
         HStack {
-            Image(systemName: AppInventory.isProtected(app) ? "exclamationmark.shield" : "app")
-                .foregroundStyle(AppInventory.isProtected(app) ? .red : .accentColor)
+            Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path))
+                .resizable()
+                .frame(width: 28, height: 28)
+                .opacity(AppInventory.isProtected(app) ? 0.6 : 1)
+                .overlay(alignment: .bottomTrailing) {
+                    if AppInventory.isProtected(app) {
+                        Image(systemName: "exclamationmark.shield.fill")
+                            .foregroundStyle(.red)
+                            .font(.system(size: 11))
+                            .background(Circle().fill(.background).frame(width: 13, height: 13))
+                    }
+                }
             VStack(alignment: .leading) {
                 Text(app.name)
                 if let version = app.version {

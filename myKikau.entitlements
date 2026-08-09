@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Intentionally minimal.
+
+      myKikau is distributed directly from the website, not the Mac App Store, so it
+      does NOT use App Sandbox: cleanup, uninstall/leftover-teardown, and LaunchAgent
+      management need broader filesystem and process access than the sandbox permits.
+      See docs/MODERNIZATION_REVIEW.md (§5) for why this was a deliberate choice.
+
+      No Hardened Runtime exceptions (com.apple.security.cs.*) are needed today.
+      Add one here only when a specific feature genuinely requires it, and note why —
+      each exception weakens a protection notarization is meant to guarantee.
+    -->
+</dict>
+</plist>

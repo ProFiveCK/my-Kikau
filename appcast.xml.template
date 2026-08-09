@@ -1,0 +1,40 @@
+<?xml version="1.0" standalone="yes"?>
+<!--
+  Template for the Sparkle feed (docs/IMPLEMENTATION_PLAN.md Phase 0.6).
+
+  Recommended: don't hand-edit this. Sparkle ships a `generate_appcast` tool
+  (in the same download as `generate_keys` / `sign_update` — see
+  scripts/update-appcast.sh) that builds appcast.xml automatically from a
+  folder of release DMGs, using the key stored in your keychain and picking up
+  release notes from a same-named .html/.txt file next to each DMG. Prefer
+  that over editing this by hand; this template exists so you can see the
+  shape of what gets generated, and as a manual fallback.
+
+  Replace every REPLACE-* placeholder, or run scripts/update-appcast.sh which
+  fills the enclosure length/signature in automatically.
+-->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>myKikau Changelog</title>
+    <link>https://www.projectfive.co.ck/apps/appcast.xml</link>
+    <description>Most recent changes to myKikau.</description>
+    <language>en</language>
+
+    <item>
+      <title>Version 0.2.0</title>
+      <sparkle:releaseNotesLink>
+        https://www.projectfive.co.ck/apps/release-notes/0.2.0.html
+      </sparkle:releaseNotesLink>
+      <pubDate>Mon, 01 Jan 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://www.projectfive.co.ck/apps/downloads/myKikau-0.2.0.dmg"
+        sparkle:version="2"
+        sparkle:shortVersionString="0.2.0"
+        length="REPLACE-WITH-FILE-SIZE-IN-BYTES"
+        type="application/octet-stream"
+        sparkle:edSignature="REPLACE-WITH-OUTPUT-OF-sign_update"
+      />
+    </item>
+  </channel>
+</rss>
