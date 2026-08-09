@@ -61,11 +61,26 @@ public enum DiskScanner {
             return []
         }
         var results: [Entry] = []
-        for entry in entries where !entry.lastPathComponent.hasPrefix(".") {
+        var hiddenTotal: Int64 = 0
+        var hiddenCount = 0
+        for entry in entries {
+            if entry.lastPathComponent.hasPrefix(".") {
+                hiddenTotal += directorySize(entry)
+                hiddenCount += 1
+                continue
+            }
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             let size = isDir ? directorySize(entry) : allocatedSize(entry)
             let childCount = isDir ? countChildren(entry) : 0
             results.append(Entry(url: entry, sizeBytes: size, isDirectory: isDir, childCount: childCount))
+        }
+        if hiddenTotal > 0 {
+            results.append(Entry(
+                url: directory.appendingPathComponent("Hidden Items"),
+                sizeBytes: hiddenTotal,
+                isDirectory: false,
+                childCount: hiddenCount
+            ))
         }
         return results.sorted { $0.sizeBytes > $1.sizeBytes }
     }

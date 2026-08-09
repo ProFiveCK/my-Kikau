@@ -26,6 +26,12 @@ struct UninstallView: View {
 
     private let tint = ContentView.SidebarItem.uninstall.tint
 
+    private var staleLargeAppsCount: Int {
+        apps.filter {
+            $0.staleUseBucket != nil && $0.sizeBytes >= 500_000_000 && !AppInventory.isProtected($0)
+        }.count
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -64,6 +70,16 @@ struct UninstallView: View {
                             guard !AppInventory.isProtected(app) else { return }
                             selectApp(app)
                         }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    if staleLargeAppsCount > 0 {
+                        Label("\(staleLargeAppsCount) large app(s) have not been used in 3+ months.", systemImage: "clock.badge.exclamationmark")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity)
+                            .background(.bar)
+                    }
                 }
             }
 
@@ -104,6 +120,11 @@ struct UninstallView: View {
                 message: Text(alert.message),
                 dismissButton: .default(Text("OK"))
             )
+        }
+        .onAppear {
+            if apps.isEmpty, let cached = ScanEverythingCoordinator.shared.apps {
+                apps = cached
+            }
         }
     }
 
@@ -240,6 +261,11 @@ private struct AppRow: View {
                 if let version = app.version {
                     Text(version).font(.caption).foregroundStyle(.secondary)
                 }
+                if let bucket = app.staleUseBucket, app.sizeBytes >= 500_000_000 {
+                    Label(bucket, systemImage: "clock")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
                 if AppInventory.isProtected(app) {
                     Text("Protected — cannot uninstall").font(.caption).foregroundStyle(.red)
                 }
@@ -249,6 +275,18 @@ private struct AppRow: View {
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private extension AppInventory.AppInfo {
+    var staleUseBucket: String? {
+        guard let lastUsed else { return nil }
+        let days = Calendar.current.dateComponents([.day], from: lastUsed, to: Date()).day ?? 0
+        switch days {
+        case 180...: return "Not used in 6+ months"
+        case 90...: return "Not used in 3+ months"
+        default: return nil
         }
     }
 }

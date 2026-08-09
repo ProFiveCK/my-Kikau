@@ -9,6 +9,7 @@ final class AppNavigation: ObservableObject {
     static let shared = AppNavigation()
 
     @Published var pendingSelection: ContentView.SidebarItem?
+    @Published var pendingDuplicatesMode: String?
 
     private init() {}
 }

@@ -13,8 +13,17 @@ public enum AppInventory {
         public let version: String?
         public let sizeBytes: Int64
         public let lastModified: Date?
+        public let lastUsed: Date?
 
-        public init(url: URL, name: String, bundleID: String?, version: String?, sizeBytes: Int64, lastModified: Date?) {
+        public init(
+            url: URL,
+            name: String,
+            bundleID: String?,
+            version: String?,
+            sizeBytes: Int64,
+            lastModified: Date?,
+            lastUsed: Date? = nil
+        ) {
             self.id = bundleID ?? url.path
             self.url = url
             self.name = name
@@ -22,6 +31,7 @@ public enum AppInventory {
             self.version = version
             self.sizeBytes = sizeBytes
             self.lastModified = lastModified
+            self.lastUsed = lastUsed
         }
     }
 
@@ -61,10 +71,11 @@ public enum AppInventory {
         let lastModified = try? appURL
             .resourceValues(forKeys: [.contentModificationDateKey])
             .contentModificationDate
+        let lastUsed = metadataDate(appURL, key: "kMDItemLastUsedDate")
 
         return AppInfo(
             url: appURL, name: name, bundleID: bundleID,
-            version: version, sizeBytes: size, lastModified: lastModified
+            version: version, sizeBytes: size, lastModified: lastModified, lastUsed: lastUsed
         )
     }
 
@@ -72,5 +83,33 @@ public enum AppInventory {
     public static func isProtected(_ app: AppInfo) -> Bool {
         guard let bundleID = app.bundleID else { return false }
         return PathProtection.shared.isSystemCriticalBundle(bundleID)
+    }
+
+    private static func metadataDate(_ url: URL, key: String) -> Date? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdls")
+        process.arguments = ["-raw", "-name", key, url.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let data = try? pipe.fileHandleForReading.readToEnd(),
+              let raw = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              raw != "(null)" else { return nil }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+        return formatter.date(from: raw)
     }
 }

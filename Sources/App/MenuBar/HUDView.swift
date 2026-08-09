@@ -8,31 +8,51 @@ import UI
 struct HUDView: View {
     @ObservedObject private var metricsService = MetricsService.shared
     @State private var trashStatus: String?
+    @State private var freeingMemory = false
+    @State private var memoryStatus: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             if let snap = metricsService.snapshot {
-                // Health score
-                HStack {
-                    Circle()
-                        .fill(healthColor(snap.healthScore))
-                        .frame(width: 12, height: 12)
-                    Text("Health \(snap.healthScore)")
-                        .font(.headline)
-                    Spacer()
-                    Text(snap.host)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(healthColor(snap.healthScore).opacity(0.18))
+                        Text("\(snap.healthScore)")
+                            .font(.system(size: 16, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(healthColor(snap.healthScore))
+                    }
+                    .frame(width: 42, height: 42)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("myKikau")
+                            .font(.headline)
+                        Text(snap.healthScoreMsg)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
 
                 Divider()
 
-                // CPU
-                MetricRow(label: "CPU", percent: snap.cpu.usage, color: .blue)
-                MetricRow(label: "Memory", percent: snap.memory.usedPercent, color: SizeBar.color(for: snap.memory.usedPercent))
-
-                if let disk = snap.disks.first {
-                    MetricRow(label: "Disk", percent: disk.usedPercent, color: SizeBar.color(for: disk.usedPercent))
+                VStack(spacing: 8) {
+                    MetricRow(label: "CPU", value: "\(Int(snap.cpu.usage))%", percent: snap.cpu.usage, color: .blue)
+                    MetricRow(
+                        label: "Memory",
+                        value: "\(ByteSizeFormatter.format(Int64(snap.memory.available))) free",
+                        percent: snap.memory.usedPercent,
+                        color: SizeBar.color(for: snap.memory.usedPercent)
+                    )
+                    if let disk = snap.disks.first {
+                        MetricRow(
+                            label: "Disk",
+                            value: "\(ByteSizeFormatter.format(Int64(disk.total - disk.used))) free",
+                            percent: disk.usedPercent,
+                            color: SizeBar.color(for: disk.usedPercent)
+                        )
+                    }
                 }
 
                 if let battery = snap.batteries.first {
@@ -47,9 +67,14 @@ struct HUDView: View {
                 }
 
                 Divider()
-                Text("Uptime \(HealthScore.formatUptime(snap.uptimeSeconds))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Label(HealthScore.formatUptime(snap.uptimeSeconds), systemImage: "clock")
+                    Spacer()
+                    Text(snap.host)
+                        .lineLimit(1)
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             } else {
                 ProgressView("Collecting metrics...")
                     .frame(maxWidth: .infinity, minHeight: 100)
@@ -61,27 +86,51 @@ struct HUDView: View {
             // "boost performance" placebo buttons; Empty Trash confirms first
             // and reuses the same SafeFileDeleter funnel every other delete
             // in the app goes through.
-            Button("Empty Trash…") { emptyTrash() }
+            Button {
+                AppNavigation.shared.pendingSelection = .status
+                openMainWindow()
+            } label: {
+                Label("Open Dashboard", systemImage: "gauge.with.dots.needle.50percent")
+            }
+            Button {
+                AppNavigation.shared.pendingSelection = .clean
+                openMainWindow()
+            } label: {
+                Label("Open Clean", systemImage: "internaldrive")
+            }
+            Button {
+                freeInactiveMemory()
+            } label: {
+                Label(freeingMemory ? "Freeing Memory..." : "Free Inactive Memory", systemImage: "memorychip")
+            }
+            .disabled(freeingMemory)
+            if let memoryStatus {
+                Text(memoryStatus)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                emptyTrash()
+            } label: {
+                Label("Empty Trash…", systemImage: "trash")
+            }
             if let trashStatus {
                 Text(trashStatus)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Button("Open Clean…") {
-                AppNavigation.shared.pendingSelection = .clean
-                openMainWindow()
-            }
 
             Divider()
 
-            Button("Open myKikau") { openMainWindow() }
-            Button("Quit myKikau") {
+            Button {
                 NSApplication.shared.terminate(nil)
+            } label: {
+                Label("Quit myKikau", systemImage: "power")
             }
             .keyboardShortcut(.cancelAction)
         }
         .padding()
-        .frame(width: 240)
+        .frame(width: 280)
         .onAppear { metricsService.subscribe() }
         .onDisappear { metricsService.unsubscribe() }
     }
@@ -121,6 +170,19 @@ struct HUDView: View {
         trashStatus = "Freed \(ByteSizeFormatter.format(result.freedBytes))"
     }
 
+    private func freeInactiveMemory() {
+        guard !freeingMemory else { return }
+        freeingMemory = true
+        memoryStatus = nil
+        Task {
+            let result = await MemoryOptimizer.freeInactiveMemory()
+            await MainActor.run {
+                freeingMemory = false
+                memoryStatus = result.message
+            }
+        }
+    }
+
     private func healthColor(_ score: Int) -> Color {
         switch score {
         case 85...: .green
@@ -133,6 +195,7 @@ struct HUDView: View {
 
 private struct MetricRow: View {
     let label: String
+    let value: String
     let percent: Double
     let color: Color
 
@@ -141,7 +204,7 @@ private struct MetricRow: View {
             HStack {
                 Text(label).font(.caption)
                 Spacer()
-                Text(ByteSizeFormatter.formatPercent(percent))
+                Text(value)
                     .font(.caption)
                     .monospacedDigit()
             }

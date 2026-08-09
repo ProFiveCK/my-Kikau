@@ -71,6 +71,19 @@ struct DuplicatesView: View {
                 reviewPlan = nil
             }
         }
+        .onAppear {
+            let coordinator = ScanEverythingCoordinator.shared
+            if duplicateGroups.isEmpty, let cached = coordinator.duplicateGroups {
+                duplicateGroups = cached
+            }
+            if largeFiles.isEmpty, let cached = coordinator.largeFiles {
+                largeFiles = cached
+            }
+            if AppNavigation.shared.pendingDuplicatesMode == Mode.largeFiles.rawValue || AppNavigation.shared.pendingDuplicatesMode == "largeFiles" {
+                mode = .largeFiles
+                AppNavigation.shared.pendingDuplicatesMode = nil
+            }
+        }
     }
 
     @ViewBuilder

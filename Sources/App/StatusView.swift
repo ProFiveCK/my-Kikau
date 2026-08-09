@@ -13,6 +13,7 @@ struct StatusView: View {
     @State private var hasFullDiskAccess = FullDiskAccessCheck.probe()
     @State private var freeingMemory = false
     @State private var memoryActionMessage: String?
+    @State private var processSheet: ProcessSheet?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -40,7 +41,9 @@ struct StatusView: View {
                             onNavigate: onNavigate,
                             freeingMemory: freeingMemory,
                             memoryActionMessage: memoryActionMessage,
-                            onFreeMemory: freeInactiveMemory
+                            onFreeMemory: freeInactiveMemory,
+                            onShowCPU: { processSheet = ProcessSheet(mode: .cpu) },
+                            onShowMemory: { processSheet = ProcessSheet(mode: .memory) }
                         )
 
                         FullSystemScanCard(onNavigate: onNavigate)
@@ -150,6 +153,9 @@ struct StatusView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             hasFullDiskAccess = FullDiskAccessCheck.probe()
         }
+        .sheet(item: $processSheet) { sheet in
+            ProcessListSheet(mode: sheet.mode)
+        }
     }
 
     private func freeInactiveMemory() {
@@ -164,6 +170,11 @@ struct StatusView: View {
             }
         }
     }
+}
+
+private struct ProcessSheet: Identifiable {
+    let id = UUID()
+    let mode: ProcessMonitor.SortMode
 }
 
 /// Minimal trend line for a bounded series of recent values (0–100 range).
@@ -264,7 +275,10 @@ private struct FullSystemScanCard: View {
                             title: "Large Files",
                             value: "\(largeFiles.count) · \(ByteSizeFormatter.format(total))",
                             tint: ContentView.SidebarItem.analyze.tint,
-                            action: { onNavigate(.duplicates) }
+                            action: {
+                                AppNavigation.shared.pendingDuplicatesMode = "largeFiles"
+                                onNavigate(.duplicates)
+                            }
                         )
                     }
                 }
@@ -461,6 +475,8 @@ private struct HeroHealthCard: View {
     let freeingMemory: Bool
     let memoryActionMessage: String?
     let onFreeMemory: () -> Void
+    let onShowCPU: () -> Void
+    let onShowMemory: () -> Void
 
     private var statusWord: String {
         snapshot.healthScoreMsg.components(separatedBy: ":").first ?? snapshot.healthScoreMsg
@@ -540,6 +556,8 @@ private struct HeroHealthCard: View {
                     value: "\(Int(snapshot.memory.usedPercent))% used · \(snapshot.memory.pressure)",
                     actionLabel: freeingMemory ? "Freeing..." : "Free Up",
                     action: onFreeMemory,
+                    secondaryActionLabel: "View",
+                    secondaryAction: onShowMemory,
                     isBusy: freeingMemory
                 )
                 if let battery = snapshot.batteries.first {
@@ -549,13 +567,19 @@ private struct HeroHealthCard: View {
                         value: "\(Int(battery.percent))% · \(battery.status)"
                     )
                 }
-                GlassTile(icon: "cpu.fill", title: "CPU", value: cpuValue)
+                GlassTile(
+                    icon: "cpu.fill",
+                    title: "CPU",
+                    value: cpuValue,
+                    actionLabel: "View",
+                    action: onShowCPU
+                )
             }
 
             if let memoryActionMessage {
                 Text(memoryActionMessage)
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.6))
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.6))
             }
 
             if let net = snapshot.network.first(where: { $0.rxRateMBs > 0 || $0.txRateMBs > 0 }) ?? snapshot.network.first {
@@ -582,6 +606,73 @@ private struct HeroHealthCard: View {
     }
 }
 
+private struct ProcessListSheet: View {
+    let mode: ProcessMonitor.SortMode
+    @Environment(\.dismiss) private var dismiss
+    @State private var rows: [ProcessMonitor.ProcessInfo] = []
+    @State private var loading = true
+
+    private var title: String {
+        switch mode {
+        case .cpu: "Top CPU Processes"
+        case .memory: "Top Memory Processes"
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.title3.bold())
+                Spacer()
+                Button("Refresh") { load() }
+                Button("Done") { dismiss() }
+            }
+            .padding()
+
+            if loading {
+                ProgressView("Collecting processes...")
+                    .frame(width: 520, height: 320)
+            } else {
+                List(rows) { row in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.command)
+                                .font(.subheadline.bold())
+                                .lineLimit(1)
+                            Text("PID \(row.pid)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(String(format: "%.1f%% CPU", row.cpuPercent))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(mode == .cpu ? .blue : .secondary)
+                        Text(ByteSizeFormatter.format(row.residentBytes))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(mode == .memory ? .purple : .secondary)
+                            .frame(width: 82, alignment: .trailing)
+                    }
+                }
+                .frame(width: 560, height: 360)
+            }
+        }
+        .onAppear { load() }
+    }
+
+    private func load() {
+        loading = true
+        Task {
+            let result = await ProcessMonitor.top(sort: mode)
+            await MainActor.run {
+                rows = result
+                loading = false
+            }
+        }
+    }
+}
+
 /// A single glass-morphic stat tile inside `HeroHealthCard`.
 private struct GlassTile: View {
     let icon: String
@@ -589,6 +680,8 @@ private struct GlassTile: View {
     let value: String
     var actionLabel: String?
     var action: (() -> Void)?
+    var secondaryActionLabel: String?
+    var secondaryAction: (() -> Void)?
     var isBusy = false
 
     var body: some View {
@@ -604,12 +697,19 @@ private struct GlassTile: View {
             Text(value)
                 .font(.subheadline.bold())
                 .foregroundStyle(.white)
-            if let actionLabel, let action {
-                Button(actionLabel, action: action)
-                    .font(.caption.bold())
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color(red: 0.42, green: 0.94, blue: 0.86))
-                    .disabled(isBusy)
+            if actionLabel != nil || secondaryActionLabel != nil {
+                HStack(spacing: 10) {
+                    if let actionLabel, let action {
+                        Button(actionLabel, action: action)
+                            .disabled(isBusy)
+                    }
+                    if let secondaryActionLabel, let secondaryAction {
+                        Button(secondaryActionLabel, action: secondaryAction)
+                    }
+                }
+                .font(.caption.bold())
+                .buttonStyle(.plain)
+                .foregroundStyle(Color(red: 0.42, green: 0.94, blue: 0.86))
             }
         }
         .padding(12)
