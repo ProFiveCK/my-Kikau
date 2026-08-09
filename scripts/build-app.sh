@@ -8,7 +8,7 @@
 #   ./scripts/build-app.sh              # debug build -> build/myKikau.app
 #   ./scripts/build-app.sh --release    # release build -> build/myKikau.app
 #
-# Requires: swift, iconutil, otool, install_name_tool (all macOS/Xcode-CLT built-in).
+# Requires: swift, iconutil, otool, install_name_tool, codesign (all macOS/Xcode-CLT built-in).
 
 set -euo pipefail
 
@@ -95,6 +95,15 @@ fi
 
 # Touch the bundle so LaunchServices picks up changes.
 touch "$app_bundle"
+
+# SwiftPM signs the bare executable, then this script copies it into a bundle and
+# may mutate its rpaths with install_name_tool. That invalidates the original
+# page signature on recent macOS releases and dyld kills the app before main().
+# Ad-hoc sign the finished local bundle so debug builds are launchable; release
+# distribution still gets a Developer ID signature later via scripts/sign.sh.
+echo "› ad-hoc codesign local app bundle"
+codesign --force --deep --sign - "$app_bundle"
+codesign --verify --deep --strict --verbose=2 "$app_bundle"
 
 echo "✓ built $app_bundle"
 echo "  open with: open $app_bundle"
