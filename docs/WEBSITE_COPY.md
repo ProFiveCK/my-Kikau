@@ -6,16 +6,18 @@
 
 **Headline:** Clean, uninstall, and understand your Mac — without giving up control.
 
-**Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, dev-project purging, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
+**Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.2.0 · 1.8 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.2.1 · 1.8 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
 
 - **See it before you delete it.** Every cleanup and uninstall shows a full preview — file paths, sizes, what's protected — before anything moves to the Trash.
 - **Uninstall actually means uninstall.** Removes the app, its LaunchAgents, login items, and leftover files across your whole `~/Library` — not just the `.app` bundle.
+- **Bounded, safe maintenance.** 10 vetted upkeep tasks — LaunchServices repair, cache refresh, orphaned Spotlight rules, and more — no admin password needed, with an optional preview mode.
 - **A real system dashboard.** Live CPU, memory, disk, network, GPU, thermal, and battery — not a marketing gauge, actual native metrics, refreshed every 2 seconds, plus a menu bar HUD.
+- **Duplicates & large files.** Content-hash-verified duplicate detection plus a large-files view across Downloads, Documents, Desktop, Pictures, and Movies.
 - **Nothing hidden.** Every action is logged locally (`~/Library/Logs/myKikau/operations.log`) so you can see exactly what ran and when.
 
 ## Trust / safety section
@@ -37,21 +39,40 @@ myKikau's source is public and licensed under GPL-3.0.
 
 ## Release notes (template — duplicate per version)
 
+### Version 0.2.1 — August 2026
+
+**Improved**
+- Uninstall now shows a clear "App Uninstalled" (or "with Warnings") popup when it finishes, instead of an easy-to-miss caption
+- Clean's app-cache targets (Slack, Discord, Zoom, Dropbox, Teams, Safari, Edge, Brave) now point at their correct, current cache locations
+
+**Fixed**
+- Clean's Trash category now actually empties the Trash
+- Disk Analyser was undercounting real usage — it was skipping `~/Library` (one of the largest parts of most home folders) from its totals; fixed
+- A checkbox-looking icon in the Uninstall review screen — it was never interactive, now reads clearly as "this app will be removed"
+
+*Full changelog: [github.com/ProFiveCK/my-Kikau/releases](https://github.com/ProFiveCK/my-Kikau/releases)*
+
 ### Version 0.2.0 — August 2026
 
 **New**
-- Status dashboard is now the home screen, with quick-launch cards into every module and a one-click "Scan Everything"
-- Duplicate and large-file finder (content-hash verified)
-- Visual storage map (treemap) in Analyse
+- Status dashboard redesigned as a live "Mac Health" card — storage, memory, battery, and CPU at a glance, with one-click access into Clean
+- Disk Analyse gets an interactive donut chart alongside the treemap and list views
+- Duplicate and large-file finder, content-hash verified, across Downloads/Documents/Desktop/Pictures/Movies
+- One-click "Scan Everything" from the dashboard
+- About screen — version, update checks, and your operation log, one click away
 - Auto-updates via Sparkle
 
 **Improved**
-- Per-module accent colors and live sparklines on system stats
-- Menu bar HUD gains quick actions (Empty Trash, Open Clean)
+- GPU usage now reads live, without needing admin privileges
+- Network throughput readings fixed
+- Optimise trimmed to the 10 maintenance tasks that actually run, each clearly marked safe, with an optional preview mode
+- Mac Health score now explains what it's measuring instead of showing a bare number
 - Real app icons throughout the Uninstaller
 
 **Fixed**
-- Cancel on a delete confirmation could not trigger a deletion
+- Cancel on a delete confirmation could no longer trigger a deletion
+- CPU usage reading fixed (was stuck near 0%)
+- Fixed a crash on launch in the signed/notarized build (missing embedded framework)
 
 *Full changelog: [github.com/ProFiveCK/my-Kikau/releases](https://github.com/ProFiveCK/my-Kikau/releases)*
 

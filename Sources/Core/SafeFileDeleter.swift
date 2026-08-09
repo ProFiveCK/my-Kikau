@@ -140,10 +140,17 @@ public final class SafeFileDeleter {
         var errors: [String] = []
 
         for item in plan.items {
+            // Items already sitting in ~/.Trash (category .trash) always resolve
+            // to .permanent, regardless of what mode the caller asked for.
+            // "Move something that's already in the Trash to the Trash" isn't a
+            // real operation — macOS either rejects it or no-ops it, which is
+            // exactly why Clean's "Empty Trash" previously did nothing.
+            let effectiveMode: Mode = item.category == .trash ? .permanent : mode
+
             if dryRun {
                 opLog.append(.init(
                     action: action, path: item.url.path,
-                    sizeBytes: item.sizeBytes, mode: .init(mode),
+                    sizeBytes: item.sizeBytes, mode: .init(effectiveMode),
                     outcome: .dryRun, dryRun: true
                 ))
                 freed += item.sizeBytes
@@ -152,14 +159,14 @@ public final class SafeFileDeleter {
             }
 
             do {
-                if mode == .trash {
+                if effectiveMode == .trash {
                     try fileManager.trashItem(at: item.url, resultingItemURL: nil)
                 } else {
                     try fileManager.removeItem(at: item.url)
                 }
                 opLog.append(.init(
                     action: action, path: item.url.path,
-                    sizeBytes: item.sizeBytes, mode: .init(mode),
+                    sizeBytes: item.sizeBytes, mode: .init(effectiveMode),
                     outcome: .success, dryRun: false
                 ))
                 freed += item.sizeBytes
@@ -167,7 +174,7 @@ public final class SafeFileDeleter {
             } catch {
                 opLog.append(.init(
                     action: action, path: item.url.path,
-                    sizeBytes: item.sizeBytes, mode: .init(mode),
+                    sizeBytes: item.sizeBytes, mode: .init(effectiveMode),
                     outcome: .failed, dryRun: false, detail: error.localizedDescription
                 ))
                 failed += 1

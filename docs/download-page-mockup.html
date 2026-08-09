@@ -170,9 +170,9 @@
     <div class="wrap">
       <span class="badge">by Project Five</span>
       <h1>Clean, uninstall, and understand your Mac — without giving up control.</h1>
-      <p class="sub">myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, dev-project purging, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.</p>
-      <a class="btn-primary" href="https://www.projectfive.co.ck/apps/myKikau-0.2.0.dmg">
-        ⬇ Download for Mac <span class="sizemeta">v0.2.0 · Apple Silicon & Intel · 1.8 MB</span>
+      <p class="sub">myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.</p>
+      <a class="btn-primary" href="https://www.projectfive.co.ck/apps/myKikau-0.2.1.dmg">
+        ⬇ Download for Mac <span class="sizemeta">v0.2.1 · Apple Silicon & Intel · 1.8 MB</span>
       </a>
       <a class="req-link" href="#requirements">Requires macOS 14 Sonoma or later</a>
     </div>
@@ -257,23 +257,44 @@
       <h2>Release notes</h2>
       <div class="rn-card">
         <div class="rn-version">Latest release</div>
+        <h3>Version 0.2.1 — August 2026</h3>
+        <h4>Improved</h4>
+        <ul>
+          <li>Uninstall now shows a clear "App Uninstalled" (or "with Warnings") popup when it finishes, instead of an easy-to-miss caption</li>
+          <li>Clean's app-cache targets (Slack, Discord, Zoom, Dropbox, Teams, Safari, Edge, Brave) now point at their correct, current cache locations</li>
+        </ul>
+        <h4>Fixed</h4>
+        <ul>
+          <li>Clean's Trash category now actually empties the Trash</li>
+          <li>Disk Analyser was undercounting real usage — it was skipping <code>~/Library</code> (one of the largest parts of most home folders) from its totals; fixed</li>
+          <li>A checkbox-looking icon in the Uninstall review screen — it was never interactive, now reads clearly as "this app will be removed"</li>
+        </ul>
+        <a class="changelog-link" href="https://github.com/ProFiveCK/my-Kikau/releases">Full changelog on GitHub →</a>
+      </div>
+      <div class="rn-card">
         <h3>Version 0.2.0 — August 2026</h3>
         <h4>New</h4>
         <ul>
-          <li>Status dashboard is now the home screen, with quick-launch cards into every module and a one-click "Scan Everything"</li>
-          <li>Duplicate and large-file finder (content-hash verified)</li>
-          <li>Visual storage map (treemap) in Analyse</li>
+          <li>Status dashboard redesigned as a live "Mac Health" card — storage, memory, battery, and CPU at a glance, with one-click access into Clean</li>
+          <li>Disk Analyse gets an interactive donut chart alongside the treemap and list views</li>
+          <li>Duplicate and large-file finder, content-hash verified, across Downloads/Documents/Desktop/Pictures/Movies</li>
+          <li>One-click "Scan Everything" from the dashboard</li>
+          <li>About screen — version, update checks, and your operation log, one click away</li>
           <li>Auto-updates via Sparkle</li>
         </ul>
         <h4>Improved</h4>
         <ul>
-          <li>Per-module accent colors and live sparklines on system stats</li>
-          <li>Menu bar HUD gains quick actions (Empty Trash, Open Clean)</li>
+          <li>GPU usage now reads live, without needing admin privileges</li>
+          <li>Network throughput readings fixed</li>
+          <li>Optimise trimmed to the 10 maintenance tasks that actually run, each clearly marked safe, with an optional preview mode</li>
+          <li>Mac Health score now explains what it's measuring instead of showing a bare number</li>
           <li>Real app icons throughout the Uninstaller</li>
         </ul>
         <h4>Fixed</h4>
         <ul>
-          <li>Cancel on a delete confirmation could not trigger a deletion</li>
+          <li>Cancel on a delete confirmation could no longer trigger a deletion</li>
+          <li>CPU usage reading fixed (was stuck near 0%)</li>
+          <li>Fixed a crash on launch in the signed/notarized build (missing embedded framework)</li>
         </ul>
         <a class="changelog-link" href="https://github.com/ProFiveCK/my-Kikau/releases">Full changelog on GitHub →</a>
       </div>

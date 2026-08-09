@@ -123,7 +123,12 @@ private struct PlanItemRow: View {
         case .trash: "trash"
         case .leftover: "app.dashed"
         case .artifact: "hammer"
-        case .app: "app"
+        // Was plain "app" — an empty rounded-square outline that, next to
+        // text at this size, reads as an unchecked checkbox rather than an
+        // app icon (users tried to "tick" it before realizing it's not
+        // interactive). "xmark.app.fill" reads unambiguously as "this app
+        // is being removed."
+        case .app: "xmark.app.fill"
         case .installer: "archivebox"
         case .duplicate: "doc.on.doc"
         case .largeFile: "doc.badge.arrow.up"

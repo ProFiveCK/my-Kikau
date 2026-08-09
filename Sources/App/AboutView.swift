@@ -42,6 +42,13 @@ struct AboutView: View {
 
                 HStack(spacing: 12) {
                     Button {
+                        NSWorkspace.shared.open(URL(string: "https://www.projectfive.co.ck/apps/mykikau/")!)
+                    } label: {
+                        Label("Product Page", systemImage: "safari")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
                         updaterViewModel.checkForUpdates()
                     } label: {
                         Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
@@ -55,6 +62,16 @@ struct AboutView: View {
                         Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
                     }
                     .buttonStyle(.bordered)
+                }
+
+                InfoCard(title: "App Details") {
+                    InfoRow(label: "Website", value: "projectfive.co.ck/apps/mykikau")
+                    InfoRow(label: "Requirements", value: "macOS 14 Sonoma or later")
+                    InfoRow(label: "Distribution", value: "Signed & notarized")
+                    InfoRow(label: "Full Disk Access", value: "Recommended for complete scans")
+                    Text("Clean, uninstall, and understand your Mac without giving up control. myKikau previews every cleanup and uninstall plan, moves deletions to the Trash, scans duplicates and large files, shows live system status, and logs actions locally.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 InfoCard(title: "This Install") {

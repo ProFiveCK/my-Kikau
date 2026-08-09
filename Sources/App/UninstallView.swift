@@ -13,6 +13,16 @@ struct UninstallView: View {
     @State private var teardownResult: AppTeardown.TeardownResult?
     @State private var executing = false
     @State private var executionSummary: String?
+    @State private var completionAlert: CompletionAlert?
+
+    /// A completion popup at the end of an uninstall — the old small caption
+    /// text at the bottom of the list was easy to miss entirely, especially
+    /// when it just said something like "1 failed" with no other signal.
+    private struct CompletionAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     private let tint = ContentView.SidebarItem.uninstall.tint
 
@@ -88,6 +98,13 @@ struct UninstallView: View {
                 }
             )
         }
+        .alert(item: $completionAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 
     private func selectApp(_ app: AppInventory.AppInfo) {
@@ -128,21 +145,36 @@ struct UninstallView: View {
             if dryRun {
                 await MainActor.run {
                     teardownResult = teardown
-                    executionSummary = "Dry-run: " + (summary.isEmpty ? "no teardown actions" : summary.joined(separator: ", "))
+                    let text = "Dry-run: " + (summary.isEmpty ? "no teardown actions" : summary.joined(separator: ", "))
+                    executionSummary = text
                     executing = false
+                    completionAlert = CompletionAlert(
+                        title: "Preview Complete",
+                        message: "\(app.name) — \(text). No files were changed."
+                    )
                 }
                 return
             }
 
             let deleter = SafeFileDeleter.shared
-            _ = deleter.execute(plan, mode: .trash, dryRun: false, action: "uninstall.app")
+            let appResult = deleter.execute(plan, mode: .trash, dryRun: false, action: "uninstall.app")
             await MainActor.run {
                 teardownResult = teardown
                 executionSummary = summary.isEmpty ? "App removed; no teardown actions" : summary.joined(separator: ", ")
                 executing = false
-                // Present the leftover plan next.
+                // Present the leftover plan next if there is one — its own
+                // completion handler will show the alert in that case, so we
+                // only pop the alert here when this is the last step.
                 if let lp = leftoverPlan, !lp.isEmpty {
                     leftoverPlan = lp
+                } else {
+                    let hadIssues = !teardown.errors.isEmpty || appResult.failed > 0
+                    completionAlert = CompletionAlert(
+                        title: hadIssues ? "Uninstalled with Warnings" : "App Uninstalled",
+                        message: hadIssues
+                            ? "\(app.name) was removed, but \(appResult.failed + teardown.errors.count) item(s) had issues. \(ByteSizeFormatter.format(appResult.freedBytes)) freed."
+                            : "\(app.name) was removed successfully. \(ByteSizeFormatter.format(appResult.freedBytes)) freed."
+                    )
                 }
             }
         }
@@ -153,9 +185,14 @@ struct UninstallView: View {
             leftoverPlan = nil
             return
         }
+        let appName = selectedApp?.name ?? "App"
         leftoverPlan = nil
         if dryRun {
             executionSummary = (executionSummary ?? "") + " · Leftover dry-run only"
+            completionAlert = CompletionAlert(
+                title: "Preview Complete",
+                message: "\(appName) — leftovers previewed only. No files were changed."
+            )
             return
         }
         executing = true
@@ -166,6 +203,15 @@ struct UninstallView: View {
                 executionSummary = (executionSummary ?? "") +
                     " · Leftovers: \(res.succeeded) removed, \(res.failed) failed, \(ByteSizeFormatter.format(res.freedBytes)) freed"
                 executing = false
+                // This is always the terminal step when reached, so it's the
+                // one place that should surface the completion popup.
+                let hadIssues = res.failed > 0
+                completionAlert = CompletionAlert(
+                    title: hadIssues ? "Uninstalled with Warnings" : "App Uninstalled",
+                    message: hadIssues
+                        ? "\(appName) was removed, but \(res.failed) leftover item(s) failed to remove. \(ByteSizeFormatter.format(res.freedBytes)) freed."
+                        : "\(appName) and its leftovers were removed successfully. \(ByteSizeFormatter.format(res.freedBytes)) freed."
+                )
                 selectedApp = nil
             }
         }

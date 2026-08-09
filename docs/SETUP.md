@@ -211,6 +211,12 @@ Upload the stapled DMG to the website's download location and update the Sparkle
 `appcast.xml` entry (see `docs/IMPLEMENTATION_PLAN.md` Phase 0.6) so existing
 installs pick up the update automatically.
 
+For every release after 0.2.0, follow `docs/DEPLOY_WORKFLOW.md` — it's the
+full step-by-step runbook (build → sign → notarize → appcast → website →
+GitHub release → verification), written so an AI agent can drive the parts
+it has access to and hand off cleanly at the parts it can't (WordPress,
+hosting upload, GitHub web UI).
+
 ## Contributing
 
 1. Create a branch from `main`

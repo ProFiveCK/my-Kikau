@@ -14,18 +14,26 @@
 #      key is stored in your keychain, not in this repo.
 #
 # Usage:
-#   ./scripts/update-appcast.sh /path/to/release-folder
+#   ./scripts/update-appcast.sh /path/to/release-folder [download-url-prefix]
 #
 # The release folder should contain your signed, notarized DMG(s), each
 # optionally paired with a same-named .html or .txt release-notes file
 # (myKikau-0.2.0.dmg + myKikau-0.2.0.html).
+#
+# download-url-prefix tells Sparkle where the DMGs will actually be reachable
+# from — it's baked into each <enclosure url="..."> in the generated feed, so
+# it must match wherever you actually upload the DMGs, which is NOT
+# necessarily the same folder as appcast.xml itself (SUFeedURL is
+# .../apps/appcast.xml, but DMGs may live at .../downloads/). Defaults to
+# projectfive.co.ck's downloads folder; pass a second argument to override.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 RELEASE_DIR="${1:-}"
+DOWNLOAD_URL_PREFIX="${2:-https://www.projectfive.co.ck/downloads/}"
 if [[ -z "$RELEASE_DIR" || ! -d "$RELEASE_DIR" ]]; then
-  echo "✘ usage: ./scripts/update-appcast.sh /path/to/release-folder"
+  echo "✘ usage: ./scripts/update-appcast.sh /path/to/release-folder [download-url-prefix]"
   exit 1
 fi
 
@@ -41,7 +49,9 @@ if [[ -z "$GENERATE_APPCAST" ]]; then
 fi
 
 echo "› using $GENERATE_APPCAST"
-"$GENERATE_APPCAST" "$RELEASE_DIR"
+echo "› DMG download URL prefix: $DOWNLOAD_URL_PREFIX"
+"$GENERATE_APPCAST" --download-url-prefix "$DOWNLOAD_URL_PREFIX" "$RELEASE_DIR"
 
 echo "✓ wrote $RELEASE_DIR/appcast.xml"
-echo "  upload it (and the DMGs) to the URL set in Info.plist's SUFeedURL"
+echo "  upload appcast.xml to the URL set in Info.plist's SUFeedURL (apps/appcast.xml)"
+echo "  — the DMG(s) themselves stay wherever \$DOWNLOAD_URL_PREFIX says they are"
