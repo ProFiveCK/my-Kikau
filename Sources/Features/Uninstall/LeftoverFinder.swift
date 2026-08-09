@@ -114,7 +114,7 @@ public enum LeftoverFinder {
 
     /// Matches a file/directory name against a bundle ID.
     /// Exact match or `<bundleID>.<extension>` form.
-    private static func matchesBundleID(_ name: String, bundleID: String) -> Bool {
+    static func matchesBundleID(_ name: String, bundleID: String) -> Bool {
         if name == bundleID { return true }
         // e.g. "com.example.app.plist" matches bundleID "com.example.app"
         if name.hasPrefix(bundleID + ".") { return true }
