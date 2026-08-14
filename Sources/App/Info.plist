@@ -2,50 +2,43 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>myKikau</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.profiveck.myKikau</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>myKikau</string>
-    <key>CFBundleDisplayName</key>
-    <string>myKikau</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.3.0</string>
-    <key>CFBundleVersion</key>
-    <string>4</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon.icns</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>LSUIElement</key>
-    <false/>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSSupportsAutomaticTermination</key>
-    <false/>
-    <key>NSSupportsSuddenTermination</key>
-    <false/>
-
-    <!--
-      Sparkle auto-update config (docs/IMPLEMENTATION_PLAN.md Phase 0.6).
-      The PRIVATE key stays out of the repo — Sparkle's tool stores it in your
-      login keychain and `sign_update`/`generate_appcast` read it from there
-      when you sign each release.
-    -->
-    <key>SUFeedURL</key>
-    <string>https://www.projectfive.co.ck/apps/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string>2kThk3D7f9IzQZOZxdyAV554R0X7NHbpdWdutkbO0p4=</string>
-    <key>SUEnableAutomaticChecks</key>
-    <true/>
-    <key>SUScheduledCheckInterval</key>
-    <integer>86400</integer>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>myKikau</string>
+	<key>CFBundleExecutable</key>
+	<string>myKikau</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.profiveck.myKikau</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>myKikau</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.4.2</string>
+	<key>CFBundleVersion</key>
+	<string>7</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<false/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://www.projectfive.co.ck/apps/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>2kThk3D7f9IzQZOZxdyAV554R0X7NHbpdWdutkbO0p4=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

@@ -171,8 +171,8 @@
       <span class="badge">by Project Five</span>
       <h1>Clean, uninstall, and understand your Mac — without giving up control.</h1>
       <p class="sub">myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.</p>
-      <a class="btn-primary" href="https://www.projectfive.co.ck/downloads/myKikau-0.4.1.dmg">
-        ⬇ Download for Mac <span class="sizemeta">v0.4.1 · Apple Silicon & Intel · 2.8 MB</span>
+      <a class="btn-primary" href="https://www.projectfive.co.ck/downloads/myKikau-0.4.2.dmg">
+        ⬇ Download for Mac <span class="sizemeta">v0.4.2 · Apple Silicon & Intel · 2.8 MB</span>
       </a>
       <a class="req-link" href="#requirements">Requires macOS 14 Sonoma or later</a>
     </div>
@@ -257,17 +257,10 @@
       <h2>Release notes</h2>
       <div class="rn-card">
         <div class="rn-version">Latest release</div>
-        <h3>Version 0.4.1 — August 2026</h3>
-        <h4>Improved</h4>
-        <ul>
-          <li>Menu bar icon now renders in the system menu bar colour (white in dark mode, black in light mode) to blend with other system tray icons</li>
-          <li>Removed several force-unwrap crash risks across the formatter, URL handling, and log paths</li>
-          <li>Removed dead code and debug print statements from production builds</li>
-          <li>Extracted hardcoded UserDefaults keys into a shared constants enum</li>
-        </ul>
+        <h3>Version 0.4.2 — August 2026</h3>
         <h4>Fixed</h4>
         <ul>
-          <li>Sparkle appcast no longer references delta update files that were never uploaded to the server, eliminating 404 errors during update checks</li>
+          <li>Menu bar icon replaced with a proper SF Symbol (internaldrive) that renders correctly in the system tray — the previous template-image approach produced a white square from the full-colour app icon</li>
         </ul>
         <a class="changelog-link" href="https://github.com/ProFiveCK/my-Kikau/releases">Full changelog on GitHub →</a>
       </div>
