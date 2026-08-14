@@ -30,7 +30,7 @@ struct myKikauApp: App {
         MenuBarExtra {
             HUDView()
         } label: {
-            Image(nsImage: DockIconController.menuBarImage())
+            Image(systemName: "internaldrive")
         }
         .menuBarExtraStyle(.window)
     }
@@ -39,17 +39,6 @@ struct myKikauApp: App {
 enum DockIconController {
     static func apply(showDockIcon: Bool) {
         NSApplication.shared.setActivationPolicy(showDockIcon ? .regular : .accessory)
-    }
-
-    static func menuBarImage() -> NSImage {
-        let source = NSImage(named: "AppIcon")
-            ?? NSApplication.shared.applicationIconImage
-            ?? NSImage(systemSymbolName: "internaldrive", accessibilityDescription: "myKikau")
-            ?? NSImage()
-        let image = source.copy() as? NSImage ?? source
-        image.size = NSSize(width: 18, height: 18)
-        image.isTemplate = true
-        return image
     }
 }
 
