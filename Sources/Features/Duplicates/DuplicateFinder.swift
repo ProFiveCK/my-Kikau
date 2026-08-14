@@ -136,6 +136,6 @@ public enum DuplicateFinder {
             guard let chunk, !chunk.isEmpty else { break }
             hasher.update(data: chunk)
         }
-        return hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
+        return hasher.finalize().description
     }
 }

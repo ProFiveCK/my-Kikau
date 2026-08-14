@@ -63,7 +63,6 @@ struct CleanView: View {
         .sheet(item: $selectedPlan) { plan in
             PlanReviewView(plan: plan, title: "Clean", onCancel: { selectedPlan = nil }) { dryRun in
                 let result = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: "clean")
-                print("Clean \(dryRun ? "preview" : "done"): freed \(ByteSizeFormatter.format(result.freedBytes))")
                 if !dryRun, result.failed == 0 {
                     for (section, existingPlan) in plans where existingPlan.id == plan.id {
                         plans[section] = SafeFileDeleter.Plan(items: [], protectedItems: [], missingItems: [])

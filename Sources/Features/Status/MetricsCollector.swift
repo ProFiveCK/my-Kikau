@@ -145,9 +145,7 @@ public final class MetricsCollector {
 
     private func collectDisks() async -> [DiskStatus] {
         var results: [DiskStatus] = []
-        let home = FileManager.default.homeDirectoryForCurrentUser
 
-        // Home volume (root)
         if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: "/") {
             let total = (attrs[.systemSize] as? UInt64) ?? 0
             let free = (attrs[.systemFreeSize] as? UInt64) ?? 0
@@ -156,7 +154,6 @@ public final class MetricsCollector {
             results.append(DiskStatus(mount: "/", used: used, total: total, usedPercent: percent))
         }
 
-        _ = home // suppress unused warning
         return results
     }
 

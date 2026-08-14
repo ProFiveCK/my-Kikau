@@ -8,7 +8,7 @@ import UI
 @main
 struct myKikauApp: App {
     @StateObject private var updaterViewModel = UpdaterViewModel()
-    @AppStorage("myKikau.showDockIcon") private var showDockIcon = true
+    @AppStorage(AppStorageKey.showDockIcon) private var showDockIcon = true
 
     var body: some Scene {
         WindowGroup(id: "main") {
@@ -48,13 +48,14 @@ enum DockIconController {
             ?? NSImage()
         let image = source.copy() as? NSImage ?? source
         image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = true
         return image
     }
 }
 
 /// Shows the first-launch onboarding once, then the real app.
 struct RootView: View {
-    @AppStorage("myKikau.didCompleteOnboarding") private var didCompleteOnboarding = false
+    @AppStorage(AppStorageKey.didCompleteOnboarding) private var didCompleteOnboarding = false
 
     var body: some View {
         if didCompleteOnboarding {

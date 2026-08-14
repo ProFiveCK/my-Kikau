@@ -242,61 +242,6 @@ private struct MaintenanceTaskCard: View {
     private var tintColor: Color { ContentView.SidebarItem.optimize.tint }
 }
 
-private struct TaskRow: View {
-    let task: MaintenanceCatalog.Task
-    let result: MaintenanceRunner.Result?
-    let lastRun: MaintenanceRunStatus?
-    let inFlight: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(task.name).font(.body)
-                if task.safeForAuto {
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                        .help("Safe — bounded, reversible, vetted for unattended use")
-                }
-                if task.requiresSudo {
-                    Image(systemName: "lock.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .help("Needs your admin password to run")
-                }
-                Spacer()
-                if inFlight {
-                    ProgressView()
-                        .controlSize(.small)
-                } else if let result {
-                    OutcomeBadge(outcome: result.outcome)
-                }
-            }
-            Text(task.summary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if let lastRun {
-                Text("Last run \(lastRun.timestamp.formatted(date: .abbreviated, time: .shortened)) · \(lastRun.outcome)\(lastRun.dryRun ? " · dry run" : "")")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Never run")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-
-            if let result, let detail = result.outcome.detail, !detail.isEmpty {
-                Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(result.outcome.color)
-                    .lineLimit(2)
-            }
-        }
-        .padding(.vertical, 2)
-    }
-}
-
 private extension OperationLog.Outcome {
     var displayLabel: String {
         switch self {

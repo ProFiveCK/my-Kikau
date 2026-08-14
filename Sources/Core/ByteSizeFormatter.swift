@@ -23,9 +23,9 @@ public enum ByteSizeFormatter {
         if mb < 1 { return format(bytes) }
         let gb = mb / 1000
         if gb < 1 {
-            return f.string(from: NSNumber(value: mb))! + " MB"
+            return (f.string(from: NSNumber(value: mb)) ?? "\(mb)") + " MB"
         }
-        return f.string(from: NSNumber(value: gb))! + " GB"
+        return (f.string(from: NSNumber(value: gb)) ?? "\(gb)") + " GB"
     }
 
     /// Formats a percentage value.

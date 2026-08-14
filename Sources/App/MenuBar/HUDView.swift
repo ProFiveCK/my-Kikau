@@ -14,30 +14,32 @@ struct HUDView: View {
     private let canPurgeMemory = MemoryOptimizer.isPurgeAvailable()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             if let snap = metricsService.snapshot {
-                HStack(spacing: 10) {
-                    ZStack {
-                        Circle()
-                            .fill(healthColor(snap.healthScore).opacity(0.18))
-                        Text("\(snap.healthScore)")
-                            .font(.system(size: 16, weight: .bold))
-                            .monospacedDigit()
-                            .foregroundStyle(healthColor(snap.healthScore))
-                    }
-                    .frame(width: 42, height: 42)
-
+                HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("myKikau")
-                            .font(.headline)
-                        Text(snap.healthScoreMsg)
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Mac Health: \(statusWord(for: snap.healthScore))")
+                            .font(.caption)
+                            .foregroundStyle(healthColor(snap.healthScore))
+                        Text(statusDetail(for: snap))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
+                    Spacer()
+                    Image(systemName: healthSymbol(for: snap.healthScore))
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(healthColor(snap.healthScore))
+                        .frame(width: 34, height: 34)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(healthColor(snap.healthScore).opacity(0.13))
+                        )
                 }
-
-                Divider()
+                .padding(10)
+                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
 
                 VStack(spacing: 8) {
                     MetricRow(label: "CPU", value: "\(Int(snap.cpu.usage))%", percent: snap.cpu.usage, color: .blue)
@@ -82,45 +84,22 @@ struct HUDView: View {
                     .frame(maxWidth: .infinity, minHeight: 100)
             }
 
-            Divider()
-
-            // Quick actions — kept to genuinely safe/useful ones. No fake
-            // "boost performance" placebo buttons; Empty Trash confirms first
-            // and reuses the same SafeFileDeleter funnel every other delete
-            // in the app goes through.
-            Button {
-                AppNavigation.shared.pendingSelection = .status
-                openMainWindow()
-            } label: {
-                Label("Open Dashboard", systemImage: "gauge.with.dots.needle.50percent")
-            }
-            Button {
-                AppNavigation.shared.pendingSelection = .clean
-                openMainWindow()
-            } label: {
-                Label("Open Clean", systemImage: "internaldrive")
-            }
-            Button {
-                freeInactiveMemory()
-            } label: {
-                Label(memoryActionTitle, systemImage: "memorychip")
-            }
-            .disabled(freeingMemory)
-            if let memoryStatus {
-                Text(memoryStatus)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Button {
-                emptyTrash()
-            } label: {
-                Label("Empty Trash…", systemImage: "trash")
-            }
-            if let trashStatus {
-                Text(trashStatus)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            QuickActionsGrid(
+                memoryActionTitle: memoryActionTitle,
+                freeingMemory: freeingMemory,
+                memoryStatus: memoryStatus,
+                trashStatus: trashStatus,
+                openDashboard: {
+                    AppNavigation.shared.pendingSelection = .status
+                    openMainWindow()
+                },
+                openClean: {
+                    AppNavigation.shared.pendingSelection = .clean
+                    openMainWindow()
+                },
+                freeMemory: freeInactiveMemory,
+                emptyTrash: emptyTrash
+            )
 
             Divider()
 
@@ -132,7 +111,7 @@ struct HUDView: View {
             .keyboardShortcut(.cancelAction)
         }
         .padding()
-        .frame(width: 280)
+        .frame(width: 306)
         .onAppear { metricsService.subscribe() }
         .onDisappear { metricsService.unsubscribe() }
     }
@@ -141,12 +120,9 @@ struct HUDView: View {
         openWindow(id: "main")
         NSApplication.shared.activate(ignoringOtherApps: true)
         NSApplication.shared.unhide(nil)
-        DispatchQueue.main.async {
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            NSApplication.shared.windows
-                .filter { $0.canBecomeMain || $0.canBecomeKey }
-                .forEach { $0.makeKeyAndOrderFront(nil) }
-        }
+        NSApplication.shared.windows
+            .filter { $0.canBecomeMain || $0.canBecomeKey }
+            .forEach { $0.makeKeyAndOrderFront(nil) }
     }
 
     private func emptyTrash() {
@@ -205,6 +181,30 @@ struct HUDView: View {
         return canPurgeMemory ? "Free Inactive Memory" : "View Memory Users"
     }
 
+    private func statusWord(for score: Int) -> String {
+        switch score {
+        case 90...: "Great"
+        case 75..<90: "Good"
+        case 60..<75: "OK"
+        default: "Needs Maintenance"
+        }
+    }
+
+    private func statusDetail(for snapshot: MetricsSnapshot) -> String {
+        let parts = snapshot.healthScoreMsg.components(separatedBy: ": ")
+        guard parts.count > 1 else { return "No urgent issues detected" }
+        return parts.dropFirst().joined(separator: ": ")
+    }
+
+    private func healthSymbol(for score: Int) -> String {
+        switch score {
+        case 85...: "checkmark.circle.fill"
+        case 65..<85: "exclamationmark.circle.fill"
+        case 45..<65: "exclamationmark.triangle.fill"
+        default: "xmark.octagon.fill"
+        }
+    }
+
     private func healthColor(_ score: Int) -> Color {
         switch score {
         case 85...: .green
@@ -212,6 +212,104 @@ struct HUDView: View {
         case 45..<65: .orange
         default: .red
         }
+    }
+}
+
+private struct QuickActionsGrid: View {
+    let memoryActionTitle: String
+    let freeingMemory: Bool
+    let memoryStatus: String?
+    let trashStatus: String?
+    let openDashboard: () -> Void
+    let openClean: () -> Void
+    let freeMemory: () -> Void
+    let emptyTrash: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Quick Actions")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                HUDActionCard(
+                    title: "Dashboard",
+                    subtitle: "Open status",
+                    systemImage: "gauge.with.dots.needle.50percent",
+                    tint: .accentColor,
+                    action: openDashboard
+                )
+                HUDActionCard(
+                    title: "Clean",
+                    subtitle: "Review junk",
+                    systemImage: "internaldrive",
+                    tint: .blue,
+                    action: openClean
+                )
+                HUDActionCard(
+                    title: memoryActionTitle,
+                    subtitle: memoryStatus ?? "Memory tools",
+                    systemImage: "memorychip",
+                    tint: .teal,
+                    disabled: freeingMemory,
+                    action: freeMemory
+                )
+                HUDActionCard(
+                    title: "Empty Trash",
+                    subtitle: trashStatus ?? "Confirm first",
+                    systemImage: "trash",
+                    tint: .red,
+                    action: emptyTrash
+                )
+            }
+        }
+    }
+}
+
+private struct HUDActionCard: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let tint: Color
+    var disabled = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 24, height: 24)
+                        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                    Spacer(minLength: 0)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(9)
+            .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(.separator.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.6 : 1)
     }
 }
 

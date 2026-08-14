@@ -66,8 +66,7 @@ struct DuplicatesView: View {
                 onCancel: { reviewPlan = nil }
             ) { dryRun in
                 let action = mode == .duplicates ? "duplicates" : "largeFiles"
-                let result = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: action)
-                print("\(action) \(dryRun ? "preview" : "done"): freed \(ByteSizeFormatter.format(result.freedBytes))")
+                _ = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: action)
                 reviewPlan = nil
             }
         }

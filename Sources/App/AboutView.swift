@@ -8,7 +8,7 @@ import SwiftUI
 /// log is still one click away via "Reveal Log File" rather than gone.
 struct AboutView: View {
     @EnvironmentObject private var updaterViewModel: UpdaterViewModel
-    @AppStorage("myKikau.showDockIcon") private var showDockIcon = true
+    @AppStorage(AppStorageKey.showDockIcon) private var showDockIcon = true
     @State private var totalFreed: Int64 = 0
     @State private var operationCount: Int = 0
 
@@ -42,7 +42,9 @@ struct AboutView: View {
 
                 HStack(spacing: 12) {
                     Button {
-                        NSWorkspace.shared.open(URL(string: "https://www.projectfive.co.ck/apps/mykikau/")!)
+                        if let url = URL(string: "https://www.projectfive.co.ck/apps/mykikau/") {
+                            NSWorkspace.shared.open(url)
+                        }
                     } label: {
                         Label("Product Page", systemImage: "safari")
                     }
@@ -57,7 +59,9 @@ struct AboutView: View {
                     .disabled(!updaterViewModel.canCheckForUpdates)
 
                     Button {
-                        NSWorkspace.shared.open(URL(string: "https://github.com/ProFiveCK/my-Kikau")!)
+                        if let url = URL(string: "https://github.com/ProFiveCK/my-Kikau") {
+                            NSWorkspace.shared.open(url)
+                        }
                     } label: {
                         Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
                     }
@@ -96,7 +100,9 @@ struct AboutView: View {
                             .font(.subheadline)
                         Spacer()
                         Button("Mole (GPL-3.0)") {
-                            NSWorkspace.shared.open(URL(string: "https://github.com/tw93/Mole")!)
+                            if let url = URL(string: "https://github.com/tw93/Mole") {
+                                NSWorkspace.shared.open(url)
+                            }
                         }
                         .font(.caption)
                     }

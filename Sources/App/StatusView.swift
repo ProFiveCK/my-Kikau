@@ -775,25 +775,6 @@ private struct StatCard<Content: View>: View {
     }
 }
 
-private struct MetricRow: View {
-    let label: String
-    let percent: Double
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(label).font(.subheadline)
-                Spacer()
-                Text(ByteSizeFormatter.formatPercent(percent))
-                    .font(.subheadline)
-                    .monospacedDigit()
-            }
-            SizeBar(percent: percent, color: color)
-        }
-    }
-}
-
 private struct NetworkRow: View {
     let net: NetworkStatus
 

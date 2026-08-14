@@ -24,7 +24,8 @@ public final class OperationLog {
         if let url = logURL {
             self.logURL = url
         } else {
-            let logsDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+            let logsDir = (FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library"))
                 .appendingPathComponent("Logs/myKikau", isDirectory: true)
             try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
             self.logURL = logsDir.appendingPathComponent("operations.log")

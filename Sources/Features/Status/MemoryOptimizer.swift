@@ -55,7 +55,7 @@ public enum MemoryOptimizer {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return Result(
             succeeded: false,
-            message: detail?.isEmpty == false ? detail! : "Memory purge could not complete."
+            message: (detail?.isEmpty == false) ? detail! : "Memory purge could not complete."
         )
     }
 }

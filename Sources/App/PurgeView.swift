@@ -90,8 +90,7 @@ struct PurgeView: View {
         }
         .sheet(item: $purgePlan) { plan in
             PlanReviewView(plan: plan, title: "Purge", onCancel: { purgePlan = nil }) { dryRun in
-                let result = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: "purge")
-                print("Purge \(dryRun ? "preview" : "done"): freed \(ByteSizeFormatter.format(result.freedBytes))")
+                _ = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: "purge")
                 purgePlan = nil
             }
         }

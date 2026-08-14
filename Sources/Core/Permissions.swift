@@ -7,7 +7,7 @@ public final class Permissions {
     public static let shared = Permissions()
 
     private let defaults: UserDefaults
-    private let bookmarkKey = "myKikau.libraryBookmarks"
+    private let bookmarkKey = AppStorageKey.libraryBookmarks
 
     /// Directories under ~/Library that need user-granted access.
     public static let requiredDirectories: [String] = [
