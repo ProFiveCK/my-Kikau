@@ -144,6 +144,7 @@ version number, download size, and a fresh Release Notes section
 1. Open the WordPress editor for `/apps/mykikau/`
 2. Update the primary download button's version + size
 3. Update the Release Notes block with the new New/Improved/Fixed lists
+   from `WEBSITE_COPY.md`
 4. Check the feature-highlight cards still match reality — if a feature was
    added, removed, or renamed, that grid needs to match `WEBSITE_COPY.md`'s
    feature bullet list line for line (this is exactly what drifted and
