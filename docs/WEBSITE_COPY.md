@@ -8,7 +8,7 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.3.0 · 2.8 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.4.1 · 2.8 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
@@ -38,6 +38,28 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes (template — duplicate per version)
+
+### Version 0.4.1 — August 2026
+
+**Improved**
+- Menu bar icon now renders in the system menu bar colour (white in dark mode, black in light mode) to blend with other system tray icons
+- Removed several force-unwrap crash risks across the formatter, URL handling, and log paths
+- Removed dead code and debug print statements from production builds
+- Extracted hardcoded UserDefaults keys into a shared constants enum
+
+**Fixed**
+- Sparkle appcast no longer references delta update files that were never uploaded to the server, eliminating 404 errors during update checks
+
+*Full changelog: [github.com/ProFiveCK/my-Kikau/releases](https://github.com/ProFiveCK/my-Kikau/releases)*
+
+### Version 0.4.0 — August 2026
+
+**Improved**
+- Memory workflow: the menu bar HUD and dashboard now offer a clearer "Free Inactive Memory" action when the purge tool is available, and fall back to "View Memory Users" when it isn't
+- Tray navigation: the menu bar HUD's quick actions now reliably open the main window and navigate to the correct screen
+- Memory optimiser now returns a clear message when the purge tool isn't available on the current macOS version
+
+*Full changelog: [github.com/ProFiveCK/my-Kikau/releases](https://github.com/ProFiveCK/my-Kikau/releases)*
 
 ### Version 0.3.0 — August 2026
 

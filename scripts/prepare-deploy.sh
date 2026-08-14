@@ -61,10 +61,11 @@ version, out_path = sys.argv[1], Path(sys.argv[2])
 copy = Path("docs/WEBSITE_COPY.md").read_text()
 pattern = rf"^### Version {re.escape(version)}\b.*?(?=^### Version |\Z)"
 match = re.search(pattern, copy, flags=re.M | re.S)
-if match:
-    notes = match.group(0).strip()
-else:
-    notes = f"### Version {version}\n\nSee docs/WEBSITE_COPY.md for the current release notes."
+if not match:
+    print(f"✘ Version {version} not found in docs/WEBSITE_COPY.md", file=sys.stderr)
+    print("  Add a '### Version {version}' section with release notes before deploying.", file=sys.stderr)
+    sys.exit(1)
+notes = match.group(0).strip()
 out_path.write_text(notes + "\n")
 PY
 
