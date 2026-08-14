@@ -50,7 +50,7 @@ fi
 
 echo "› using $GENERATE_APPCAST"
 echo "› DMG download URL prefix: $DOWNLOAD_URL_PREFIX"
-"$GENERATE_APPCAST" --download-url-prefix "$DOWNLOAD_URL_PREFIX" "$RELEASE_DIR"
+"$GENERATE_APPCAST" --maximum-deltas 0 --download-url-prefix "$DOWNLOAD_URL_PREFIX" "$RELEASE_DIR"
 
 echo "✓ wrote $RELEASE_DIR/appcast.xml"
 echo "  upload appcast.xml to the URL set in Info.plist's SUFeedURL (apps/appcast.xml)"
