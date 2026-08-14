@@ -8,7 +8,7 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.4.2 · 2.8 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.4.3 · 2.8 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
@@ -38,6 +38,13 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes (template — duplicate per version)
+
+### Version 0.4.3 — August 2026
+
+**Improved**
+- Menu bar icon redesigned as a custom monochrome vector glyph (bundled PDF) that renders correctly in the system tray across light and dark menu bar themes
+- Teal accent dot appears on the menu bar icon when a Full System Scan finds 500MB+ of reclaimable space
+- Menu bar icon now uses `.renderingMode(.template)` to reliably follow the system menu bar colour
 
 ### Version 0.4.2 — August 2026
 
