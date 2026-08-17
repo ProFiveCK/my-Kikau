@@ -3,9 +3,11 @@ import Foundation
 /// Thermal and power collector.
 /// Ports Mole's `collectThermal` (`metrics_battery.go:344`) to native Swift.
 ///
-/// `cpuTemp` is intentionally left at 0. Mole deliberately does NOT synthesize a
-/// CPU-package temperature from battery sensors or `cpu_thermal_level`, because those
-/// values are not CPU-package temperatures and produce false overheating readings.
+/// Does NOT synthesize a CPU-package temperature from battery sensors or
+/// `cpu_thermal_level` — those values are not CPU-package temperatures and
+/// produce false overheating readings. `cpuTemp` is populated separately, by
+/// `CPUTemperatureMonitor`, from real Apple Silicon die sensors (0 on Intel,
+/// where that sensor family doesn't exist).
 public enum ThermalMonitor {
 
     /// Cache TTL for the `system_profiler SPPowerDataType` fan-source output (seconds).

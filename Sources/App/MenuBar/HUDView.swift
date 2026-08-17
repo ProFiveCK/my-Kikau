@@ -57,6 +57,9 @@ struct HUDView: View {
                             color: SizeBar.color(for: disk.usedPercent)
                         )
                     }
+                    if let gpu = snap.gpu.first, gpu.usage >= 0 {
+                        MetricRow(label: "GPU", value: "\(Int(gpu.usage))%", percent: gpu.usage, color: .purple)
+                    }
                 }
 
                 if let battery = snap.batteries.first {

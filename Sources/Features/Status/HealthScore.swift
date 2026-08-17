@@ -19,8 +19,16 @@ public enum HealthScore {
     private static let memPressureCritPenalty = 15.0
     private static let diskWarn = 80.0
     private static let diskCrit = 93.0
-    private static let thermalNormal = 65.0
-    private static let thermalHigh = 85.0
+    // `cpuTemp` now comes from real Apple Silicon SoC die sensors
+    // (CPUTemperatureMonitor) rather than staying permanently 0, and Apple
+    // Silicon runs comfortably much hotter under normal load than an Intel
+    // chip before anything is actually wrong — 60-80°C is routine, and
+    // sustained thermal throttling generally doesn't start until the
+    // upper-90s/100°C. These thresholds are calibrated for that, not for
+    // Intel's much lower danger zone (which this signal doesn't populate on
+    // anyway — Intel Macs never expose the die sensors this reads).
+    private static let thermalNormal = 85.0
+    private static let thermalHigh = 100.0
     private static let ioNormal = 50.0
     private static let ioHigh = 150.0
 

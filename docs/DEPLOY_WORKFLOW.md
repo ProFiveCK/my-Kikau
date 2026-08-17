@@ -115,41 +115,71 @@ download URL prefix explicitly:
 scripts/prepare-deploy.sh "build/myKikau-${VERSION}.dmg" https://www.projectfive.co.ck/downloads/
 ```
 
-## 5. Upload the DMG and appcast.xml **[HUMAN — hosting access]**
+## 5. Upload the DMG and appcast.xml **[AGENT — Plesk API]**
 
-Two files, two different locations on projectfive.co.ck:
+The DMG, appcast.xml, and WordPress page update are all handled by a single
+script that talks to the Plesk REST API directly — no FTP, no WordPress admin
+panel, no manual browser work.
 
-- `website-upload/${VERSION}/myKikau-${VERSION}.dmg` → wherever the download-url-prefix above says
-  (currently `/downloads/`)
-- `website-upload/${VERSION}/appcast.xml` → **must** land at `/apps/appcast.xml` exactly
-  — that's `SUFeedURL` in `Info.plist`, and Sparkle only ever checks that one
-  fixed URL
+**Prerequisite:** Plesk credentials at `~/.hermes/secrets/plesk-hostme.env`
+(copied from nrbot001:/home/ubuntu/.hermes/secrets/plesk-hostme.env). This file
+contains the Plesk API URL, username, password, and WordPress admin creds.
 
-The same folder also includes `wordpress-page.html`, which mirrors the current
-download-page content for the manual WordPress update.
+```bash
+# Dry run — validate artifacts and check what would be deployed:
+python3 scripts/deploy-website.py --dry-run
 
-This is a manual upload today (FTP/hosting panel/WordPress media, whatever
-projectfive.co.ck uses) — no connector is set up for it yet. If this
-workflow gets run often, it's worth searching the MCP connector registry for
-an FTP/SFTP or WordPress connector so this step can move to **[AGENT]** too.
+# Full deploy — upload DMG, appcast, update WordPress page, verify:
+python3 scripts/deploy-website.py
 
-## 6. Update the website content **[HUMAN — WordPress admin]**
+# Deploy a specific version:
+python3 scripts/deploy-website.py --version 0.4.3
+
+# Skip individual steps if already done:
+python3 scripts/deploy-website.py --skip-dmg --skip-appcast  # just update WP page
+python3 scripts/deploy-website.py --skip-page               # just upload files
+```
+
+The script:
+1. Validates all artifacts in `website-upload/<version>/` exist and contain
+   the right version markers
+2. Backs up the current remote appcast + WordPress page to
+   `~/.hermes/cache/projectfive_mykikau_backups/<timestamp>/`
+3. Uploads the DMG to `/downloads/myKikau-<version>.dmg` via Plesk fs API
+4. Uploads `appcast.xml` to `/downloads/appcast.xml` via Plesk fs API
+5. Updates WordPress page (ID 61) via a temporary self-deleting PHP script
+   that directly updates `wp_posts.post_content` (the script is deleted
+   immediately after use)
+6. Verifies all public URLs serve the correct content (DMG sha256, appcast
+   version markers, page download link)
+7. Reports a pass/fail summary
+
+**File locations on the server:**
+- DMG → `/downloads/myKikau-<version>.dmg`
+- appcast.xml → `/downloads/appcast.xml`
+- WordPress page → page ID 61 at `/apps/mykikau/`
+
+**Note:** The appcast.xml is uploaded to `/downloads/appcast.xml`, which is
+where `SUFeedURL` in `Info.plist` points. Make sure the SUFeedURL in
+Info.plist matches this location.
+
+## 6. Update the website content **[AGENT]**
 
 `docs/WEBSITE_COPY.md` is the source of truth for the download page's copy.
-Before this step, an agent should update that file (and the mirrored
-`docs/download-page-mockup.html`) to describe what actually changed —
-version number, download size, and a fresh Release Notes section
-(New / Improved / Fixed). Once both docs are updated:
+Before deploying, update that file (and the mirrored
+`docs/download-page-mockup.html` / `wordpress-page.html`) to describe what
+actually changed — version number, download size, and a fresh Release Notes
+section (New / Improved / Fixed). Then run `scripts/prepare-deploy.sh` to
+regenerate the `website-upload/<version>/wordpress-page.html` from
+`docs/download-page-mockup.html`, and finally `scripts/deploy-website.py` to
+push it live.
 
-1. Open the WordPress editor for `/apps/mykikau/`
-2. Update the primary download button's version + size
-3. Update the Release Notes block with the new New/Improved/Fixed lists
-   from `WEBSITE_COPY.md`
-4. Check the feature-highlight cards still match reality — if a feature was
-   added, removed, or renamed, that grid needs to match `WEBSITE_COPY.md`'s
-   feature bullet list line for line (this is exactly what drifted and
-   caused the stale "Purge" mismatch during 0.2.0 — keep the two in sync
-   every time, don't just edit one)
+The feature-highlight cards in the HTML must match `WEBSITE_COPY.md`'s
+feature bullet list — this is exactly what drifted and caused the stale
+"Purge" mismatch during 0.2.0. Keep the two in sync every time.
+
+The WordPress page update is handled automatically by `deploy-website.py`
+(step 5) — no manual WordPress admin work needed.
 
 ## 7. Publish a GitHub Release **[HUMAN — GitHub web UI, unless `gh` CLI + auth exists]**
 
@@ -194,32 +224,35 @@ Report back a short pass/fail list rather than assuming success.
 2. Bump Info.plist version
 3. scripts/release.sh
 4. scripts/prepare-deploy.sh
-5. Upload files from website-upload/${VERSION}/              [human]
-6. Update the live WordPress page from wordpress-page.html    [human]
-7. GitHub release is created/updated by prepare-deploy.sh     [agent]
-8. Verify all three URLs reflect the new release              [agent]
+5. python3 scripts/deploy-website.py                              [agent — Plesk API]
+6. WordPress page updated automatically by deploy-website.py      [agent]
+7. GitHub release is created/updated by prepare-deploy.sh         [agent]
+8. Verify all three URLs reflect the new release                  [agent]
 ```
 
 ## Scriptability status
 
-The local artifact pipeline is scriptable today:
+The full pipeline is now scriptable from the local Mac:
 
 ```bash
-scripts/release.sh
-scripts/prepare-deploy.sh
+scripts/release.sh          # build + sign + package + notarize
+scripts/prepare-deploy.sh    # appcast + release notes + website-upload folder + GitHub release
+scripts/deploy-website.py   # Plesk API: upload DMG + appcast + update WordPress page + verify
 ```
 
-That covers build, Developer ID signing, DMG packaging, notarization, copying
-the DMG into `build/release`, regenerating `appcast.xml`, preparing release
-notes, preparing the versioned `website-upload/${VERSION}/` folder, pushing
-the current branch, and creating/updating the GitHub Release when `gh` is
-authenticated.
+Steps 5-6 (DMG upload, appcast upload, WordPress page update) are now fully
+automated via `scripts/deploy-website.py`, which uses the Plesk REST API and a
+temporary self-deleting PHP script for the WordPress DB update. No manual FTP,
+WordPress admin, or browser work needed.
 
-The remaining manual parts are external-service writes:
-- uploading the DMG to `projectfive.co.ck/downloads/`
-- uploading `appcast.xml` to `projectfive.co.ck/apps/appcast.xml`
-- updating the WordPress page at `/apps/mykikau/`
+**Credential file:** `~/.hermes/secrets/plesk-hostme.env` (copied from
+nrbot001:/home/ubuntu/.hermes/secrets/plesk-hostme.env). Contains Plesk API
+URL, username, password, and WordPress admin creds.
 
-Those can become fully scripted once the machine has an authenticated hosting
-upload method (for example SFTP/rsync/Cloudflare/WordPress CLI, depending on
-how `projectfive.co.ck` is hosted).
+**Backups:** Before each deploy, the script backs up the current remote
+appcast.xml and WordPress page HTML to
+`~/.hermes/cache/projectfive_mykikau_backups/<timestamp>/`.
+
+**Verification:** After upload, the script fetches all three public URLs
+(DMG, appcast, WordPress page) and verifies content matches — DMG sha256,
+appcast version markers, and page download link. Reports pass/fail summary.

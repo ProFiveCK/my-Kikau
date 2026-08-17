@@ -32,12 +32,23 @@ struct UninstallView: View {
         }.count
     }
 
+    private var totalFootprint: Int64 {
+        apps.reduce(0) { $0 + $1.sizeBytes }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: ContentView.SidebarItem.uninstall.icon)
                     .foregroundStyle(tint)
-                Text("Uninstaller").font(.title2).bold()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Applications").font(.title2).bold()
+                    if !apps.isEmpty {
+                        Text("\(apps.count) apps · \(ByteSizeFormatter.format(totalFootprint)) total")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Spacer()
                 Button(scanning ? "Scanning..." : "Scan Apps") {
                     scanning = true
@@ -63,13 +74,8 @@ struct UninstallView: View {
                 )
             } else {
                 List(apps) { app in
-                    AppRow(app: app)
-                        .contentShape(Rectangle())
+                    AppRow(app: app, onUninstall: { selectApp(app) })
                         .opacity(AppInventory.isProtected(app) ? 0.5 : 1)
-                        .onTapGesture {
-                            guard !AppInventory.isProtected(app) else { return }
-                            selectApp(app)
-                        }
                 }
                 .safeAreaInset(edge: .bottom) {
                     if staleLargeAppsCount > 0 {
@@ -244,41 +250,59 @@ struct UninstallView: View {
 
 private struct AppRow: View {
     let app: AppInventory.AppInfo
+    let onUninstall: () -> Void
+
+    private var protected: Bool { AppInventory.isProtected(app) }
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path))
                 .resizable()
-                .frame(width: 28, height: 28)
-                .opacity(AppInventory.isProtected(app) ? 0.6 : 1)
+                .frame(width: 32, height: 32)
+                .opacity(protected ? 0.6 : 1)
                 .overlay(alignment: .bottomTrailing) {
-                    if AppInventory.isProtected(app) {
+                    if protected {
                         Image(systemName: "exclamationmark.shield.fill")
                             .foregroundStyle(.red)
                             .font(.system(size: 11))
                             .background(Circle().fill(.background).frame(width: 13, height: 13))
                     }
                 }
-            VStack(alignment: .leading) {
-                Text(app.name)
-                if let version = app.version {
-                    Text(version).font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(app.name).font(.subheadline.bold())
+                    if let version = app.version {
+                        Text(version).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                if let bucket = app.staleUseBucket, app.sizeBytes >= 500_000_000 {
-                    Label(bucket, systemImage: "clock")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                if let bundleID = app.bundleID {
+                    Text(bundleID).font(.caption2).foregroundStyle(.tertiary)
                 }
-                if AppInventory.isProtected(app) {
-                    Text("Protected — cannot uninstall").font(.caption).foregroundStyle(.red)
+                HStack(spacing: 10) {
+                    if let bucket = app.staleUseBucket, app.sizeBytes >= 500_000_000 {
+                        Label(bucket, systemImage: "clock")
+                            .foregroundStyle(.orange)
+                    } else if let lastUsed = app.lastUsed {
+                        Label("Used \(lastUsed.formatted(date: .abbreviated, time: .omitted))", systemImage: "clock")
+                            .foregroundStyle(.secondary)
+                    }
+                    if protected {
+                        Text("Protected — cannot uninstall").foregroundStyle(.red)
+                    }
                 }
+                .font(.caption)
             }
             Spacer()
             Text(ByteSizeFormatter.format(app.sizeBytes))
-                .font(.caption)
+                .font(.subheadline.bold())
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+            Button("Uninstall", role: .destructive, action: onUninstall)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(protected)
         }
+        .padding(.vertical, 4)
     }
 }
 

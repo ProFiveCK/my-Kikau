@@ -20,6 +20,8 @@ public final class MetricsCollector {
     private let gpuBox = GPUSampleBox()
     // Disk IO rate collection state.
     private let diskIOBox = DiskIOSampleBox()
+    // CPU die temperature sensor cache (Apple Silicon only).
+    private let cpuTempBox = CPUTempSampleBox()
 
     public init() {}
 
@@ -33,8 +35,12 @@ public final class MetricsCollector {
         async let host = collectHost()
         async let network = collectNetwork()
         async let thermal = collectThermal()
+        async let cpuTemp = collectCPUTemp()
         async let gpu = collectGPU()
         async let diskIO = collectDiskIO()
+
+        var thermalStatus = await thermal
+        thermalStatus.cpuTemp = await cpuTemp
 
         let snapshot = MetricsSnapshot(
             host: await host,
@@ -46,7 +52,7 @@ public final class MetricsCollector {
             network: await network,
             gpu: await gpu,
             batteries: await batteries,
-            thermal: await thermal
+            thermal: thermalStatus
         )
 
         var withScore = snapshot
@@ -215,6 +221,12 @@ public final class MetricsCollector {
 
     private func collectThermal() async -> ThermalStatus {
         ThermalMonitor.collect(from: thermalBox)
+    }
+
+    // MARK: - CPU Temperature
+
+    private func collectCPUTemp() async -> Double {
+        CPUTemperatureMonitor.read(from: cpuTempBox)
     }
 
     // MARK: - GPU

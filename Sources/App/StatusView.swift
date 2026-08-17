@@ -48,71 +48,8 @@ struct StatusView: View {
 
                         FullSystemScanCard(onNavigate: onNavigate)
 
-                        LiveSignalsCard(snapshot: snap)
-
                         if !snap.network.isEmpty {
-                            StatCard(title: "Network") {
-                                ForEach(snap.network, id: \.name) { net in
-                                    NetworkRow(net: net)
-                                }
-                            }
-                        }
-
-                        if !snap.gpu.isEmpty {
-                            StatCard(title: "GPU") {
-                                ForEach(snap.gpu, id: \.name) { gpu in
-                                    GPURow(gpu: gpu)
-                                }
-                            }
-                        }
-
-                        let t = snap.thermal
-                        if t.fanSpeed > 0 || t.batteryTemp > 0 || t.systemPower > 0 || t.adapterPower > 0 || t.batteryPower != 0 {
-                            StatCard(title: "Thermal / Power") {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    if t.fanSpeed > 0 {
-                                        HStack {
-                                            Text("Fan")
-                                            Spacer()
-                                            Text("\(t.fanSpeed) rpm")
-                                                .monospacedDigit()
-                                        }
-                                    }
-                                    if t.batteryTemp > 0 {
-                                        HStack {
-                                            Text("Battery temp")
-                                            Spacer()
-                                            Text(String(format: "%.1f °C", t.batteryTemp))
-                                                .monospacedDigit()
-                                        }
-                                    }
-                                    if t.systemPower > 0 {
-                                        HStack {
-                                            Text("System")
-                                            Spacer()
-                                            Text(String(format: "%.2f W", t.systemPower))
-                                                .monospacedDigit()
-                                        }
-                                    }
-                                    if t.adapterPower > 0 {
-                                        HStack {
-                                            Text("Adapter")
-                                            Spacer()
-                                            Text(String(format: "%.1f W", t.adapterPower))
-                                                .monospacedDigit()
-                                        }
-                                    }
-                                    if t.batteryPower != 0 {
-                                        HStack {
-                                            Text("Battery")
-                                            Spacer()
-                                            Text(String(format: "%.2f W", t.batteryPower))
-                                                .monospacedDigit()
-                                        }
-                                    }
-                                }
-                                .font(.subheadline)
-                            }
+                            NetworkGraphCard(current: snap.network, history: metricsService.history)
                         }
                     }
                     .padding()
@@ -160,45 +97,128 @@ private struct ProcessSheet: Identifiable {
     let mode: ProcessMonitor.SortMode
 }
 
-/// Minimal trend line for a bounded series of recent values (0–100 range).
-/// Draws nothing (collapses to empty space) until there's more than one sample.
-private struct Sparkline: View {
-    let values: [Double]
-    let color: Color
+/// Network throughput card: a live download/upload graph over the shared
+/// `MetricsService.history` window (~2 minutes at the 2s poll interval),
+/// replacing the old plain per-interface number list — the shape of the
+/// traffic over time (a download burst vs. steady background chatter) is
+/// what's actually useful to see, not just the instantaneous rate.
+private struct NetworkGraphCard: View {
+    let current: [NetworkStatus]
+    let history: [MetricsSnapshot]
+
+    private var rxHistory: [Double] { history.map { snap in snap.network.reduce(0) { $0 + $1.rxRateMBs } } }
+    private var txHistory: [Double] { history.map { snap in snap.network.reduce(0) { $0 + $1.txRateMBs } } }
+    private var totalRx: Double { current.reduce(0) { $0 + $1.rxRateMBs } }
+    private var totalTx: Double { current.reduce(0) { $0 + $1.txRateMBs } }
+
+    /// The interface actually carrying traffic, for the small label under the
+    /// graph — falls back to the first known interface when everything's idle.
+    private var activeInterface: NetworkStatus? {
+        current.first(where: { $0.rxRateMBs > 0 || $0.txRateMBs > 0 }) ?? current.first
+    }
+
+    var body: some View {
+        StatCard(title: "Network") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 16) {
+                    Label(String(format: "%.2f MB/s", totalRx), systemImage: "arrow.down")
+                        .foregroundStyle(.blue)
+                    Label(String(format: "%.2f MB/s", totalTx), systemImage: "arrow.up")
+                        .foregroundStyle(.green)
+                    Spacer()
+                    if let net = activeInterface {
+                        Text(net.ip.isEmpty ? net.name : "\(net.name) · \(net.ip)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.subheadline.bold())
+                .monospacedDigit()
+
+                DualSparkline(primary: rxHistory, secondary: txHistory, primaryColor: .blue, secondaryColor: .green)
+                    .frame(height: 56)
+            }
+        }
+    }
+}
+
+/// Two overlaid trend lines sharing one normalized scale — used for the
+/// network graph's download/upload pair. Draws nothing (collapses to empty
+/// space) until there's more than one sample.
+private struct DualSparkline: View {
+    let primary: [Double]
+    let secondary: [Double]
+    let primaryColor: Color
+    let secondaryColor: Color
 
     var body: some View {
         GeometryReader { geo in
-            if values.count > 1 {
-                Path { path in
-                    let maxV = max(values.max() ?? 100, 1)
-                    let stepX = geo.size.width / CGFloat(values.count - 1)
-                    for (i, v) in values.enumerated() {
-                        let x = CGFloat(i) * stepX
-                        let y = geo.size.height * (1 - CGFloat(v / maxV))
-                        if i == 0 {
-                            path.move(to: CGPoint(x: x, y: y))
-                        } else {
-                            path.addLine(to: CGPoint(x: x, y: y))
-                        }
-                    }
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(.quaternary.opacity(0.4))
+                // Floor the scale so a fully idle window (all-zero history)
+                // doesn't divide-by-near-zero into a jittery flat line.
+                let maxV = max(primary.max() ?? 0, secondary.max() ?? 0, 0.05)
+                line(for: primary, maxV: maxV, size: geo.size)
+                    .stroke(primaryColor, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+                line(for: secondary, maxV: maxV, size: geo.size)
+                    .stroke(secondaryColor, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func line(for values: [Double], maxV: Double, size: CGSize) -> Path {
+        Path { path in
+            guard values.count > 1 else { return }
+            let stepX = size.width / CGFloat(values.count - 1)
+            for (i, v) in values.enumerated() {
+                let x = CGFloat(i) * stepX
+                let y = size.height * (1 - CGFloat(v / maxV))
+                if i == 0 {
+                    path.move(to: CGPoint(x: x, y: y))
+                } else {
+                    path.addLine(to: CGPoint(x: x, y: y))
                 }
-                .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
             }
         }
     }
 }
 
 /// Full dashboard scan, the "Smart Care"-equivalent single entry point.
+/// Styled to match `HeroHealthCard`'s level of polish — an icon badge in the
+/// header, and (before the first scan) a preview grid of what it actually
+/// checks, so the card sells its own value instead of hiding behind one line
+/// of caption text.
 private struct FullSystemScanCard: View {
     let onNavigate: (ContentView.SidebarItem) -> Void
 
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
 
+    private static let categories: [ScanCategory] = [
+        ScanCategory(icon: "internaldrive", title: "Clean", subtitle: "Cache & junk files", tint: ContentView.SidebarItem.clean.tint),
+        ScanCategory(icon: "app.dashed", title: "Apps", subtitle: "Installed applications", tint: ContentView.SidebarItem.uninstall.tint),
+        ScanCategory(icon: "doc.on.doc", title: "Duplicates", subtitle: "Repeated files", tint: ContentView.SidebarItem.duplicates.tint),
+        ScanCategory(icon: "chart.bar.doc.horizontal", title: "Large Files", subtitle: "Space hogs", tint: ContentView.SidebarItem.analyze.tint)
+    ]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Full System Scan", systemImage: "sparkle.magnifyingglass")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sparkle.magnifyingglass")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(
+                        LinearGradient(colors: [.accentColor, .accentColor.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: RoundedRectangle(cornerRadius: 10)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Full System Scan").font(.headline)
+                    Text("One scan across cache, apps, duplicates, and large files")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button(coordinator.isScanning ? "Scanning…" : (coordinator.hasResults ? "Rescan" : "Scan")) {
                     Task { await coordinator.scanEverything() }
@@ -225,10 +245,11 @@ private struct FullSystemScanCard: View {
                         .foregroundStyle(.secondary)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
                     if let cleanPlans = coordinator.cleanPlans {
                         let cleanTotal = cleanPlans.values.reduce(Int64(0)) { $0 + $1.totalReclaimable }
                         SummaryPill(
+                            icon: "internaldrive",
                             title: "Clean",
                             value: ByteSizeFormatter.format(cleanTotal),
                             tint: ContentView.SidebarItem.clean.tint,
@@ -237,6 +258,7 @@ private struct FullSystemScanCard: View {
                     }
                     if let apps = coordinator.apps {
                         SummaryPill(
+                            icon: "app.dashed",
                             title: "Apps",
                             value: "\(apps.count) · \(ByteSizeFormatter.format(coordinator.appFootprintBytes))",
                             tint: ContentView.SidebarItem.uninstall.tint,
@@ -246,6 +268,7 @@ private struct FullSystemScanCard: View {
                     if let duplicateGroups = coordinator.duplicateGroups {
                         let total = duplicateGroups.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
                         SummaryPill(
+                            icon: "doc.on.doc",
                             title: "Duplicates",
                             value: "\(duplicateGroups.count) · \(ByteSizeFormatter.format(total))",
                             tint: ContentView.SidebarItem.duplicates.tint,
@@ -255,6 +278,7 @@ private struct FullSystemScanCard: View {
                     if let largeFiles = coordinator.largeFiles {
                         let total = largeFiles.reduce(Int64(0)) { $0 + $1.sizeBytes }
                         SummaryPill(
+                            icon: "chart.bar.doc.horizontal",
                             title: "Large Files",
                             value: "\(largeFiles.count) · \(ByteSizeFormatter.format(total))",
                             tint: ContentView.SidebarItem.analyze.tint,
@@ -266,18 +290,54 @@ private struct FullSystemScanCard: View {
                     }
                 }
             } else {
-                Text("Scans cleanable data, installed apps, duplicates, and large user files, then sends each category to its review screen.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
+                    ForEach(Self.categories) { category in
+                        ScanCategoryChip(category: category)
+                    }
+                }
             }
         }
-        .padding()
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// One of the things a Full System Scan checks, shown as a preview chip
+/// before the first scan runs so the card explains itself without the user
+/// having to press "Scan" first to find out.
+private struct ScanCategory: Identifiable {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let tint: Color
+    var id: String { title }
+}
+
+private struct ScanCategoryChip: View {
+    let category: ScanCategory
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: category.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(category.tint)
+                .frame(width: 30, height: 30)
+                .background(category.tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(category.title).font(.caption.bold())
+                Text(category.subtitle).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
 private struct SummaryPill: View {
+    let icon: String
     let title: String
     let value: String
     let tint: Color
@@ -285,90 +345,29 @@ private struct SummaryPill: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption.bold())
-                    .foregroundStyle(.primary)
-                Text(value)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct LiveSignalsCard: View {
-    let snapshot: MetricsSnapshot
-
-    var body: some View {
-        StatCard(title: "Live Signals") {
-            VStack(spacing: 10) {
-                CompactMetricRow(
-                    icon: "cpu",
-                    title: "CPU",
-                    value: "\(Int(snapshot.cpu.usage))%",
-                    percent: snapshot.cpu.usage,
-                    color: .blue
-                )
-                CompactMetricRow(
-                    icon: "memorychip",
-                    title: "Memory",
-                    value: "\(ByteSizeFormatter.format(Int64(snapshot.memory.available))) available",
-                    percent: snapshot.memory.usedPercent,
-                    color: SizeBar.color(for: snapshot.memory.usedPercent)
-                )
-                if let disk = snapshot.disks.first {
-                    CompactMetricRow(
-                        icon: "internaldrive",
-                        title: disk.mount == "/" ? "Disk" : disk.mount,
-                        value: "\(ByteSizeFormatter.format(Int64(disk.total - disk.used))) free",
-                        percent: disk.usedPercent,
-                        color: SizeBar.color(for: disk.usedPercent)
-                    )
-                }
-                HStack {
-                    Label(HealthScore.formatUptime(snapshot.uptimeSeconds), systemImage: "clock")
-                    Spacer()
-                    if let battery = snapshot.batteries.first {
-                        Label("\(Int(battery.percent))% \(battery.status)", systemImage: battery.status == "Charging" ? "battery.100.bolt" : "battery.100")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-private struct CompactMetricRow: View {
-    let icon: String
-    let title: String
-    let value: String
-    let percent: Double
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(title).font(.subheadline)
-                    Spacer()
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.caption.bold())
+                        .foregroundStyle(.primary)
                     Text(value)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                        .lineLimit(1)
                 }
-                SizeBar(percent: percent, color: color)
+                Spacer(minLength: 0)
             }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(tint.opacity(0.25), lineWidth: 1))
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -446,9 +445,56 @@ private struct HeroHealthCard: View {
     }
 
     private var cpuValue: String {
-        snapshot.thermal.cpuTemp > 0
-            ? "\(Int(snapshot.cpu.usage))% load · \(String(format: "%.0f°C", snapshot.thermal.cpuTemp))"
-            : "\(Int(snapshot.cpu.usage))% load"
+        "\(Int(snapshot.cpu.usage))% load"
+    }
+
+    /// GPU usage isn't always readable (see `GPUMonitor` — needs an
+    /// `IOAccelerator` key macOS doesn't expose on every GPU/OS combination),
+    /// so fall back to core count alone rather than showing a bare "N/A".
+    private func gpuValue(_ gpu: GPUStatus) -> String {
+        if gpu.usage >= 0 {
+            return gpu.coreCount > 0 ? "\(Int(gpu.usage))% · \(gpu.coreCount) cores" : "\(Int(gpu.usage))%"
+        }
+        return gpu.coreCount > 0 ? "\(gpu.coreCount) cores" : "N/A"
+    }
+
+    /// Rolls up the old separate "Thermal / Power" card into one tile: CPU
+    /// die temp as the headline (falling back to battery temp on Intel,
+    /// where `CPUTemperatureMonitor` can't read the die sensors), with fan
+    /// speed and system power draw — the two next-most-telling "is this Mac
+    /// working hard" signals — as a caption. Adapter/battery wattage are
+    /// dropped rather than crammed in; that's charging detail, not thermal.
+    private var hasThermalSignal: Bool {
+        let t = snapshot.thermal
+        return t.cpuTemp > 0 || t.batteryTemp > 0 || t.fanSpeed > 0 || t.systemPower > 0
+    }
+
+    private var temperatureValue: String {
+        let t = snapshot.thermal
+        if t.cpuTemp > 0 { return String(format: "%.0f°C", t.cpuTemp) }
+        if t.batteryTemp > 0 { return String(format: "%.0f°C", t.batteryTemp) }
+        return "N/A"
+    }
+
+    private var temperatureCaption: String? {
+        let t = snapshot.thermal
+        var parts: [String] = []
+        if t.fanSpeed > 0 { parts.append("Fan \(t.fanSpeed) rpm") }
+        if t.systemPower > 0 { parts.append(String(format: "%.0fW draw", t.systemPower)) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Green/yellow/red banding matching `HealthScore`'s recalibrated
+    /// Apple-Silicon thermal thresholds (85°C normal ceiling, 100°C high),
+    /// so a glance at the tile alone tells you whether a reading is routine.
+    private var temperatureColor: Color {
+        let t = snapshot.thermal
+        let temp = t.cpuTemp > 0 ? t.cpuTemp : t.batteryTemp
+        switch temp {
+        case ..<85: return .white
+        case 85..<100: return .yellow
+        default: return .red
+        }
     }
 
     var body: some View {
@@ -463,7 +509,7 @@ private struct HeroHealthCard: View {
                             .font(.system(size: 26, weight: .bold))
                             .foregroundStyle(statusColor)
                     }
-                    Text(snapshot.host)
+                    Text("\(snapshot.host) · up \(HealthScore.formatUptime(snapshot.uptimeSeconds))")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.55))
                     if let issuesDetail {
@@ -521,6 +567,22 @@ private struct HeroHealthCard: View {
                     actionLabel: "View",
                     action: onShowCPU
                 )
+                if hasThermalSignal {
+                    GlassTile(
+                        icon: "thermometer.medium",
+                        title: "Temperature",
+                        value: temperatureValue,
+                        valueColor: temperatureColor,
+                        caption: temperatureCaption
+                    )
+                }
+                if let gpu = snapshot.gpu.first {
+                    GlassTile(
+                        icon: "rectangle.3.group.fill",
+                        title: "GPU",
+                        value: gpuValue(gpu)
+                    )
+                }
             }
 
             if let memoryActionMessage {
@@ -718,6 +780,8 @@ private struct GlassTile: View {
     let icon: String
     let title: String
     let value: String
+    var valueColor: Color = .white
+    var caption: String?
     var actionLabel: String?
     var action: (() -> Void)?
     var secondaryActionLabel: String?
@@ -736,7 +800,12 @@ private struct GlassTile: View {
             }
             Text(value)
                 .font(.subheadline.bold())
-                .foregroundStyle(.white)
+                .foregroundStyle(valueColor)
+            if let caption {
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.55))
+            }
             if actionLabel != nil || secondaryActionLabel != nil {
                 HStack(spacing: 10) {
                     if let actionLabel, let action {
@@ -775,61 +844,3 @@ private struct StatCard<Content: View>: View {
     }
 }
 
-private struct NetworkRow: View {
-    let net: NetworkStatus
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(net.name).font(.subheadline)
-                Spacer()
-                if !net.ip.isEmpty {
-                    Text(net.ip)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
-            HStack {
-                Text("↓ \(String(format: "%.2f", net.rxRateMBs)) MB/s")
-                Spacer()
-                Text("↑ \(String(format: "%.2f", net.txRateMBs)) MB/s")
-            }
-            .font(.caption)
-            .monospacedDigit()
-            .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct GPURow: View {
-    let gpu: GPUStatus
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(gpu.name).font(.subheadline)
-                Spacer()
-                Text(gpu.usage >= 0 ? String(format: "%.0f%%", gpu.usage) : "N/A")
-                    .font(.subheadline)
-                    .monospacedDigit()
-                    .foregroundStyle(gpu.usage >= 0 ? .primary : .secondary)
-            }
-            if !gpu.note.isEmpty {
-                Text(gpu.note)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if gpu.coreCount > 0 {
-                Text("\(gpu.coreCount) cores")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if gpu.usage < 0 {
-                Text("Live usage needs admin privileges myKikau doesn't request — everything else here is accurate.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-}

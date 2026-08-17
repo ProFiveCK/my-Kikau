@@ -14,6 +14,9 @@ struct AnalyzeView: View {
 
     @ObservedObject private var session = AnalyzeScanSession.shared
     @State private var mode: ViewMode = .chart
+    // Marks that this user actually uses Analyse, so the launch-time
+    // background preload (see myKikauApp) knows it's worth doing for them.
+    @AppStorage(AppStorageKey.hasUsedAnalyze) private var hasUsedAnalyze = false
 
     private let tint = ContentView.SidebarItem.analyze.tint
 
@@ -121,6 +124,12 @@ struct AnalyzeView: View {
                             }
                         }
                 }
+            }
+        }
+        .onAppear {
+            hasUsedAnalyze = true
+            if session.entries.isEmpty {
+                session.adoptCacheIfAvailable()
             }
         }
     }

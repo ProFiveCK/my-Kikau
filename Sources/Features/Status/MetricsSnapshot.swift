@@ -135,7 +135,7 @@ public struct BatteryStatus: Codable, Hashable {
 }
 
 public struct ThermalStatus: Codable, Hashable {
-    public var cpuTemp: Double       // Celsius (left 0 on macOS; not synthesized)
+    public var cpuTemp: Double       // Celsius, from real Apple Silicon die sensors; 0 = unavailable (e.g. Intel)
     public var batteryTemp: Double  // Battery temperature in Celsius
     public var fanSpeed: Int         // RPM
     public var fanCount: Int

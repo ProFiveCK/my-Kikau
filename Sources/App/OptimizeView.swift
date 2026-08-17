@@ -2,42 +2,92 @@ import SwiftUI
 import Core
 import Features
 
+/// Maintenance, redesigned around a scan-first flow: instead of a flat grid
+/// of technical checkboxes with no signal on which ones actually matter, a
+/// scan runs every task in dry-run mode (which already reports exactly what
+/// each task would do, at no extra cost — `MaintenanceRunner` was always
+/// capable of this, it just wasn't surfaced as a recommendation step) and
+/// splits results into "Recommended" (found something to fix, pre-selected)
+/// vs. "Already Optimised" (nothing to do). One button then applies the
+/// recommended set for real.
 struct OptimizeView: View {
+    private enum ScanState { case notScanned, scanning, scanned }
+
+    @State private var scanState: ScanState = .notScanned
+    @State private var scanResults: [String: MaintenanceRunner.Result] = [:]
+    @State private var applyResults: [String: MaintenanceRunner.Result] = [:]
     @State private var selectedTasks: Set<String> = []
-    // Defaults to actually running — every task in this catalog is a bounded,
-    // reversible operation (cache refresh, plist repair, etc.), and defaulting
-    // to a no-op preview made "Run Selected" feel broken on first use. Dry Run
-    // stays available as an opt-in for anyone who wants to see what a task
-    // would do before committing.
-    @State private var isDryRun = false
-    @State private var running = false
-    @State private var results: [String: MaintenanceRunner.Result] = [:]
+    @State private var applying = false
     @State private var inFlight: Set<String> = []
     @State private var lastRuns: [String: MaintenanceRunStatus] = [:]
 
     private let tint = ContentView.SidebarItem.optimize.tint
 
+    private var recommendedTasks: [MaintenanceCatalog.Task] {
+        MaintenanceCatalog.tasks.filter { isRecommended($0.id) }
+    }
+
+    private var cleanTasks: [MaintenanceCatalog.Task] {
+        MaintenanceCatalog.tasks.filter { !isRecommended($0.id) }
+    }
+
+    private func isRecommended(_ taskID: String) -> Bool {
+        if case .applied = scanResults[taskID]?.outcome { return true }
+        return false
+    }
+
+    private var headerSubtitle: String {
+        switch scanState {
+        case .notScanned:
+            return "\(MaintenanceCatalog.tasks.count) safe, reversible checks — caches, broken prefs, stale agents"
+        case .scanning:
+            return "Checking your Mac…"
+        case .scanned:
+            return recommendedTasks.isEmpty
+                ? "Nothing to fix — your Mac's maintenance is up to date"
+                : "\(recommendedTasks.count) issue\(recommendedTasks.count == 1 ? "" : "s") found"
+        }
+    }
+
+    private var scanButtonTitle: String {
+        switch scanState {
+        case .notScanned: return "Scan for Issues"
+        case .scanning: return "Scanning…"
+        case .scanned: return "Rescan"
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(alignment: .top) {
                 Image(systemName: ContentView.SidebarItem.optimize.icon)
                     .foregroundStyle(tint)
-                Text("Maintenance").font(.title2).bold()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Optimise").font(.title2).bold()
+                    Text(headerSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(scanState == .scanned && !recommendedTasks.isEmpty ? tint : .secondary)
+                }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Toggle("Dry Run", isOn: $isDryRun)
-                        .toggleStyle(.switch)
-                        .disabled(running)
-                    Text(isDryRun ? "Preview only — nothing changes" : "Runs for real")
-                        .font(.caption2)
-                        .foregroundStyle(isDryRun ? Color.blue : Color.secondary)
+                if scanState == .scanned && !recommendedTasks.isEmpty {
+                    Button(applying ? "Fixing…" : "Fix \(selectedTasks.count) Issue\(selectedTasks.count == 1 ? "" : "s")") {
+                        Task { await applySelected() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+                    .disabled(selectedTasks.isEmpty || applying)
                 }
-                Button(running ? "Running..." : "Run Selected") {
-                    Task { await runSelected() }
+                if scanState == .scanned {
+                    Button(scanButtonTitle) { Task { await runScan() } }
+                        .buttonStyle(.bordered)
+                        .tint(tint)
+                        .disabled(scanState == .scanning || applying)
+                } else {
+                    Button(scanButtonTitle) { Task { await runScan() } }
+                        .buttonStyle(.borderedProminent)
+                        .tint(tint)
+                        .disabled(scanState == .scanning || applying)
                 }
-                .disabled(selectedTasks.isEmpty || running)
-                .buttonStyle(.borderedProminent)
-                .tint(tint)
             }
             .padding()
 
@@ -47,57 +97,112 @@ struct OptimizeView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 8)
 
-            if !results.isEmpty {
-                SummaryBanner(results: results)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-            }
+            switch scanState {
+            case .notScanned:
+                ContentUnavailableView(
+                    "Scan to Find Issues",
+                    systemImage: "wrench.and.screwdriver",
+                    description: Text("Checks \(MaintenanceCatalog.tasks.count) safe, reversible maintenance tasks — broken preferences, stale caches, orphaned launch agents — and recommends exactly what to fix.")
+                )
+            case .scanning:
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Checking \(MaintenanceCatalog.tasks.count) maintenance tasks…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .scanned:
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if !applyResults.isEmpty {
+                            SummaryBanner(results: applyResults)
+                        }
 
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
-                    ForEach(MaintenanceCatalog.tasks) { task in
-                        MaintenanceTaskCard(
-                            task: task,
-                            selected: selectedTasks.contains(task.id),
-                            result: results[task.id],
-                            lastRun: lastRuns[task.id],
-                            inFlight: inFlight.contains(task.id)
-                        ) {
-                            if selectedTasks.contains(task.id) {
-                                selectedTasks.remove(task.id)
-                            } else {
-                                selectedTasks.insert(task.id)
+                        if recommendedTasks.isEmpty {
+                            AllClearBanner()
+                        } else {
+                            TaskSection(
+                                title: "Recommended",
+                                subtitle: "\(recommendedTasks.count) issue\(recommendedTasks.count == 1 ? "" : "s") found",
+                                color: tint
+                            ) {
+                                taskGrid(recommendedTasks)
+                            }
+                        }
+
+                        if !cleanTasks.isEmpty {
+                            TaskSection(title: "Already Optimised", subtitle: "No issues found", color: .secondary) {
+                                taskGrid(cleanTasks)
                             }
                         }
                     }
+                    .padding()
                 }
-                .padding()
             }
         }
         .onAppear { reloadLastRuns() }
     }
 
-    private func runSelected() async {
-        running = true
-        let runner = MaintenanceRunner()
-        let sorted = MaintenanceCatalog.tasks
-            .filter { selectedTasks.contains($0.id) }
-            .map { $0.id }
+    private func taskGrid(_ tasks: [MaintenanceCatalog.Task]) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
+            ForEach(tasks) { task in
+                MaintenanceTaskCard(
+                    task: task,
+                    selected: selectedTasks.contains(task.id),
+                    result: applyResults[task.id] ?? scanResults[task.id],
+                    lastRun: lastRuns[task.id],
+                    inFlight: inFlight.contains(task.id)
+                ) {
+                    if selectedTasks.contains(task.id) {
+                        selectedTasks.remove(task.id)
+                    } else {
+                        selectedTasks.insert(task.id)
+                    }
+                }
+            }
+        }
+    }
 
-        for id in sorted {
+    /// Runs every catalog task in dry-run mode — `MaintenanceRunner` already
+    /// reports `.applied("Would …")` when a task finds something to fix and
+    /// `.unchanged(...)` when it doesn't, so this dry-run pass doubles as the
+    /// scan/recommendation step with no separate detection logic needed.
+    private func runScan() async {
+        scanState = .scanning
+        scanResults = [:]
+        applyResults = [:]
+        selectedTasks = []
+        let runner = MaintenanceRunner()
+        for task in MaintenanceCatalog.tasks {
+            inFlight.insert(task.id)
+            let result = await runner.run(taskID: task.id, dryRun: true)
+            scanResults[task.id] = result
+            if case .applied = result.outcome {
+                selectedTasks.insert(task.id)
+            }
+            inFlight.remove(task.id)
+        }
+        scanState = .scanned
+    }
+
+    private func applySelected() async {
+        applying = true
+        let runner = MaintenanceRunner()
+        let ids = MaintenanceCatalog.tasks.map(\.id).filter { selectedTasks.contains($0) }
+        for id in ids {
             inFlight.insert(id)
-            let result = await runner.run(taskID: id, dryRun: isDryRun)
-            results[id] = result
+            let result = await runner.run(taskID: id, dryRun: false)
+            applyResults[id] = result
             lastRuns[id] = MaintenanceRunStatus(
                 timestamp: Date(),
                 outcome: result.outcome.label,
                 detail: result.outcome.detail,
-                dryRun: isDryRun
+                dryRun: false
             )
             inFlight.remove(id)
         }
-
-        running = false
+        applying = false
     }
 
     private func reloadLastRuns() {
@@ -122,6 +227,42 @@ private struct MaintenanceRunStatus: Hashable {
     let outcome: String
     let detail: String?
     let dryRun: Bool
+}
+
+/// Section grouping for the scanned state — "Recommended" vs. "Already
+/// Optimised" — with a small colored count badge instead of a plain heading,
+/// so the recommendation reads as a recommendation and not just a category label.
+private struct TaskSection<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let color: Color
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(title).font(.headline)
+                Text(subtitle)
+                    .font(.caption.bold())
+                    .foregroundStyle(color)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(color.opacity(0.15), in: Capsule())
+            }
+            content
+        }
+    }
+}
+
+private struct AllClearBanner: View {
+    var body: some View {
+        Label("Your Mac's maintenance is up to date — nothing needs fixing right now.", systemImage: "checkmark.seal.fill")
+            .font(.subheadline)
+            .foregroundStyle(.green)
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+    }
 }
 
 private struct MaintenanceTaskCard: View {

@@ -93,6 +93,19 @@ else
   echo "⚠ no app icon found; bundle will have no icon"
 fi
 
+# Copy the menu bar (status item) icon — a separate, simplified monochrome
+# vector distinct from AppIcon.icns. It's loaded at runtime with isTemplate =
+# true so AppKit recolors it automatically for the light/dark menu bar, the
+# same as every other status item. Kept as a small standalone PDF (not baked
+# into AppIcon.icns, which is fixed-size raster and full color) so it stays
+# crisp at any menu bar scale.
+if [[ -f AppIcon/MenuBarIcon.pdf ]]; then
+  echo "› copying MenuBarIcon.pdf"
+  cp AppIcon/MenuBarIcon.pdf "$app_bundle/Contents/Resources/MenuBarIcon.pdf"
+else
+  echo "⚠ AppIcon/MenuBarIcon.pdf not found; menu bar will fall back to the built-in drawn icon"
+fi
+
 # Touch the bundle so LaunchServices picks up changes.
 touch "$app_bundle"
 

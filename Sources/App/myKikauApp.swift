@@ -9,13 +9,39 @@ import UI
 struct myKikauApp: App {
     @StateObject private var updaterViewModel = UpdaterViewModel()
     @AppStorage(AppStorageKey.showDockIcon) private var showDockIcon = true
+    // Gates the launch-time Analyze preload below — only set once the user
+    // has actually opened Analyse at least once (see AnalyzeView.onAppear).
+    @AppStorage(AppStorageKey.hasUsedAnalyze) private var hasUsedAnalyze = false
+    // Shared singleton, not a fresh instance — @ObservedObject here just
+    // subscribes this Scene to its existing @Published changes so the menu
+    // bar icon can react to the last Scan Everything result.
+    @ObservedObject private var scanCoordinator = ScanEverythingCoordinator.shared
+
+    /// Whether the menu bar icon's accent dot should show. Deliberately a
+    /// high bar (500MB, matching the "worth flagging" threshold already used
+    /// for stale-app suggestions in UninstallView) — this is meant to say
+    /// "there's something worth a look," not turn on for every stray cache
+    /// file, or it stops meaning anything.
+    private var hasActionableFindings: Bool {
+        scanCoordinator.combinedReclaimableBytes >= 500_000_000
+    }
 
     var body: some Scene {
-        WindowGroup(id: "main") {
+        // `Window`, not `WindowGroup`: a WindowGroup hands back a *new*
+        // window every time `openWindow(id: "main")` is called (e.g. from
+        // the menu bar HUD's Dashboard/Clean buttons), so clicking those
+        // twice left two overlapping main windows open. `Window` is SwiftUI's
+        // singleton-scene type — macOS reuses the one existing window and
+        // just brings it forward on repeat `openWindow` calls, same as a
+        // Settings window.
+        Window("myKikau", id: "main") {
             RootView()
                 .frame(minWidth: 800, minHeight: 500)
                 .environmentObject(updaterViewModel)
-                .onAppear { DockIconController.apply(showDockIcon: showDockIcon) }
+                .onAppear {
+                    DockIconController.apply(showDockIcon: showDockIcon)
+                    schedulePreloadIfNeeded()
+                }
                 .onChange(of: showDockIcon) { _, value in
                     DockIconController.apply(showDockIcon: value)
                 }
@@ -30,15 +56,116 @@ struct myKikauApp: App {
         MenuBarExtra {
             HUDView()
         } label: {
-            Image(systemName: "internaldrive")
+            // .renderingMode(.template) is the important part here: SwiftUI's
+            // Image(nsImage:) doesn't reliably inherit NSImage.isTemplate on
+            // its own inside a MenuBarExtra label, which is why this icon was
+            // staying teal-tinted instead of following the other menu bar
+            // icons between light/dark menu bar themes. Forcing template mode
+            // explicitly makes AppKit treat the drawn shape as a plain alpha
+            // mask and recolor it exactly like every other status item.
+            //
+            // The accent dot is a deliberately separate, NON-template layer
+            // stacked on top rather than baked into the template image — a
+            // template image is a single alpha mask recolored as one flat
+            // unit, so any color drawn *inside* it would just get flattened
+            // to the same black/white as everything else. Keeping it as its
+            // own small Circle is what lets it stay teal while the base icon
+            // still blends in.
+            ZStack(alignment: .topTrailing) {
+                Image(nsImage: DockIconController.menuBarImage())
+                    .renderingMode(.template)
+                if hasActionableFindings {
+                    Circle()
+                        .fill(Color.teal)
+                        .frame(width: 5, height: 5)
+                        .offset(x: 1, y: -1)
+                }
+            }
         }
         .menuBarExtraStyle(.window)
+    }
+
+    /// Warms the Analyze disk-usage cache in the background a few seconds
+    /// after launch, so opening Analyse later in the session shows results
+    /// immediately instead of requiring a manual "Scan Home" first. Gated on
+    /// `hasUsedAnalyze` (skip entirely for people who've never opened that
+    /// screen — no point paying the cost for a feature they don't use) and,
+    /// inside `AnalyzeScanSession.preload`, on a persisted once-a-day check.
+    /// The delay keeps this out of the way of whatever actually happens
+    /// right at launch (window animation, Sparkle's update check, etc.).
+    private func schedulePreloadIfNeeded() {
+        guard hasUsedAnalyze else { return }
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            AnalyzeScanSession.shared.preload(FileManager.default.homeDirectoryForCurrentUser)
+        }
     }
 }
 
 enum DockIconController {
     static func apply(showDockIcon: Bool) {
         NSApplication.shared.setActivationPolicy(showDockIcon ? .regular : .accessory)
+    }
+
+    /// The menu bar icon. Loads a purpose-built monochrome vector asset
+    /// (`AppIcon/MenuBarIcon.pdf` — a simplified silhouette of the same
+    /// broom/fan mark as the full-color app icon, redrawn bold enough to
+    /// still read clearly at 18x18pt) bundled into `Contents/Resources` by
+    /// `scripts/build-app.sh`.
+    ///
+    /// This replaced an in-code `NSBezierPath` drawing that also set
+    /// `isTemplate = true` and, in the SwiftUI label, `.renderingMode(.template)`
+    /// — correct in theory, but it still wasn't reliably recoloring with the
+    /// system menu bar theme in practice. Loading a real bundled template PDF
+    /// is the same mechanism Xcode's asset catalogs use under the hood for
+    /// template menu bar icons, and doesn't depend on a `lockFocus()`-drawn
+    /// NSImage's template flag surviving SwiftUI's `Image(nsImage:)` bridge.
+    static func menuBarImage() -> NSImage {
+        if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "pdf"),
+           let image = NSImage(contentsOf: url) {
+            image.isTemplate = true
+            image.size = NSSize(width: 18, height: 18)
+            return image
+        }
+        // Fallback only reached if the bundled PDF is missing — e.g. running
+        // via `swift run` in development rather than through
+        // scripts/build-app.sh, which is what actually assembles
+        // Contents/Resources. Keeps the menu bar from going blank in that case.
+        return legacyDrawnImage()
+    }
+
+    private static func legacyDrawnImage() -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size)
+        image.isTemplate = true
+
+        image.lockFocus()
+        NSColor.black.set()
+
+        let rect = NSRect(origin: .zero, size: size)
+        let inset: CGFloat = 1.5
+        let outer = rect.insetBy(dx: inset, dy: inset)
+        let path = NSBezierPath(roundedRect: outer, xRadius: 4.5, yRadius: 4.5)
+        path.lineWidth = 1.5
+        path.stroke()
+
+        let cx = rect.midX
+        let cy = rect.midY
+        let knotW: CGFloat = 6
+        let knotH: CGFloat = 3.5
+        let knot = NSBezierPath()
+        knot.move(to: NSPoint(x: cx - knotW / 2, y: cy - knotH / 2))
+        knot.curve(to: NSPoint(x: cx + knotW / 2, y: cy + knotH / 2),
+                   controlPoint1: NSPoint(x: cx - knotW / 2, y: cy + knotH),
+                   controlPoint2: NSPoint(x: cx + knotW / 2, y: cy - knotH))
+        knot.curve(to: NSPoint(x: cx - knotW / 2, y: cy - knotH / 2),
+                   controlPoint1: NSPoint(x: cx + knotW / 2, y: cy + knotH),
+                   controlPoint2: NSPoint(x: cx - knotW / 2, y: cy - knotH))
+        knot.lineWidth = 1.2
+        knot.stroke()
+
+        image.unlockFocus()
+        return image
     }
 }
 
@@ -69,9 +196,9 @@ struct ContentView: View {
             switch self {
             case .status: "Status"
             case .clean: "Clean"
-            case .uninstall: "Uninstall"
+            case .uninstall: "Apps"
             case .analyze: "Analyse"
-            case .duplicates: "Duplicates"
+            case .duplicates: "Files"
             case .optimize: "Optimise"
             case .purge: "Purge"
             case .history: "History"
