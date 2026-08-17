@@ -94,7 +94,7 @@ rm -rf "$UPLOAD_DIR"
 mkdir -p "$UPLOAD_DIR"
 cp "$DMG" "$UPLOAD_DIR/"
 cp "${RELEASE_DIR}/appcast.xml" "$UPLOAD_DIR/"
-cp "docs/download-page-mockup.html" "$WORDPRESS_PAGE"
+cp "docs/wordpress-page.html" "$WORDPRESS_PAGE"
 
 cat <<EOF
 

@@ -165,14 +165,15 @@ Info.plist matches this location.
 
 ## 6. Update the website content **[AGENT]**
 
-`docs/WEBSITE_COPY.md` is the source of truth for the download page's copy.
-Before deploying, update that file (and the mirrored
-`docs/download-page-mockup.html` / `wordpress-page.html`) to describe what
-actually changed — version number, download size, and a fresh Release Notes
-section (New / Improved / Fixed). Then run `scripts/prepare-deploy.sh` to
-regenerate the `website-upload/<version>/wordpress-page.html` from
-`docs/download-page-mockup.html`, and finally `scripts/deploy-website.py` to
-push it live.
+`docs/WEBSITE_COPY.md` is the source of truth for the download page's copy, and
+`docs/wordpress-page.html` is the production WordPress fragment whose existing
+`.mk-*` layout and styling must be preserved. Before deploying, update only the
+release-specific text in those two files — version number, download size, and
+the latest-release bullets. `docs/download-page-mockup.html` is an alternate
+standalone design mockup and must never be uploaded to WordPress. Then run
+`scripts/prepare-deploy.sh` to copy `docs/wordpress-page.html` into
+`website-upload/<version>/wordpress-page.html`, and finally run
+`scripts/deploy-website.py` to push it live.
 
 The feature-highlight cards in the HTML must match `WEBSITE_COPY.md`'s
 feature bullet list — this is exactly what drifted and caused the stale

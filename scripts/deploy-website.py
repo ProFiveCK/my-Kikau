@@ -245,6 +245,17 @@ def main():
             print(f"ERROR: wordpress page missing marker: {marker}", file=sys.stderr)
             sys.exit(1)
 
+    # The production WordPress page is a content fragment using the established
+    # .mk-* design system. Reject standalone design mockups so a release-text
+    # update cannot accidentally replace the live page layout again.
+    if 'class="mk-page"' not in page_html or "<!DOCTYPE html>" in page_html:
+        print(
+            "ERROR: wordpress page must be the production .mk-page fragment, "
+            "not a standalone design mockup",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     # Check page doesn't reference old versions
     old_version_pattern = re.compile(r"myKikau-\d+\.\d+\.\d+\.dmg")
     all_versions_in_page = set(old_version_pattern.findall(page_html))
@@ -416,8 +427,8 @@ echo json_encode(['ok'=>false,'error'=>'unknown_action']);
         page_text = pub_page.decode("utf-8", "replace")
         if f"myKikau-{version}.dmg" not in page_text:
             errors.append(f"product page missing myKikau-{version}.dmg")
-        elif f"v{version}" not in page_text or f"Version {version}" not in page_text:
-            errors.append(f"product page missing visible version {version} markers")
+        elif f"myKikau {version}" not in page_text:
+            errors.append(f"product page missing visible myKikau {version} text")
         else:
             print(f"  WP page:  OK (version {version} confirmed)")
     except Exception as e:
