@@ -416,8 +416,8 @@ echo json_encode(['ok'=>false,'error'=>'unknown_action']);
         page_text = pub_page.decode("utf-8", "replace")
         if f"myKikau-{version}.dmg" not in page_text:
             errors.append(f"product page missing myKikau-{version}.dmg")
-        elif f"Download myKikau {version}" not in page_text:
-            errors.append(f"product page missing 'Download myKikau {version}' text")
+        elif f"v{version}" not in page_text or f"Version {version}" not in page_text:
+            errors.append(f"product page missing visible version {version} markers")
         else:
             print(f"  WP page:  OK (version {version} confirmed)")
     except Exception as e:
