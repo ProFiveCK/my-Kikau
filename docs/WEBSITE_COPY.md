@@ -8,7 +8,7 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.4.3 · 2.8 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.5.0 · 3.0 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
@@ -29,7 +29,7 @@ Full Disk Access is requested on first launch and explained plainly — myKikau 
 ## System requirements
 
 - macOS 14 (Sonoma) or later — Apple Silicon or Intel
-- ~2 MB disk space (installer download)
+- ~3 MB disk space (installer download)
 - Full Disk Access permission (requested on first launch; some features are limited without it)
 
 ## Open source
@@ -38,6 +38,20 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes (template — duplicate per version)
+
+### Version 0.5.0 — August 2026
+
+**New**
+- Live GPU utilisation and CPU temperature are now available in both the main dashboard and menu bar HUD
+- Analyse scans can be reused across views, so moving between disk tools no longer means starting over
+
+**Improved**
+- Dashboard cards, metric details, and window navigation were redesigned for a clearer at-a-glance view without duplicate windows
+- Optimise now groups maintenance tasks more clearly and gives stronger preview, progress, and completion feedback
+- Apps and Analyse workflows have clearer empty states, actions, and scan-result presentation
+
+**Fixed**
+- Opening myKikau from the menu bar now reuses and focuses the existing main window instead of creating duplicates
 
 ### Version 0.4.3 — August 2026
 

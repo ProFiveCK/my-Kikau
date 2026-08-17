@@ -171,8 +171,8 @@
       <span class="badge">by Project Five</span>
       <h1>Clean, uninstall, and understand your Mac — without giving up control.</h1>
       <p class="sub">myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.</p>
-      <a class="btn-primary" href="https://www.projectfive.co.ck/downloads/myKikau-0.4.3.dmg">
-        ⬇ Download for Mac <span class="sizemeta">v0.4.3 · Apple Silicon & Intel · 2.8 MB</span>
+      <a class="btn-primary" href="https://www.projectfive.co.ck/downloads/myKikau-0.5.0.dmg">
+        ⬇ Download for Mac <span class="sizemeta">v0.5.0 · Apple Silicon & Intel · 3.0 MB</span>
       </a>
       <a class="req-link" href="#requirements">Requires macOS 14 Sonoma or later</a>
     </div>
@@ -237,7 +237,7 @@
           <h3>System Requirements</h3>
           <ul>
             <li>macOS 14 (Sonoma) or later — Apple Silicon or Intel</li>
-            <li>~2 MB disk space (installer download)</li>
+            <li>~3 MB disk space (installer download)</li>
             <li>Full Disk Access permission (requested on first launch; some features are limited without it)</li>
           </ul>
         </div>
@@ -257,12 +257,21 @@
       <h2>Release notes</h2>
       <div class="rn-card">
         <div class="rn-version">Latest release</div>
-        <h3>Version 0.4.3 — August 2026</h3>
+        <h3>Version 0.5.0 — August 2026</h3>
+        <h4>New</h4>
+        <ul>
+          <li>Live GPU utilisation and CPU temperature are now available in both the main dashboard and menu bar HUD</li>
+          <li>Analyse scans can be reused across views, so moving between disk tools no longer means starting over</li>
+        </ul>
         <h4>Improved</h4>
         <ul>
-          <li>Menu bar icon redesigned as a custom monochrome vector glyph (bundled PDF) that renders correctly in the system tray across light and dark menu bar themes</li>
-          <li>Teal accent dot appears on the menu bar icon when a Full System Scan finds 500MB+ of reclaimable space</li>
-          <li>Menu bar icon now uses .renderingMode(.template) to reliably follow the system menu bar colour</li>
+          <li>Dashboard cards, metric details, and window navigation were redesigned for a clearer at-a-glance view without duplicate windows</li>
+          <li>Optimise now groups maintenance tasks more clearly and gives stronger preview, progress, and completion feedback</li>
+          <li>Apps and Analyse workflows have clearer empty states, actions, and scan-result presentation</li>
+        </ul>
+        <h4>Fixed</h4>
+        <ul>
+          <li>Opening myKikau from the menu bar now reuses and focuses the existing main window instead of creating duplicates</li>
         </ul>
         <a class="changelog-link" href="https://github.com/ProFiveCK/my-Kikau/releases">Full changelog on GitHub →</a>
       </div>
