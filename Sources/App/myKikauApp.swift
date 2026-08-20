@@ -83,6 +83,14 @@ struct myKikauApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+
+        // A real Preferences window — SwiftUI's `Settings` scene wires this
+        // up to ⌘, and an App menu "Settings…" item automatically. Previously
+        // the app's only toggle (Show Dock Icon) lived inside About, and there
+        // was no Launch at Login option anywhere.
+        Settings {
+            SettingsView()
+        }
     }
 
     /// Warms the Analyze disk-usage cache in the background a few seconds

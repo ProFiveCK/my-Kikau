@@ -31,6 +31,14 @@ public final class MaintenanceRunner {
     /// 30 days, matching Mole's `MOLE_SAVED_STATE_AGE_DAYS`.
     private let savedStateAgeDays: Double = 30
 
+    /// Minimum days between recommending a task that has no real "is this
+    /// stale" check of its own (`finder_cache`, `launch_services` — the
+    /// underlying commands always succeed whether or not anything needed
+    /// fixing). QuickLook/icon caches rebuild themselves continuously, so a
+    /// shorter interval; LaunchServices re-registration is heavier and
+    /// rarely needed unless "Open With" starts misbehaving, so a longer one.
+    private let staleAfterDays = (finderCache: 14.0, launchServices: 30.0)
+
     public init(home: URL? = nil, deleter: SafeFileDeleter = .shared, opLog: OperationLog = .shared) {
         self.home = home ?? FileManager.default.homeDirectoryForCurrentUser
         self.deleter = deleter
@@ -172,6 +180,18 @@ public final class MaintenanceRunner {
     private func runLaunchServices(dryRun: Bool) async -> MaintenanceOutcome {
         let commands = launchServicesCommands()
         guard !commands.isEmpty else { return .unavailable("lsregister not found") }
+
+        // lsregister -gc / -r always exit 0 whether or not the database was
+        // actually stale — there's no "check" mode to inspect first, unlike
+        // the other tasks in this file. Without a gate here, the scan (which
+        // runs every task with dryRun: true) would mark this "Recommended"
+        // on every single scan. Gate on how long it's been since the last
+        // real repair instead, so it only surfaces again once it's plausibly
+        // due, same as the other tasks report `.unchanged` when there's
+        // nothing to fix.
+        if dryRun, let days = daysSinceLastSuccess(taskID: "launch_services"), days < staleAfterDays.launchServices {
+            return .unchanged("Repaired \(daysDescription(days)) ago")
+        }
 
         var applied = 0
         var failed = 0
@@ -330,6 +350,13 @@ public final class MaintenanceRunner {
     // MARK: - Task: finder_cache
 
     private func runFinderCache(dryRun: Bool) async -> MaintenanceOutcome {
+        // Same issue as launch_services: qlmanage -r[cache] always exits 0
+        // regardless of whether the cache was actually stale, so gate the
+        // recommendation on elapsed time since the last real refresh.
+        if dryRun, let days = daysSinceLastSuccess(taskID: "finder_cache"), days < staleAfterDays.finderCache {
+            return .unchanged("Refreshed \(daysDescription(days)) ago")
+        }
+
         let qlCache = await runProcess("/usr/bin/qlmanage", arguments: ["-r", "cache"], dryRun: dryRun)
         let qlRefresh = await runProcess("/usr/bin/qlmanage", arguments: ["-r"], dryRun: dryRun)
 
@@ -585,6 +612,27 @@ public final class MaintenanceRunner {
             }
         }
         return false
+    }
+
+    // MARK: - Staleness gating (for tasks with no real "would this change anything" check)
+
+    /// Days since the last successful, real (non-dry-run) run of `taskID`,
+    /// or `nil` if it has never succeeded. Reads the same operation log every
+    /// other task's "last run" UI already relies on, so no new state.
+    private func daysSinceLastSuccess(taskID: String) -> Double? {
+        let action = "optimize.\(taskID)"
+        guard let entry = opLog.recent(limit: 10_000).first(where: {
+            $0.action == action && $0.outcome == .success && !$0.dryRun
+        }) else {
+            return nil
+        }
+        return max(0, Date().timeIntervalSince(entry.timestamp) / 86400)
+    }
+
+    private func daysDescription(_ days: Double) -> String {
+        let whole = Int(days)
+        if whole < 1 { return "today" }
+        return "\(whole) day\(whole == 1 ? "" : "s")"
     }
 
     // MARK: - OperationLog integration

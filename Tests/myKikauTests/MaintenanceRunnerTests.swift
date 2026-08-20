@@ -20,6 +20,16 @@ struct MaintenanceRunnerTests {
         try? Data(count: size).write(to: url)
     }
 
+    /// `OperationLog.append` writes fire-and-forget on its own queue, so poll
+    /// briefly for the entry to land before relying on it being readable —
+    /// same pattern as `runLogsToOperationLog` below.
+    private func waitForLogEntry(_ opLog: OperationLog, action: String) async {
+        for _ in 0..<50 {
+            if opLog.recent(limit: 10).contains(where: { $0.action == action }) { return }
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
+    }
+
     private func setModDate(_ url: URL, daysAgo: Int) {
         let date = Date().addingTimeInterval(-Double(daysAgo) * 86400)
         try? FileManager.default.setAttributes(
@@ -281,6 +291,50 @@ struct MaintenanceRunnerTests {
             // expected
         } else {
             Issue.record("Expected .unchanged when no quarantine DB, got \(result.outcome)")
+        }
+    }
+
+    // MARK: - Staleness gating (finder_cache, launch_services)
+
+    @Test("finder_cache dry-run reports unchanged shortly after a real refresh")
+    func finderCacheUnchangedWhenRecentlyRun() async {
+        let logURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".log")
+        let opLog = OperationLog(logURL: logURL, enabled: true)
+        defer { try? FileManager.default.removeItem(at: logURL) }
+
+        let runner = MaintenanceRunner(opLog: opLog)
+        // A real (non-dry-run) run only succeeds if qlmanage exists — skip
+        // the assertion on hosts where it doesn't (e.g. non-macOS CI).
+        let real = await runner.run(taskID: "finder_cache", dryRun: false)
+        guard case .applied = real.outcome else { return }
+        await waitForLogEntry(opLog, action: "optimize.finder_cache")
+
+        let scan = await runner.run(taskID: "finder_cache", dryRun: true)
+        if case .unchanged = scan.outcome {
+            // expected — recommendation gated by recent success
+        } else {
+            Issue.record("Expected .unchanged for finder_cache right after a real run, got \(scan.outcome)")
+        }
+    }
+
+    @Test("launch_services dry-run reports unchanged shortly after a real repair")
+    func launchServicesUnchangedWhenRecentlyRun() async {
+        let logURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".log")
+        let opLog = OperationLog(logURL: logURL, enabled: true)
+        defer { try? FileManager.default.removeItem(at: logURL) }
+
+        let runner = MaintenanceRunner(opLog: opLog)
+        let real = await runner.run(taskID: "launch_services", dryRun: false)
+        guard case .applied = real.outcome else { return }
+        await waitForLogEntry(opLog, action: "optimize.launch_services")
+
+        let scan = await runner.run(taskID: "launch_services", dryRun: true)
+        if case .unchanged = scan.outcome {
+            // expected — recommendation gated by recent success
+        } else {
+            Issue.record("Expected .unchanged for launch_services right after a real run, got \(scan.outcome)")
         }
     }
 

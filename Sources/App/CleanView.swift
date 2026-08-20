@@ -7,8 +7,16 @@ struct CleanView: View {
     @State private var plans: [CleanScanner.Section: SafeFileDeleter.Plan] = [:]
     @State private var scanning = false
     @State private var selectedPlan: SafeFileDeleter.Plan?
+    // Which sections `selectedPlan` covers, so the sheet's completion handler
+    // knows what to clear afterward — a single section for a per-card review,
+    // or every non-empty section for "Review All".
+    @State private var selectedSections: [CleanScanner.Section] = []
 
     private let tint = ContentView.SidebarItem.clean.tint
+
+    private var totalReclaimable: Int64 {
+        plans.values.reduce(0) { $0 + $1.totalReclaimable }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,7 +25,14 @@ struct CleanView: View {
                     .foregroundStyle(tint)
                 Text("System Cleanup").font(.title2).bold()
                 Spacer()
-                Button(scanning ? "Scanning..." : "Scan") {
+                if totalReclaimable > 0 {
+                    Button("Review All (\(ByteSizeFormatter.format(totalReclaimable)))") {
+                        reviewAll()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+                }
+                let scanButton = Button(scanning ? "Scanning..." : "Scan") {
                     scanning = true
                     Task.detached {
                         let result = CleanScanner.scanAll()
@@ -27,9 +42,13 @@ struct CleanView: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
                 .tint(tint)
                 .disabled(scanning)
+                if totalReclaimable > 0 {
+                    scanButton.buttonStyle(.bordered)
+                } else {
+                    scanButton.buttonStyle(.borderedProminent)
+                }
             }
             .padding()
 
@@ -51,6 +70,7 @@ struct CleanView: View {
                                     tint: tint,
                                     maxReclaimable: maxReclaimable
                                 ) {
+                                    selectedSections = [section]
                                     selectedPlan = plan
                                 }
                             }
@@ -64,12 +84,13 @@ struct CleanView: View {
             PlanReviewView(plan: plan, title: "Clean", onCancel: { selectedPlan = nil }) { dryRun in
                 let result = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: "clean")
                 if !dryRun, result.failed == 0 {
-                    for (section, existingPlan) in plans where existingPlan.id == plan.id {
+                    for section in selectedSections {
                         plans[section] = SafeFileDeleter.Plan(items: [], protectedItems: [], missingItems: [])
                         ScanEverythingCoordinator.shared.clearCleanPlan(for: section)
                     }
                 }
                 selectedPlan = nil
+                selectedSections = []
             }
         }
         .onAppear {
@@ -79,6 +100,17 @@ struct CleanView: View {
                 plans = cached
             }
         }
+    }
+
+    /// Merges every non-empty section's plan into one, so all of Clean can be
+    /// reviewed and confirmed in a single sheet instead of one card at a time.
+    private func reviewAll() {
+        let sections = CleanScanner.Section.allCases.filter { plans[$0]?.isEmpty == false }
+        let items = sections.flatMap { plans[$0]?.items ?? [] }
+        let protectedItems = sections.flatMap { plans[$0]?.protectedItems ?? [] }
+        let missingItems = sections.flatMap { plans[$0]?.missingItems ?? [] }
+        selectedSections = sections
+        selectedPlan = SafeFileDeleter.Plan(items: items, protectedItems: protectedItems, missingItems: missingItems)
     }
 }
 

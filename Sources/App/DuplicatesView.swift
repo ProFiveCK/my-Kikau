@@ -78,7 +78,7 @@ struct DuplicatesView: View {
             if largeFiles.isEmpty, let cached = coordinator.largeFiles {
                 largeFiles = cached
             }
-            if AppNavigation.shared.pendingDuplicatesMode == Mode.largeFiles.rawValue || AppNavigation.shared.pendingDuplicatesMode == "largeFiles" {
+            if AppNavigation.shared.pendingDuplicatesMode == .largeFiles {
                 mode = .largeFiles
                 AppNavigation.shared.pendingDuplicatesMode = nil
             }

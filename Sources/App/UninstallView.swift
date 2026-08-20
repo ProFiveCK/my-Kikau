@@ -14,6 +14,8 @@ struct UninstallView: View {
     @State private var executing = false
     @State private var executionSummary: String?
     @State private var completionAlert: CompletionAlert?
+    @State private var searchText = ""
+    @State private var sortOption: SortOption = .size
 
     /// A completion popup at the end of an uninstall — the old small caption
     /// text at the bottom of the list was easy to miss entirely, especially
@@ -22,6 +24,15 @@ struct UninstallView: View {
         let id = UUID()
         let title: String
         let message: String
+    }
+
+    /// Size is the default — it's the reason most people open an uninstaller
+    /// in the first place (largest apps sorts appear before you touch the picker).
+    private enum SortOption: String, CaseIterable, Identifiable {
+        case size = "Size"
+        case name = "Name"
+        case lastUsed = "Last Used"
+        var id: String { rawValue }
     }
 
     private let tint = ContentView.SidebarItem.uninstall.tint
@@ -34,6 +45,23 @@ struct UninstallView: View {
 
     private var totalFootprint: Int64 {
         apps.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    private var visibleApps: [AppInventory.AppInfo] {
+        let filtered = searchText.isEmpty
+            ? apps
+            : apps.filter {
+                $0.name.localizedCaseInsensitiveContains(searchText)
+                    || ($0.bundleID?.localizedCaseInsensitiveContains(searchText) ?? false)
+            }
+        switch sortOption {
+        case .size:
+            return filtered.sorted { $0.sizeBytes > $1.sizeBytes }
+        case .name:
+            return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .lastUsed:
+            return filtered.sorted { ($0.lastUsed ?? .distantPast) > ($1.lastUsed ?? .distantPast) }
+        }
     }
 
     var body: some View {
@@ -66,14 +94,48 @@ struct UninstallView: View {
             }
             .padding()
 
+            if !apps.isEmpty {
+                HStack(spacing: 10) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search apps or bundle ID", text: $searchText)
+                            .textFieldStyle(.plain)
+                        if !searchText.isEmpty {
+                            Button {
+                                searchText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(6)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+
+                    Picker("Sort", selection: $sortOption) {
+                        ForEach(SortOption.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 150)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+
             if apps.isEmpty && !scanning {
                 ContentUnavailableView(
                     "No Apps Scanned",
                     systemImage: "app.dashed",
                     description: Text("Click Scan Apps to list installed applications and find their leftovers.")
                 )
+            } else if !apps.isEmpty && visibleApps.isEmpty {
+                ContentUnavailableView.search(text: searchText)
             } else {
-                List(apps) { app in
+                List(visibleApps) { app in
                     AppRow(app: app, onUninstall: { selectApp(app) })
                         .opacity(AppInventory.isProtected(app) ? 0.5 : 1)
                 }

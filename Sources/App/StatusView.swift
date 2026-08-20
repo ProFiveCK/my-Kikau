@@ -4,6 +4,11 @@ import Core
 import Features
 import UI
 
+/// The one branded accent color used inside `HeroHealthCard` (its "Great"/
+/// "Good" status color and its glass-tile action-button color) — named once
+/// so the two usages can't quietly drift apart.
+private let heroAccentTeal = Color(red: 0.42, green: 0.94, blue: 0.86)
+
 struct StatusView: View {
     /// Lets the dashboard jump straight to another sidebar screen.
     var onNavigate: (ContentView.SidebarItem) -> Void = { _ in }
@@ -283,7 +288,7 @@ private struct FullSystemScanCard: View {
                             value: "\(largeFiles.count) · \(ByteSizeFormatter.format(total))",
                             tint: ContentView.SidebarItem.analyze.tint,
                             action: {
-                                AppNavigation.shared.pendingDuplicatesMode = "largeFiles"
+                                AppNavigation.shared.pendingDuplicatesMode = .largeFiles
                                 onNavigate(.duplicates)
                             }
                         )
@@ -409,23 +414,24 @@ private struct HeroHealthCard: View {
     let onShowMemory: () -> Void
     private let canPurgeMemory = MemoryOptimizer.isPurgeAvailable()
 
-    private var statusWord: String {
+    /// Word, explanation, and color all derived from one shared set of score
+    /// bands, so they can't drift out of sync the way they used to — the old
+    /// separate `statusWord` (bands at 90/75/60) and `statusColor` (bands at
+    /// 85/65/45) disagreed in the 75–85 range, rendering the word "Good" in
+    /// cautionary yellow.
+    private var healthBand: (word: String, explanation: String, color: Color) {
         switch snapshot.healthScore {
-        case 90...: "Great"
-        case 75..<90: "Good"
-        case 60..<75: "OK"
-        default: "Needs Maintenance"
+        case 90...: return ("Great", "No urgent issues detected", heroAccentTeal)
+        case 75..<90: return ("Good", "Minor pressure detected", heroAccentTeal)
+        case 60..<75: return ("OK", "Some maintenance is worth reviewing", .yellow)
+        case 40..<60: return ("Needs Maintenance", "Action recommended", .orange)
+        default: return ("Needs Maintenance", "Action recommended", .red)
         }
     }
 
-    private var statusExplanation: String {
-        switch snapshot.healthScore {
-        case 90...: "No urgent issues detected"
-        case 75..<90: "Minor pressure detected"
-        case 60..<75: "Some maintenance is worth reviewing"
-        default: "Action recommended"
-        }
-    }
+    private var statusWord: String { healthBand.word }
+    private var statusExplanation: String { healthBand.explanation }
+    private var statusColor: Color { healthBand.color }
 
     /// Everything after the first ":" in e.g. "Fair: High CPU, Heavy Disk IO" —
     /// empty when the score has no active issues (message is just "Excellent").
@@ -433,15 +439,6 @@ private struct HeroHealthCard: View {
         let parts = snapshot.healthScoreMsg.components(separatedBy: ": ")
         guard parts.count > 1 else { return nil }
         return parts.dropFirst().joined(separator: ": ")
-    }
-
-    private var statusColor: Color {
-        switch snapshot.healthScore {
-        case 85...: Color(red: 0.42, green: 0.94, blue: 0.86)
-        case 65..<85: .yellow
-        case 45..<65: .orange
-        default: .red
-        }
     }
 
     private var cpuValue: String {
@@ -590,19 +587,6 @@ private struct HeroHealthCard: View {
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.6))
             }
-
-            if let net = snapshot.network.first(where: { $0.rxRateMBs > 0 || $0.txRateMBs > 0 }) ?? snapshot.network.first {
-                HStack(spacing: 16) {
-                    Label(net.name, systemImage: "wifi")
-                    Spacer()
-                    Text("↓ \(String(format: "%.1f", net.rxRateMBs)) MB/s")
-                    Text("↑ \(String(format: "%.1f", net.txRateMBs)) MB/s")
-                }
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.white.opacity(0.75))
-                .padding(.horizontal, 4)
-            }
         }
         .padding(20)
         .background(
@@ -692,12 +676,10 @@ private struct ProcessListSheet: View {
                                 .foregroundStyle(.secondary)
                                 .frame(width: 82, alignment: .trailing)
                         }
-                        if mode == .memory {
-                            Button("Quit") {
-                                confirmQuit = row
-                            }
-                            .disabled(!canQuit(row))
+                        Button("Quit") {
+                            confirmQuit = row
                         }
+                        .disabled(!canQuit(row))
                     }
                 }
                 .frame(width: 640, height: 380)
@@ -818,7 +800,7 @@ private struct GlassTile: View {
                 }
                 .font(.caption.bold())
                 .buttonStyle(.plain)
-                .foregroundStyle(Color(red: 0.42, green: 0.94, blue: 0.86))
+                .foregroundStyle(heroAccentTeal)
             }
         }
         .padding(12)
