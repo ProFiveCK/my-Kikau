@@ -4,11 +4,6 @@ import Core
 import Features
 import UI
 
-/// The one branded accent color used inside `HeroHealthCard` (its "Great"/
-/// "Good" status color and its glass-tile action-button color) — named once
-/// so the two usages can't quietly drift apart.
-private let heroAccentTeal = Color(red: 0.42, green: 0.94, blue: 0.86)
-
 struct StatusView: View {
     /// Lets the dashboard jump straight to another sidebar screen.
     var onNavigate: (ContentView.SidebarItem) -> Void = { _ in }
@@ -414,20 +409,11 @@ private struct HeroHealthCard: View {
     let onShowMemory: () -> Void
     private let canPurgeMemory = MemoryOptimizer.isPurgeAvailable()
 
-    /// Word, explanation, and color all derived from one shared set of score
-    /// bands, so they can't drift out of sync the way they used to — the old
-    /// separate `statusWord` (bands at 90/75/60) and `statusColor` (bands at
-    /// 85/65/45) disagreed in the 75–85 range, rendering the word "Good" in
-    /// cautionary yellow.
-    private var healthBand: (word: String, explanation: String, color: Color) {
-        switch snapshot.healthScore {
-        case 90...: return ("Great", "No urgent issues detected", heroAccentTeal)
-        case 75..<90: return ("Good", "Minor pressure detected", heroAccentTeal)
-        case 60..<75: return ("OK", "Some maintenance is worth reviewing", .yellow)
-        case 40..<60: return ("Needs Maintenance", "Action recommended", .orange)
-        default: return ("Needs Maintenance", "Action recommended", .red)
-        }
-    }
+    /// Word, explanation, and color, from the one canonical band definition
+    /// in `HealthScore` — also used by the menu bar HUD, so the two can't
+    /// drift out of sync the way they used to (each had its own hand-rolled
+    /// bands, and neither one's word/color bands actually lined up).
+    private var healthBand: HealthScore.Band { HealthScore.band(for: snapshot.healthScore) }
 
     private var statusWord: String { healthBand.word }
     private var statusExplanation: String { healthBand.explanation }
@@ -800,7 +786,7 @@ private struct GlassTile: View {
                 }
                 .font(.caption.bold())
                 .buttonStyle(.plain)
-                .foregroundStyle(heroAccentTeal)
+                .foregroundStyle(HealthScore.accentTeal)
             }
         }
         .padding(12)

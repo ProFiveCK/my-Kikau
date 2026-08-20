@@ -20,22 +20,22 @@ struct HUDView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("myKikau")
                             .font(.system(size: 15, weight: .semibold))
-                        Text("Mac Health: \(statusWord(for: snap.healthScore))")
+                        Text("Mac Health: \(healthBand(snap).word)")
                             .font(.caption)
-                            .foregroundStyle(healthColor(snap.healthScore))
+                            .foregroundStyle(healthBand(snap).color)
                         Text(statusDetail(for: snap))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                     Spacer()
-                    Image(systemName: healthSymbol(for: snap.healthScore))
+                    Image(systemName: healthBand(snap).symbol)
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(healthColor(snap.healthScore))
+                        .foregroundStyle(healthBand(snap).color)
                         .frame(width: 34, height: 34)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(healthColor(snap.healthScore).opacity(0.13))
+                                .fill(healthBand(snap).color.opacity(0.13))
                         )
                 }
                 .padding(10)
@@ -106,12 +106,17 @@ struct HUDView: View {
 
             Divider()
 
+            // No keyboard shortcut here deliberately: `.cancelAction` binds to
+            // Escape, and Escape is exactly the key someone reaches for to
+            // dismiss this popover — binding it to Quit instead would mean a
+            // reflex dismiss-tap quits the whole app. Cmd+Q still works
+            // app-wide via the standard app menu; clicking this button always
+            // works regardless.
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
                 Label("Quit myKikau", systemImage: "power")
             }
-            .keyboardShortcut(.cancelAction)
         }
         .padding()
         .frame(width: 306)
@@ -184,37 +189,23 @@ struct HUDView: View {
         return canPurgeMemory ? "Free Inactive Memory" : "View Memory Users"
     }
 
-    private func statusWord(for score: Int) -> String {
-        switch score {
-        case 90...: "Great"
-        case 75..<90: "Good"
-        case 60..<75: "OK"
-        default: "Needs Maintenance"
-        }
+    /// The one canonical band definition in `HealthScore` — also used by the
+    /// dashboard's hero card, so the menu bar and the main window can't
+    /// disagree on what a given score means. This used to be three separate
+    /// hand-rolled `switch`es here (word bands at 90/75/60, color/symbol
+    /// bands at 85/65/45) that didn't line up with each other, so a score in
+    /// the high 70s/low 80s could show "Good" rendered in cautionary yellow.
+    private func healthBand(_ snapshot: MetricsSnapshot) -> HealthScore.Band {
+        HealthScore.band(for: snapshot.healthScore)
     }
 
+    /// Everything after the first ":" in e.g. "Fair: High CPU, Heavy Disk IO",
+    /// falling back to the band's own explanation when there's no itemized
+    /// issue (matches `StatusView`'s `issuesDetail` fallback behavior).
     private func statusDetail(for snapshot: MetricsSnapshot) -> String {
         let parts = snapshot.healthScoreMsg.components(separatedBy: ": ")
-        guard parts.count > 1 else { return "No urgent issues detected" }
+        guard parts.count > 1 else { return healthBand(snapshot).explanation }
         return parts.dropFirst().joined(separator: ": ")
-    }
-
-    private func healthSymbol(for score: Int) -> String {
-        switch score {
-        case 85...: "checkmark.circle.fill"
-        case 65..<85: "exclamationmark.circle.fill"
-        case 45..<65: "exclamationmark.triangle.fill"
-        default: "xmark.octagon.fill"
-        }
-    }
-
-    private func healthColor(_ score: Int) -> Color {
-        switch score {
-        case 85...: .green
-        case 65..<85: .yellow
-        case 45..<65: .orange
-        default: .red
-        }
     }
 }
 
