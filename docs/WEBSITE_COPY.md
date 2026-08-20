@@ -8,7 +8,7 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.5.0 · 3.0 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.5.1 · 3.0 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
@@ -38,6 +38,21 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes (template — duplicate per version)
+
+### Version 0.5.1 — August 2026
+
+**New**
+- A real Settings window (⌘,) with a Launch at Login toggle — myKikau can now start automatically without a third-party login-item tool
+- Apps list gains search and sort (by size, name, or last used)
+- Clean gets a "Review All" action to confirm every cleanup category in one pass instead of one at a time
+
+**Improved**
+- Optimise no longer always flags Cache Refresh and LaunchServices Repair as needing attention — they're now recommended only when actually due
+- Mac Health card's status wording and color now always agree with each other
+- Top Processes can be quit from either the CPU or Memory view, not just Memory
+
+**Fixed**
+- A dashboard navigation flag could silently stop working if touched during a refactor; replaced with a type-safe version
 
 ### Version 0.5.0 — August 2026
 
