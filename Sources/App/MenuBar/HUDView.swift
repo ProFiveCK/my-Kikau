@@ -22,7 +22,11 @@ struct HUDView: View {
                             .font(.system(size: 15, weight: .semibold))
                         Text("Mac Health: \(healthBand(snap).word)")
                             .font(.caption)
-                            .foregroundStyle(healthBand(snap).color)
+                            // The branded light teal works on the dashboard's
+                            // dark hero card but washes out on this system
+                            // popover in Light Mode. Keep teal on the icon and
+                            // use macOS's adaptive high-contrast text color here.
+                            .foregroundStyle(.primary)
                         Text(statusDetail(for: snap))
                             .font(.caption)
                             .foregroundStyle(.secondary)

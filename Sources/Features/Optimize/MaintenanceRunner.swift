@@ -81,6 +81,7 @@ public final class MaintenanceRunner {
         case "broken_configs": return await runBrokenConfigs(dryRun: dryRun)
         case "launch_agents": return await runLaunchAgentsCleanup(dryRun: dryRun)
         case "spotlight_orphans": return await runSpotlightOrphans(dryRun: dryRun)
+        case "network_privacy": return runNetworkPrivacyAudit()
 
         // Sudo tasks — deferred pending sudo-prompting UX.
         case "dns_spotlight", "network_cache", "network_stack",
@@ -612,6 +613,29 @@ public final class MaintenanceRunner {
             }
         }
         return false
+    }
+
+    // MARK: - Diagnostic: network_privacy
+
+    private func runNetworkPrivacyAudit() -> MaintenanceOutcome {
+        do {
+            let report = try NetworkPrivacyAuditor.inspect(
+                installedApplications: NetworkPrivacyAuditor.discoverInstalledApplications()
+            )
+            return networkPrivacyOutcome(for: report)
+        } catch {
+            return .unavailable("Local Network privacy store could not be inspected: \(error.localizedDescription)")
+        }
+    }
+
+    func networkPrivacyOutcome(for report: NetworkPrivacyAuditor.Report) -> MaintenanceOutcome {
+        guard !report.findings.isEmpty else {
+            return .unchanged("Local Network privacy records are healthy")
+        }
+        let count = report.findings.count
+        return .attention(
+            "\(count) issue\(count == 1 ? "" : "s") found in Local Network privacy records — guided repair available"
+        )
     }
 
     // MARK: - Staleness gating (for tasks with no real "would this change anything" check)

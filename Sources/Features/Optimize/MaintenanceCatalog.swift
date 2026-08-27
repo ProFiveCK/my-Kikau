@@ -4,6 +4,11 @@ import Foundation
 /// Ported from Mole's `lib/optimize/catalog.sh`.
 /// Each task is safe for manual execution and declares its requirements.
 public enum MaintenanceCatalog {
+    public enum TaskKind: Hashable, Sendable {
+        case maintenance
+        case guidedDiagnostic
+    }
+
     /// A maintenance task definition.
     public struct Task: Identifiable, Hashable {
         public let id: String        // action slug
@@ -11,13 +16,22 @@ public enum MaintenanceCatalog {
         public let summary: String   // one-line description
         public let requiresSudo: Bool
         public let safeForAuto: Bool
+        public let kind: TaskKind
 
-        public init(id: String, name: String, summary: String, requiresSudo: Bool, safeForAuto: Bool) {
+        public init(
+            id: String,
+            name: String,
+            summary: String,
+            requiresSudo: Bool,
+            safeForAuto: Bool,
+            kind: TaskKind = .maintenance
+        ) {
             self.id = id
             self.name = name
             self.summary = summary
             self.requiresSudo = requiresSudo
             self.safeForAuto = safeForAuto
+            self.kind = kind
         }
     }
 
@@ -66,5 +80,8 @@ public enum MaintenanceCatalog {
         Task(id: "launch_agents", name: "Launch Agents Cleanup",
              summary: "Remove broken LaunchAgents whose binaries no longer exist",
              requiresSudo: false, safeForAuto: true),
+        Task(id: "network_privacy", name: "System Privacy Records",
+             summary: "Detect duplicate, conflicting, and orphaned Local Network app permissions",
+             requiresSudo: false, safeForAuto: false, kind: .guidedDiagnostic),
     ]
 }

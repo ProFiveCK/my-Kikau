@@ -199,7 +199,8 @@ private struct FullSystemScanCard: View {
         ScanCategory(icon: "internaldrive", title: "Clean", subtitle: "Cache & junk files", tint: ContentView.SidebarItem.clean.tint),
         ScanCategory(icon: "app.dashed", title: "Apps", subtitle: "Installed applications", tint: ContentView.SidebarItem.uninstall.tint),
         ScanCategory(icon: "doc.on.doc", title: "Duplicates", subtitle: "Repeated files", tint: ContentView.SidebarItem.duplicates.tint),
-        ScanCategory(icon: "chart.bar.doc.horizontal", title: "Large Files", subtitle: "Space hogs", tint: ContentView.SidebarItem.analyze.tint)
+        ScanCategory(icon: "chart.bar.doc.horizontal", title: "Large Files", subtitle: "Space hogs", tint: ContentView.SidebarItem.analyze.tint),
+        ScanCategory(icon: "checkmark.shield", title: "System Health", subtitle: "Settings & app records", tint: ContentView.SidebarItem.optimize.tint),
     ]
 
     var body: some View {
@@ -215,7 +216,7 @@ private struct FullSystemScanCard: View {
                     )
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Full System Scan").font(.headline)
-                    Text("One scan across cache, apps, duplicates, and large files")
+                    Text("One scan across storage, apps, files, and unhealthy system settings")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -230,7 +231,7 @@ private struct FullSystemScanCard: View {
             if coordinator.isScanning {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView()
-                    Text("Scanning cleanable data, apps, duplicate files, and large user files.")
+                    Text("Scanning cleanable data, apps, duplicate files, large files, and system settings.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -239,6 +240,14 @@ private struct FullSystemScanCard: View {
                 Text("\(coordinator.combinedItemCount) items · \(ByteSizeFormatter.format(coordinator.combinedReclaimableBytes)) reclaimable")
                     .font(.title3.bold())
                     .foregroundStyle(coordinator.combinedReclaimableBytes > 0 ? Color.green : .secondary)
+                if coordinator.systemHealthIssueCount > 0 {
+                    Label(
+                        "\(coordinator.systemHealthIssueCount) system setting issue\(coordinator.systemHealthIssueCount == 1 ? "" : "s") need review",
+                        systemImage: "exclamationmark.shield.fill"
+                    )
+                    .font(.caption.bold())
+                    .foregroundStyle(.orange)
+                }
                 if let lastScanAt = coordinator.lastScanAt {
                     Text("Last scanned \(lastScanAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption)
@@ -286,6 +295,25 @@ private struct FullSystemScanCard: View {
                                 AppNavigation.shared.pendingDuplicatesMode = .largeFiles
                                 onNavigate(.duplicates)
                             }
+                        )
+                    }
+                    if let report = coordinator.systemHealthReport {
+                        SummaryPill(
+                            icon: report.isHealthy ? "checkmark.shield.fill" : "exclamationmark.shield.fill",
+                            title: "System Health",
+                            value: report.isHealthy
+                                ? "Healthy"
+                                : "\(report.issueCount) issue\(report.issueCount == 1 ? "" : "s")",
+                            tint: report.isHealthy ? .green : .orange,
+                            action: { onNavigate(.optimize) }
+                        )
+                    } else if coordinator.systemHealthScanError != nil {
+                        SummaryPill(
+                            icon: "questionmark.diamond.fill",
+                            title: "System Health",
+                            value: "Check unavailable",
+                            tint: .secondary,
+                            action: { onNavigate(.optimize) }
                         )
                     }
                 }

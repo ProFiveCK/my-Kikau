@@ -24,6 +24,7 @@ struct myKikauApp: App {
     /// file, or it stops meaning anything.
     private var hasActionableFindings: Bool {
         scanCoordinator.combinedReclaimableBytes >= 500_000_000
+            || scanCoordinator.systemHealthIssueCount > 0
     }
 
     var body: some Scene {

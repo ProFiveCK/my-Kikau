@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Core
 import Features
@@ -20,6 +21,7 @@ struct OptimizeView: View {
     @State private var applying = false
     @State private var inFlight: Set<String> = []
     @State private var lastRuns: [String: MaintenanceRunStatus] = [:]
+    @State private var guidedTask: MaintenanceCatalog.Task?
 
     private let tint = ContentView.SidebarItem.optimize.tint
 
@@ -33,6 +35,7 @@ struct OptimizeView: View {
 
     private func isRecommended(_ taskID: String) -> Bool {
         if case .applied = scanResults[taskID]?.outcome { return true }
+        if case .attention = scanResults[taskID]?.outcome { return true }
         return false
     }
 
@@ -69,7 +72,7 @@ struct OptimizeView: View {
                         .foregroundStyle(scanState == .scanned && !recommendedTasks.isEmpty ? tint : .secondary)
                 }
                 Spacer()
-                if scanState == .scanned && !recommendedTasks.isEmpty {
+                if scanState == .scanned && !selectedTasks.isEmpty {
                     Button(applying ? "Fixing…" : "Fix \(selectedTasks.count) Issue\(selectedTasks.count == 1 ? "" : "s")") {
                         Task { await applySelected() }
                     }
@@ -142,6 +145,9 @@ struct OptimizeView: View {
             }
         }
         .onAppear { reloadLastRuns() }
+        .sheet(item: $guidedTask) { task in
+            GuidedRepairSheet(task: task, result: scanResults[task.id])
+        }
     }
 
     private func taskGrid(_ tasks: [MaintenanceCatalog.Task]) -> some View {
@@ -154,7 +160,9 @@ struct OptimizeView: View {
                     lastRun: lastRuns[task.id],
                     inFlight: inFlight.contains(task.id)
                 ) {
-                    if selectedTasks.contains(task.id) {
+                    if task.kind == .guidedDiagnostic {
+                        guidedTask = task
+                    } else if selectedTasks.contains(task.id) {
                         selectedTasks.remove(task.id)
                     } else {
                         selectedTasks.insert(task.id)
@@ -178,7 +186,7 @@ struct OptimizeView: View {
             inFlight.insert(task.id)
             let result = await runner.run(taskID: task.id, dryRun: true)
             scanResults[task.id] = result
-            if case .applied = result.outcome {
+            if case .applied = result.outcome, task.kind == .maintenance {
                 selectedTasks.insert(task.id)
             }
             inFlight.remove(task.id)
@@ -227,6 +235,181 @@ private struct MaintenanceRunStatus: Hashable {
     let outcome: String
     let detail: String?
     let dryRun: Bool
+}
+
+private struct GuidedRepairSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let task: MaintenanceCatalog.Task
+    let result: MaintenanceRunner.Result?
+
+    @State private var report: NetworkPrivacyAuditor.Report?
+    @State private var inspectionError: String?
+    @State private var preparedRepair: NetworkPrivacyRepairAssistant.PreparedRepair?
+    @State private var preparationError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(hasIssues ? .orange : .green)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(task.name).font(.title2.bold())
+                    Text(result?.outcome.detail ?? "Read-only system settings diagnostic")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            if let report {
+                if report.findings.isEmpty {
+                    Label("Local Network privacy records are healthy", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(report.findings) { finding in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Label(finding.kind.displayName, systemImage: finding.severity.icon)
+                                            .font(.subheadline.bold())
+                                            .foregroundStyle(finding.severity.color)
+                                        Spacer()
+                                        Text("\(finding.affectedRecordCount) record\(finding.affectedRecordCount == 1 ? "" : "s")")
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(finding.signingIdentifier)
+                                        .font(.caption.monospaced())
+                                    Text(finding.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 260)
+
+                    Label(
+                        "macOS has no supported per-app reset. myKikau can prepare verified backups and exact Recovery instructions, but it will never silently disable SIP or include this in Fix All.",
+                        systemImage: "lock.shield"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            } else if let inspectionError {
+                Label(inspectionError, systemImage: "xmark.octagon.fill")
+                    .foregroundStyle(.red)
+            } else {
+                ProgressView("Inspecting Local Network privacy records…")
+            }
+
+            if let preparedRepair {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Guided repair package prepared", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    Text(preparedRepair.directory.path)
+                        .font(.caption2.monospaced())
+                        .textSelection(.enabled)
+                    Button("Reveal Instructions") {
+                        NSWorkspace.shared.activateFileViewerSelecting([preparedRepair.instructionsURL])
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            if let preparationError {
+                Text(preparationError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Button("Open Local Network Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_LocalNetwork") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+                if hasIssues {
+                    Button(preparedRepair == nil ? "Prepare Guided Repair…" : "Prepare Another Backup…") {
+                        prepareRepair()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 620)
+        .frame(minHeight: 360)
+        .onAppear(perform: inspect)
+    }
+
+    private var hasIssues: Bool {
+        !(report?.findings.isEmpty ?? true)
+    }
+
+    private func inspect() {
+        do {
+            report = try NetworkPrivacyAuditor.inspect(
+                installedApplications: NetworkPrivacyAuditor.discoverInstalledApplications()
+            )
+            inspectionError = nil
+        } catch {
+            report = nil
+            inspectionError = error.localizedDescription
+        }
+    }
+
+    private func prepareRepair() {
+        do {
+            preparedRepair = try NetworkPrivacyRepairAssistant.prepare()
+            preparationError = nil
+            if let preparedRepair {
+                NSWorkspace.shared.activateFileViewerSelecting([preparedRepair.instructionsURL])
+            }
+        } catch {
+            preparationError = error.localizedDescription
+        }
+    }
+}
+
+private extension NetworkPrivacyAuditor.FindingKind {
+    var displayName: String {
+        switch self {
+        case .excessivePrivacyRecords: "Excessive privacy records"
+        case .installedApplicationDenied: "Installed app is denied"
+        case .conflictingPrivacyDecisions: "Conflicting allow/deny decisions"
+        case .stalePrivacyRecords: "Orphaned executable paths"
+        }
+    }
+}
+
+private extension NetworkPrivacyAuditor.Severity {
+    var icon: String {
+        switch self {
+        case .information: "info.circle.fill"
+        case .warning: "exclamationmark.circle.fill"
+        case .critical: "exclamationmark.triangle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .information: .blue
+        case .warning: .orange
+        case .critical: .red
+        }
+    }
 }
 
 /// Section grouping for the scanned state — "Recommended" vs. "Already
@@ -283,6 +466,8 @@ private struct MaintenanceTaskCard: View {
             return ("Repair", "wrench.and.screwdriver", .orange)
         case "prevent_dsstore", "launch_agents":
             return ("Startup", "bolt.horizontal.circle", .green)
+        case "network_privacy":
+            return ("System", "checkmark.shield", .orange)
         default:
             return ("Maintenance", "checkmark.shield", .secondary)
         }
@@ -313,9 +498,15 @@ private struct MaintenanceTaskCard: View {
 
                     Spacer()
 
-                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(selected ? tintColor : .secondary)
+                    if task.kind == .guidedDiagnostic {
+                        Image(systemName: "chevron.right.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(category.color)
+                    } else {
+                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(selected ? tintColor : .secondary)
+                    }
                 }
 
                 Text(task.summary)
@@ -342,6 +533,11 @@ private struct MaintenanceTaskCard: View {
                         Image(systemName: "checkmark.shield.fill")
                             .foregroundStyle(.green)
                             .help("Safe — bounded, reversible, vetted for unattended use")
+                    }
+                    if task.kind == .guidedDiagnostic {
+                        Label("Guided", systemImage: "list.bullet.clipboard")
+                            .foregroundStyle(.orange)
+                            .help("Requires explicit guided steps; never included in Fix All")
                     }
                     if task.requiresSudo {
                         Image(systemName: "lock.fill")
