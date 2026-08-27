@@ -39,6 +39,11 @@ myKikau's source is public and licensed under GPL-3.0.
 
 ## Release notes (template — duplicate per version)
 
+### Version 0.6.0 — August 2026
+
+**New**
+- System Health audit for macOS Local Network privacy residuals — surfaces stale Local Network privacy entries left behind by uninstalled apps so you can review and clean them up
+
 ### Version 0.5.1 — August 2026
 
 **New**
