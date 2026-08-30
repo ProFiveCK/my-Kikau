@@ -462,7 +462,7 @@ private struct MaintenanceTaskCard: View {
             return ("Finder", "sparkles.rectangle.stack", .blue)
         case "saved_state", "quarantine":
             return ("Privacy", "clock.arrow.circlepath", .purple)
-        case "broken_configs", "legacy_overrides", "spotlight_orphans":
+        case "broken_configs", "legacy_overrides", "spotlight_orphans", "font_cache":
             return ("Repair", "wrench.and.screwdriver", .orange)
         case "prevent_dsstore", "launch_agents":
             return ("Startup", "bolt.horizontal.circle", .green)

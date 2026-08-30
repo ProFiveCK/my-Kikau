@@ -26,6 +26,10 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<false/>
+	<key>NSLocationUsageDescription</key>
+	<string>myKikau uses your location only to read the current Wi‑Fi network's name and details. Nothing is stored or sent anywhere.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>myKikau uses your location only to read the current Wi‑Fi network's name and details. Nothing is stored or sent anywhere.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsAutomaticTermination</key>

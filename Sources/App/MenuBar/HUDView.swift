@@ -11,6 +11,8 @@ struct HUDView: View {
     @State private var trashStatus: String?
     @State private var freeingMemory = false
     @State private var memoryStatus: String?
+    @State private var netInfo: NetworkInfo?
+    @State private var copiedIP = false
     private let canPurgeMemory = MemoryOptimizer.isPurgeAvailable()
 
     var body: some View {
@@ -90,6 +92,10 @@ struct HUDView: View {
                     }
                 }
 
+                if let net = netInfo {
+                    networkRow(net)
+                }
+
                 Divider()
                 HStack {
                     Label(HealthScore.formatUptime(snap.uptimeSeconds), systemImage: "clock")
@@ -105,6 +111,7 @@ struct HUDView: View {
             }
 
             QuickActionsGrid(
+                canPurgeMemory: canPurgeMemory,
                 memoryActionTitle: memoryActionTitle,
                 freeingMemory: freeingMemory,
                 memoryStatus: memoryStatus,
@@ -115,6 +122,10 @@ struct HUDView: View {
                 },
                 openClean: {
                     AppNavigation.shared.pendingSelection = .clean
+                    openMainWindow()
+                },
+                openOptimise: {
+                    AppNavigation.shared.pendingSelection = .optimize
                     openMainWindow()
                 },
                 freeMemory: freeInactiveMemory,
@@ -137,8 +148,68 @@ struct HUDView: View {
         }
         .padding()
         .frame(width: 306)
-        .onAppear { metricsService.subscribe() }
+        .onAppear {
+            metricsService.subscribe()
+            netInfo = NetworkInfo.collect()
+            copiedIP = false
+        }
         .onDisappear { metricsService.unsubscribe() }
+    }
+
+    /// Connection + local IP, tappable to open the full Network screen, with a
+    /// one-tap copy for the IP address itself (a frequent "what's my IP" reach).
+    @ViewBuilder
+    private func networkRow(_ net: NetworkInfo) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                AppNavigation.shared.pendingSelection = .network
+                openMainWindow()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: networkSymbol(net))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(net.shortLabel)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Text(net.localIPv4 ?? "No IP address")
+                            .font(.caption2)
+                            .monospaced()
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if let ip = net.localIPv4 {
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(ip, forType: .string)
+                    copiedIP = true
+                } label: {
+                    Image(systemName: copiedIP ? "checkmark" : "doc.on.doc")
+                        .font(.caption2)
+                        .foregroundStyle(copiedIP ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy IP address")
+            }
+        }
+    }
+
+    private func networkSymbol(_ net: NetworkInfo) -> String {
+        switch net.connectionName {
+        case "Wi-Fi": return "wifi"
+        case "Ethernet": return "cable.connector"
+        default: return "network.slash"
+        }
     }
 
     /// `openWindow(id:)` already brings the singleton "main" `Window` scene
@@ -198,14 +269,11 @@ struct HUDView: View {
     }
 
     private func freeInactiveMemory() {
-        guard !freeingMemory else { return }
-        guard canPurgeMemory else {
-            AppNavigation.shared.pendingSelection = .status
-            AppNavigation.shared.pendingProcessMode = .memory
-            openMainWindow()
-            memoryStatus = "Showing apps using the most memory."
-            return
-        }
+        // The card that calls this is only rendered when `canPurgeMemory` is
+        // true (otherwise the grid shows an "Optimise" shortcut instead), so
+        // there's no "View Memory Users" fallback here anymore — that just
+        // duplicated the tappable Memory metric row above.
+        guard !freeingMemory, canPurgeMemory else { return }
         freeingMemory = true
         memoryStatus = nil
         Task {
@@ -218,8 +286,7 @@ struct HUDView: View {
     }
 
     private var memoryActionTitle: String {
-        if freeingMemory { return "Freeing Memory..." }
-        return canPurgeMemory ? "Free Inactive Memory" : "View Memory Users"
+        freeingMemory ? "Freeing Memory..." : "Free Inactive Memory"
     }
 
     /// The one canonical band definition in `HealthScore` — also used by the
@@ -243,12 +310,14 @@ struct HUDView: View {
 }
 
 private struct QuickActionsGrid: View {
+    let canPurgeMemory: Bool
     let memoryActionTitle: String
     let freeingMemory: Bool
     let memoryStatus: String?
     let trashStatus: String?
     let openDashboard: () -> Void
     let openClean: () -> Void
+    let openOptimise: () -> Void
     let freeMemory: () -> Void
     let emptyTrash: () -> Void
 
@@ -273,14 +342,30 @@ private struct QuickActionsGrid: View {
                     tint: .blue,
                     action: openClean
                 )
-                HUDActionCard(
-                    title: memoryActionTitle,
-                    subtitle: memoryStatus ?? "Memory tools",
-                    systemImage: "memorychip",
-                    tint: .teal,
-                    disabled: freeingMemory,
-                    action: freeMemory
-                )
+                // "See what's using memory" is already the tappable Memory
+                // metric row above, so this slot is only a memory control when
+                // it can do something that row can't — actually purge inactive
+                // file cache. Where `purge` isn't available, show the Optimise
+                // shortcut instead rather than a second link to the same
+                // process list.
+                if canPurgeMemory {
+                    HUDActionCard(
+                        title: memoryActionTitle,
+                        subtitle: memoryStatus ?? "Purge inactive file cache",
+                        systemImage: "memorychip",
+                        tint: .teal,
+                        disabled: freeingMemory,
+                        action: freeMemory
+                    )
+                } else {
+                    HUDActionCard(
+                        title: "Optimise",
+                        subtitle: "Run maintenance",
+                        systemImage: "wrench.and.screwdriver",
+                        tint: .orange,
+                        action: openOptimise
+                    )
+                }
                 HUDActionCard(
                     title: "Empty Trash",
                     subtitle: trashStatus ?? "Confirm first",

@@ -37,7 +37,7 @@ public final class MaintenanceRunner {
     /// fixing). QuickLook/icon caches rebuild themselves continuously, so a
     /// shorter interval; LaunchServices re-registration is heavier and
     /// rarely needed unless "Open With" starts misbehaving, so a longer one.
-    private let staleAfterDays = (finderCache: 14.0, launchServices: 30.0)
+    private let staleAfterDays = (finderCache: 14.0, launchServices: 30.0, fontCache: 30.0)
 
     public init(home: URL? = nil, deleter: SafeFileDeleter = .shared, opLog: OperationLog = .shared) {
         self.home = home ?? FileManager.default.homeDirectoryForCurrentUser
@@ -76,6 +76,7 @@ public final class MaintenanceRunner {
         case "prevent_dsstore": return await runPreventDSStore(dryRun: dryRun)
         case "legacy_overrides": return await runLegacyOverrides(dryRun: dryRun)
         case "finder_cache": return await runFinderCache(dryRun: dryRun)
+        case "font_cache": return await runFontCache(dryRun: dryRun)
         case "saved_state": return await runSavedStateCleanup(dryRun: dryRun)
         case "shared_file_lists": return await runSharedFileLists(dryRun: dryRun)
         case "broken_configs": return await runBrokenConfigs(dryRun: dryRun)
@@ -368,6 +369,30 @@ public final class MaintenanceRunner {
 
         if failed > 0 { return .failed("Finder cache refresh failed (\(failed) service(s))") }
         return .applied("QuickLook thumbnails and icon caches refreshed")
+    }
+
+    // MARK: - Task: font_cache
+
+    /// `atsutil databases -removeUser` clears the current user's font
+    /// registration cache (the system rebuilds it on demand). No sudo needed —
+    /// unlike `-remove`, which touches the system-wide cache. Like
+    /// `finder_cache`/`launch_services` there's no "is it stale" probe: the
+    /// command always exits 0, so gate the recommendation on elapsed time
+    /// since the last real run instead of surfacing it on every scan.
+    private func runFontCache(dryRun: Bool) async -> MaintenanceOutcome {
+        let atsutil = "/usr/bin/atsutil"
+        guard FileManager.default.isExecutableFile(atPath: atsutil) else {
+            return .unavailable("atsutil not found")
+        }
+        if dryRun, let days = daysSinceLastSuccess(taskID: "font_cache"), days < staleAfterDays.fontCache {
+            return .unchanged("Reset \(daysDescription(days)) ago")
+        }
+
+        let (code, output) = await runProcess(atsutil, arguments: ["databases", "-removeUser"], dryRun: dryRun)
+        if code == 0 {
+            return .applied("User font cache cleared — it rebuilds automatically")
+        }
+        return .failed("Font cache reset failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
     }
 
     // MARK: - Task: saved_state

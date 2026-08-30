@@ -49,6 +49,9 @@ public enum MaintenanceCatalog {
     /// untouched so they're ready to wire up for real in a future release
     /// (sudo tasks need a proper privilege-escalation UX first; the deferred
     /// four need an active-app-safety check).
+    ///
+    /// Currently: 11 real maintenance tasks + 1 guided diagnostic
+    /// (`network_privacy`).
     public static let tasks: [Task] = [
         Task(id: "finder_cache", name: "Finder Cache Refresh",
              summary: "Refresh QuickLook thumbnails & icon services cache",
@@ -79,6 +82,9 @@ public enum MaintenanceCatalog {
              requiresSudo: false, safeForAuto: true),
         Task(id: "launch_agents", name: "Launch Agents Cleanup",
              summary: "Remove broken LaunchAgents whose binaries no longer exist",
+             requiresSudo: false, safeForAuto: true),
+        Task(id: "font_cache", name: "Font Cache Reset",
+             summary: "Clear the per-user font registration cache — fixes garbled or missing text in apps",
              requiresSudo: false, safeForAuto: true),
         Task(id: "network_privacy", name: "System Privacy Records",
              summary: "Detect duplicate, conflicting, and orphaned Local Network app permissions",

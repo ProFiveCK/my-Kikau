@@ -338,6 +338,27 @@ struct MaintenanceRunnerTests {
         }
     }
 
+    @Test("font_cache dry-run reports unchanged shortly after a real reset")
+    func fontCacheUnchangedWhenRecentlyRun() async {
+        let logURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".log")
+        let opLog = OperationLog(logURL: logURL, enabled: true)
+        defer { try? FileManager.default.removeItem(at: logURL) }
+
+        let runner = MaintenanceRunner(opLog: opLog)
+        // Real run only succeeds where /usr/bin/atsutil exists (macOS).
+        let real = await runner.run(taskID: "font_cache", dryRun: false)
+        guard case .applied = real.outcome else { return }
+        await waitForLogEntry(opLog, action: "optimize.font_cache")
+
+        let scan = await runner.run(taskID: "font_cache", dryRun: true)
+        if case .unchanged = scan.outcome {
+            // expected — recommendation gated by recent success
+        } else {
+            Issue.record("Expected .unchanged for font_cache right after a real run, got \(scan.outcome)")
+        }
+    }
+
     // MARK: - run(taskIDs:)
 
     @Test("run(taskIDs:) returns a result for every requested ID")

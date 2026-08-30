@@ -40,17 +40,29 @@ struct AnalyzeView: View {
                     .labelsHidden()
                     .frame(width: 200)
                 }
-                if let dir = session.currentDir {
-                    Button("Back") {
-                        session.scan(dir.deletingLastPathComponent())
+                if !session.isOverview && !session.entries.isEmpty {
+                    Menu {
+                        Toggle("Show hidden items", isOn: $session.showHidden)
+                    } label: {
+                        Image(systemName: session.showHidden ? "eye" : "eye.slash")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Show or hide dot-prefixed items like .cache, .npm, .docker")
+                }
+                if session.canNavigateUp {
+                    Button {
+                        session.navigateUp()
+                    } label: {
+                        Label("Up", systemImage: "arrow.up")
                     }
                 }
-                Button(session.isScanning ? "Scanning..." : (session.hasResults ? "Rescan" : "Scan Home")) {
+                Button(scanButtonTitle) {
                     deniedFolders = ProtectedFolderAccessCheck.deniedFolders()
                     if session.hasResults {
                         session.rescanCurrent()
                     } else {
-                        session.scan(FileManager.default.homeDirectoryForCurrentUser)
+                        session.scanVolumeOverview()
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -65,31 +77,49 @@ struct AnalyzeView: View {
                     .padding(.bottom, 8)
             }
 
-            if let dir = session.currentDir, !session.entries.isEmpty {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(dir.path)
-                        .lineLimit(1)
-                        .truncationMode(.head)
+            if !session.entries.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    BreadcrumbBar(
+                        volumeName: session.volumeName,
+                        currentDir: session.currentDir,
+                        onSelectRoot: { session.scanVolumeOverview() },
+                        onSelect: { session.scan($0) }
+                    )
                     if let lastScanAt = session.lastScanAt {
                         Text("Last scanned \(lastScanAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             }
 
             if session.entries.isEmpty && !session.isScanning {
-                ContentUnavailableView(
-                    "No Scan Yet",
-                    systemImage: "chart.bar.doc.horizontal",
-                    description: Text("Click Scan Home to analyse allocated disk usage and find large files.")
-                )
+                ContentUnavailableView {
+                    Label("No Scan Yet", systemImage: "chart.pie")
+                } description: {
+                    Text("Analyse the whole startup disk — see used vs free space, then drill into the folders using the most storage.")
+                } actions: {
+                    Button("Analyse Disk") { session.scanVolumeOverview() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(tint)
+                }
+            } else if session.isScanning && session.entries.isEmpty {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Measuring disk usage…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if mode == .chart {
-                PieChartSection(entries: session.entries) { entry in
-                    if entry.isDirectory {
+                PieChartSection(
+                    entries: session.entries,
+                    centerCaption: session.isOverview ? "of \(session.volumeName)" : "total"
+                ) { entry in
+                    if entry.isNavigable {
                         session.scan(entry.url)
                     }
                 }
@@ -100,13 +130,11 @@ struct AnalyzeView: View {
                     TreemapView(
                         items: mapEntries,
                         value: { Double($0.sizeBytes) },
-                        color: { _, rank in cellColor(rank: rank, total: mapEntries.count) },
+                        color: { entry, rank in mapCellColor(for: entry, rank: rank, total: mapEntries.count) },
                         label: { $0.name },
                         sublabel: { ByteSizeFormatter.format($0.sizeBytes) },
                         onSelect: { entry in
-                            if entry.isDirectory, entry.id != "__smaller_items" {
-                                session.scan(entry.url)
-                            }
+                            if entry.isNavigable { session.scan(entry.url) }
                         }
                     )
                     .frame(minWidth: 360)
@@ -115,9 +143,7 @@ struct AnalyzeView: View {
                         AnalyzeRow(entry: entry, tint: tint, maxSize: mapEntries.map(\.sizeBytes).max() ?? 1)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                if entry.isDirectory, entry.id != "__smaller_items" {
-                                    session.scan(entry.url)
-                                }
+                                if entry.isNavigable { session.scan(entry.url) }
                             }
                     }
                     .frame(minWidth: 260, idealWidth: 320)
@@ -129,9 +155,7 @@ struct AnalyzeView: View {
                     AnalyzeRow(entry: entry, tint: tint, maxSize: maxSize)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if entry.isDirectory {
-                                session.scan(entry.url)
-                            }
+                            if entry.isNavigable { session.scan(entry.url) }
                         }
                 }
             }
@@ -144,13 +168,21 @@ struct AnalyzeView: View {
         }
     }
 
+    private var scanButtonTitle: String {
+        if session.isScanning { return "Scanning..." }
+        return session.hasResults ? "Rescan" : "Analyse Disk"
+    }
+
     /// Darker teal for the biggest items, easing lighter toward the smallest —
     /// capped so even the lightest cell stays dark enough for white labels.
-    /// The old version only spanned a narrow brightness/saturation band, so a
-    /// screen full of cells read as a near-flat wash of one color with no way
-    /// to tell items apart except by size. Widened range plus a slight hue
-    /// drift gives adjacent cells more visual separation at a glance.
-    private func cellColor(rank: Int, total: Int) -> Color {
+    /// Synthetic rows (Free, "macOS System") get a neutral grey instead so
+    /// they read as "not a folder you can open".
+    private func mapCellColor(for entry: DiskScanner.Entry, rank: Int, total: Int) -> Color {
+        if !entry.isNavigable {
+            return entry.name == "Free"
+                ? Color(hue: 0.33, saturation: 0.18, brightness: 0.45)
+                : Color(white: 0.38)
+        }
         let t = total > 1 ? Double(rank) / Double(total - 1) : 0
         let eased = min(t, 1)
         let hue = 0.5 + eased * 0.06
@@ -174,6 +206,66 @@ struct AnalyzeView: View {
     }
 }
 
+/// Finder-style path bar: a tappable chain from the disk root down to the
+/// folder currently shown. Replaces the old single "Back" button — you can
+/// jump up any number of levels in one click, and the current position is
+/// always visible.
+private struct BreadcrumbBar: View {
+    let volumeName: String
+    let currentDir: URL?
+    let onSelectRoot: () -> Void
+    let onSelect: (URL) -> Void
+
+    private struct Crumb: Identifiable {
+        let id: Int
+        let name: String
+        let url: URL?   // nil == the disk-overview root
+    }
+
+    private var crumbs: [Crumb] {
+        var result: [Crumb] = [Crumb(id: 0, name: volumeName, url: nil)]
+        guard let currentDir else { return result }
+        let parts = currentDir.pathComponents.filter { $0 != "/" }
+        var accumulated = URL(fileURLWithPath: "/")
+        for (index, part) in parts.enumerated() {
+            accumulated.appendPathComponent(part)
+            result.append(Crumb(id: index + 1, name: part, url: accumulated))
+        }
+        return result
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(Array(crumbs.enumerated()), id: \.element.id) { index, crumb in
+                    let isLast = index == crumbs.count - 1
+                    Button {
+                        if let url = crumb.url { onSelect(url) } else { onSelectRoot() }
+                    } label: {
+                        HStack(spacing: 3) {
+                            if index == 0 {
+                                Image(systemName: "internaldrive").font(.caption2)
+                            }
+                            Text(crumb.name)
+                                .font(.caption)
+                                .fontWeight(isLast ? .semibold : .regular)
+                        }
+                        .foregroundStyle(isLast ? .primary : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLast)
+
+                    if !isLast {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Donut chart + tappable legend — the default Analyse view. Uses Swift
 /// Charts' `SectorMark` (macOS 14+) rather than hand-rolled arc drawing, so
 /// slice geometry and the color-per-category palette are handled by a
@@ -182,6 +274,7 @@ struct AnalyzeView: View {
 /// gestures, which keeps the interaction identical to Map/List.
 private struct PieChartSection: View {
     let entries: [DiskScanner.Entry]
+    var centerCaption: String = "total"
     let onSelect: (DiskScanner.Entry) -> Void
 
     private struct Slice: Identifiable {
@@ -190,16 +283,34 @@ private struct PieChartSection: View {
         let sizeBytes: Int64
         let color: Color
         let entry: DiskScanner.Entry?   // nil for the aggregated "Other" slice
+        var isNavigable: Bool { entry?.isNavigable == true }
     }
 
     private static let palette: [Color] = [
         .teal, .blue, .purple, .pink, .orange, .yellow, .green, .indigo, .mint, .cyan,
     ]
 
+    /// Neutral greys for the computed rows so they don't compete with the
+    /// folder palette — Free is the lightest, System a mid grey.
+    private static func neutralColor(for name: String) -> Color {
+        switch name {
+        case "Free": return Color(white: 0.82)
+        case "macOS System": return Color(white: 0.55)
+        default: return Color(white: 0.68)   // "Hidden Items" and any other aggregate
+        }
+    }
+
     private var slices: [Slice] {
+        // Real folders take the colour palette and the top-N treatment; the
+        // smaller ones roll up into "Other". Computed rows (Free, macOS System,
+        // Hidden Items) always keep their own slice — never folded into "Other"
+        // — so the donut visibly sums to the whole disk.
+        let navigable = entries.filter { $0.isNavigable }
+        let computed = entries.filter { !$0.isNavigable }
+
         let topCount = 9
         var result: [Slice] = []
-        for (index, entry) in entries.prefix(topCount).enumerated() {
+        for (index, entry) in navigable.prefix(topCount).enumerated() {
             result.append(Slice(
                 id: entry.id,
                 name: entry.name,
@@ -208,8 +319,8 @@ private struct PieChartSection: View {
                 entry: entry
             ))
         }
-        if entries.count > topCount {
-            let rest = entries.dropFirst(topCount)
+        if navigable.count > topCount {
+            let rest = navigable.dropFirst(topCount)
             let otherTotal = rest.reduce(Int64(0)) { $0 + $1.sizeBytes }
             if otherTotal > 0 {
                 result.append(Slice(
@@ -221,7 +332,23 @@ private struct PieChartSection: View {
                 ))
             }
         }
-        return result
+        for entry in computed {
+            result.append(Slice(
+                id: entry.id,
+                name: entry.name,
+                sizeBytes: entry.sizeBytes,
+                color: Self.neutralColor(for: entry.name),
+                entry: entry
+            ))
+        }
+        // Order every slice by size so the legend matches List/Map — except
+        // "Free", which is pinned last so the donut reads used-space first,
+        // then the gap.
+        return result.sorted { lhs, rhs in
+            if lhs.name == "Free" { return false }
+            if rhs.name == "Free" { return true }
+            return lhs.sizeBytes > rhs.sizeBytes
+        }
     }
 
     private var totalBytes: Int64 {
@@ -246,7 +373,7 @@ private struct PieChartSection: View {
                 VStack(spacing: 2) {
                     Text(ByteSizeFormatter.format(totalBytes))
                         .font(.title3.bold())
-                    Text("total")
+                    Text(centerCaption)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -256,7 +383,7 @@ private struct PieChartSection: View {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(slices) { slice in
                         Button {
-                            if let entry = slice.entry { onSelect(entry) }
+                            if let entry = slice.entry, entry.isNavigable { onSelect(entry) }
                         } label: {
                             HStack(spacing: 10) {
                                 Circle().fill(slice.color).frame(width: 10, height: 10)
@@ -272,7 +399,7 @@ private struct PieChartSection: View {
                                 Text(percentString(slice.sizeBytes))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                if slice.entry?.isDirectory == true {
+                                if slice.isNavigable {
                                     Image(systemName: "chevron.right")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
@@ -282,7 +409,7 @@ private struct PieChartSection: View {
                             .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
-                        .disabled(slice.entry == nil)
+                        .disabled(!slice.isNavigable)
                     }
                 }
             }
@@ -306,10 +433,17 @@ private struct AnalyzeRow: View {
         maxSize > 0 ? Double(entry.sizeBytes) / Double(maxSize) * 100 : 0
     }
 
+    private var icon: String {
+        if !entry.isNavigable {
+            return entry.name == "Free" ? "circle.dashed" : "gearshape.2"
+        }
+        return entry.isDirectory ? "folder.fill" : "doc.fill"
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: entry.isDirectory ? "folder.fill" : "doc.fill")
-                .foregroundStyle(tint)
+            Image(systemName: icon)
+                .foregroundStyle(entry.isNavigable ? tint : .secondary)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -320,14 +454,14 @@ private struct AnalyzeRow: View {
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
-                SizeBar(percent: relativeSize, color: tint)
+                SizeBar(percent: relativeSize, color: entry.isNavigable ? tint : .gray)
                 if entry.isDirectory {
                     Text("\(entry.childCount) items")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            if entry.isDirectory {
+            if entry.isNavigable {
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundStyle(.secondary)

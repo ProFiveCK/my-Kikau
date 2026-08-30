@@ -11,7 +11,7 @@ myKikau is a native Swift macOS 14+ system cleanup and optimisation app. It perf
 SwiftPM package with four modules:
 - `App` — `@main` entry, scene composition (window + MenuBarExtra), menu bar HUD
 - `Core` — `SafeFileDeleter`, `PathProtection`, `OperationLog`, `Permissions`, `ByteSizeFormatter`
-- `Features` — Clean, Uninstall, Analyze, Status, Optimize, Purge modules
+- `Features` — Clean, Uninstall, Analyze, Status, Optimize, Purge, Network modules
 - `UI` — shared `PlanReviewView`, reusable components
 
 ## Critical Safety Rules

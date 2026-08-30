@@ -94,19 +94,19 @@ struct myKikauApp: App {
         }
     }
 
-    /// Warms the Analyze disk-usage cache in the background a few seconds
-    /// after launch, so opening Analyse later in the session shows results
-    /// immediately instead of requiring a manual "Scan Home" first. Gated on
+    /// Warms the Analyze whole-disk overview cache in the background a few
+    /// seconds after launch, so opening Analyse later in the session shows
+    /// results immediately instead of requiring a manual scan first. Gated on
     /// `hasUsedAnalyze` (skip entirely for people who've never opened that
     /// screen — no point paying the cost for a feature they don't use) and,
-    /// inside `AnalyzeScanSession.preload`, on a persisted once-a-day check.
-    /// The delay keeps this out of the way of whatever actually happens
+    /// inside `AnalyzeScanSession.preloadOverview`, on a persisted once-a-day
+    /// check. The delay keeps this out of the way of whatever actually happens
     /// right at launch (window animation, Sparkle's update check, etc.).
     private func schedulePreloadIfNeeded() {
         guard hasUsedAnalyze else { return }
         Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            AnalyzeScanSession.shared.preload(FileManager.default.homeDirectoryForCurrentUser)
+            AnalyzeScanSession.shared.preloadOverview()
         }
     }
 }
@@ -194,7 +194,7 @@ struct RootView: View {
 /// Main window with sidebar navigation.
 struct ContentView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
-        case status, clean, uninstall, analyze, duplicates, optimize, purge, history, about
+        case status, clean, uninstall, analyze, duplicates, network, optimize, purge, history, about
         var id: String { rawValue }
 
         /// Explicit display strings rather than `rawValue.capitalized` — the
@@ -208,6 +208,7 @@ struct ContentView: View {
             case .uninstall: "Apps"
             case .analyze: "Analyse"
             case .duplicates: "Files"
+            case .network: "Network"
             case .optimize: "Optimise"
             case .purge: "Purge"
             case .history: "History"
@@ -232,6 +233,7 @@ struct ContentView: View {
             case .uninstall: "app.dashed"
             case .analyze: "chart.bar.doc.horizontal"
             case .duplicates: "doc.on.doc"
+            case .network: "wifi"
             case .optimize: "wrench.and.screwdriver"
             case .purge: "hammer"
             case .history: "clock.arrow.circlepath"
@@ -249,6 +251,7 @@ struct ContentView: View {
             case .uninstall: .purple
             case .analyze: .teal
             case .duplicates: .pink
+            case .network: .indigo
             case .optimize: .orange
             case .purge: .brown
             case .history: .secondary
@@ -277,6 +280,7 @@ struct ContentView: View {
             case .uninstall: UninstallView()
             case .analyze: AnalyzeView()
             case .duplicates: DuplicatesView()
+            case .network: NetworkView()
             case .optimize: OptimizeView()
             case .about: AboutView()
             // .purge and .history intentionally omitted — both pulled from the
