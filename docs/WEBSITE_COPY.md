@@ -8,7 +8,7 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.5.1 · 3.0 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.6.1 · 3.0 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
@@ -38,6 +38,21 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes (template — duplicate per version)
+
+### Version 0.6.1 — August 2026
+
+**Fixed**
+- Apps list was missing applications installed in a vendor subfolder under /Applications (e.g. Adobe Acrobat, OpenVPN Connect) instead of directly in it
+- The Apps search field could fail to accept keystrokes
+- Dashboard summary cards could go stale after uninstalling an app or removing duplicate/large files elsewhere in the app, until a manual Rescan
+- Duplicate and Large File scans could silently report nothing found when macOS hadn't granted Desktop/Documents/Downloads access — now clearly flagged with a direct link to fix it
+- Top Memory Processes figures now match Activity Monitor's "Memory" column exactly, instead of a raw resident-memory reading that ran noticeably higher
+- Clean/Apps/Files review sheets now sort by size, largest first
+- Opening the Dashboard from the menu bar could also pop open the Settings window
+
+**Improved**
+- CPU and Memory rows in the menu bar HUD now open straight to their Top Processes view; Disk opens the Disk Analyser
+- Dashboard's Network card replaced with a compact tile inside the Mac Health card; Duplicates and Large Files summaries merged into one Files summary
 
 ### Version 0.6.0 — August 2026
 
