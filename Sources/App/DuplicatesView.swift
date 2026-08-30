@@ -20,6 +20,16 @@ struct DuplicatesView: View {
     @State private var largeFiles: [DuplicateFinder.FileEntry] = []
     @State private var selectedLargeFiles: Set<String> = []
     @State private var reviewPlan: SafeFileDeleter.Plan?
+    // Which duplicate groups `reviewPlan` covers, so the sheet's completion
+    // handler knows what to drop from the list afterward — a single group
+    // for a per-row "Remove N duplicate(s)", or every group for "Review All".
+    @State private var reviewingGroupIDs: Set<String> = []
+    // Populated on appear and after every scan. Non-empty means macOS hasn't
+    // granted access to one of the folders this feature scans — the most
+    // likely explanation for "Duplicates always finds nothing" on a Mac that
+    // obviously has files there: `DuplicateFinder.walk()` fails silently in
+    // that case (see ProtectedFolderAccessCheck), not with a visible error.
+    @State private var deniedFolders: [String] = ProtectedFolderAccessCheck.deniedFolders()
 
     private let tint = ContentView.SidebarItem.duplicates.tint
 
@@ -47,6 +57,12 @@ struct DuplicatesView: View {
             }
             .padding()
 
+            if !deniedFolders.isEmpty {
+                ProtectedFolderAccessBanner(deniedFolders: deniedFolders)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+            }
+
             if duplicateGroups.isEmpty && largeFiles.isEmpty && !scanning {
                 ContentUnavailableView(
                     "No Scan Yet",
@@ -63,11 +79,30 @@ struct DuplicatesView: View {
             PlanReviewView(
                 plan: plan,
                 title: mode == .duplicates ? "Remove Duplicates" : "Remove Large Files",
-                onCancel: { reviewPlan = nil }
+                onCancel: {
+                    reviewPlan = nil
+                    reviewingGroupIDs = []
+                }
             ) { dryRun in
                 let action = mode == .duplicates ? "duplicates" : "largeFiles"
-                _ = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: action)
+                let result = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: action)
+                // Drop what was actually removed from both this view's own
+                // list and the dashboard's cache — previously neither
+                // updated, so a resolved group/file kept showing here (and
+                // on the dashboard) as still reclaimable until the next
+                // full Rescan.
+                if !dryRun, result.failed == 0 {
+                    if mode == .duplicates {
+                        duplicateGroups.removeAll { reviewingGroupIDs.contains($0.id) }
+                        ScanEverythingCoordinator.shared.removeDuplicateGroups(ids: reviewingGroupIDs)
+                    } else {
+                        largeFiles.removeAll { selectedLargeFiles.contains($0.id) }
+                        ScanEverythingCoordinator.shared.removeLargeFiles(ids: selectedLargeFiles)
+                        selectedLargeFiles = []
+                    }
+                }
                 reviewPlan = nil
+                reviewingGroupIDs = []
             }
         }
         .onAppear {
@@ -78,8 +113,8 @@ struct DuplicatesView: View {
             if largeFiles.isEmpty, let cached = coordinator.largeFiles {
                 largeFiles = cached
             }
-            if AppNavigation.shared.pendingDuplicatesMode == .largeFiles {
-                mode = .largeFiles
+            if let pending = AppNavigation.shared.pendingDuplicatesMode {
+                mode = pending == .largeFiles ? .largeFiles : .duplicates
                 AppNavigation.shared.pendingDuplicatesMode = nil
             }
         }
@@ -101,6 +136,7 @@ struct DuplicatesView: View {
                             .font(.subheadline)
                         Spacer()
                         Button("Review All") {
+                            reviewingGroupIDs = Set(duplicateGroups.map(\.id))
                             reviewPlan = DuplicateFinder.duplicatePlan(for: duplicateGroups)
                         }
                         .buttonStyle(.borderedProminent)
@@ -125,6 +161,7 @@ struct DuplicatesView: View {
                             }
                         }
                         Button("Remove \(group.files.count - 1) duplicate(s), keep newest (\(ByteSizeFormatter.format(group.reclaimableBytes)))") {
+                            reviewingGroupIDs = [group.id]
                             reviewPlan = DuplicateFinder.duplicatePlan(for: [group])
                         }
                         .font(.caption)
@@ -195,6 +232,7 @@ struct DuplicatesView: View {
 
     private func runScan() {
         scanning = true
+        deniedFolders = ProtectedFolderAccessCheck.deniedFolders()
         Task.detached(priority: .userInitiated) {
             let allFiles = DuplicateFinder.walk()
             let dupes = DuplicateFinder.findDuplicates(allFiles: allFiles)

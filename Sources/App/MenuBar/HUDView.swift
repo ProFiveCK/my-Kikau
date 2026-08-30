@@ -45,21 +45,34 @@ struct HUDView: View {
                 .padding(10)
                 .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
 
+                // CPU/Memory/Disk are each a shortcut into exactly the view
+                // that answers "why" — Top CPU/Memory Processes or the Disk
+                // Analyser — instead of just being numbers you can only look
+                // at. GPU has no equivalent drill-down anywhere in the app,
+                // so it deliberately stays a plain, non-tappable row rather
+                // than faking an affordance that goes nowhere.
                 VStack(spacing: 8) {
-                    MetricRow(label: "CPU", value: "\(Int(snap.cpu.usage))%", percent: snap.cpu.usage, color: .blue)
+                    MetricRow(label: "CPU", value: "\(Int(snap.cpu.usage))%", percent: snap.cpu.usage, color: .blue) {
+                        openProcessList(mode: .cpu)
+                    }
                     MetricRow(
                         label: "Memory",
                         value: "\(ByteSizeFormatter.format(Int64(snap.memory.available))) free",
                         percent: snap.memory.usedPercent,
                         color: SizeBar.color(for: snap.memory.usedPercent)
-                    )
+                    ) {
+                        openProcessList(mode: .memory)
+                    }
                     if let disk = snap.disks.first {
                         MetricRow(
                             label: "Disk",
                             value: "\(ByteSizeFormatter.format(Int64(disk.total - disk.used))) free",
                             percent: disk.usedPercent,
                             color: SizeBar.color(for: disk.usedPercent)
-                        )
+                        ) {
+                            AppNavigation.shared.pendingSelection = .analyze
+                            openMainWindow()
+                        }
                     }
                     if let gpu = snap.gpu.first, gpu.usage >= 0 {
                         MetricRow(label: "GPU", value: "\(Int(gpu.usage))%", percent: gpu.usage, color: .purple)
@@ -128,13 +141,29 @@ struct HUDView: View {
         .onDisappear { metricsService.unsubscribe() }
     }
 
+    /// `openWindow(id:)` already brings the singleton "main" `Window` scene
+    /// forward and makes it key — that's its whole job. This used to also
+    /// walk every `NSApplication.shared.windows` entry and force each one
+    /// `canBecomeMain || canBecomeKey` to the front, which was a blunt
+    /// workaround from before "main" was a singleton scene. The bug it left
+    /// behind: AppKit keeps a SwiftUI `Settings` scene's `NSWindow` alive in
+    /// `NSApp.windows` for the app's whole lifetime once it's been opened
+    /// even once (so ⌘, can reopen it instantly) — closed or not, it's still
+    /// in that array and `canBecomeKey`, so the old loop surfaced it right
+    /// alongside the dashboard on every single "Dashboard" click after that
+    /// point. `activate(ignoringOtherApps:)` is still needed here (this app
+    /// runs `.accessory` by default with no Dock icon, so without it the
+    /// window can open behind whatever app currently has focus).
     private func openMainWindow() {
         openWindow(id: "main")
         NSApplication.shared.activate(ignoringOtherApps: true)
         NSApplication.shared.unhide(nil)
-        NSApplication.shared.windows
-            .filter { $0.canBecomeMain || $0.canBecomeKey }
-            .forEach { $0.makeKeyAndOrderFront(nil) }
+    }
+
+    private func openProcessList(mode: ProcessMonitor.SortMode) {
+        AppNavigation.shared.pendingSelection = .status
+        AppNavigation.shared.pendingProcessMode = mode
+        openMainWindow()
     }
 
     private func emptyTrash() {
@@ -316,8 +345,21 @@ private struct MetricRow: View {
     let value: String
     let percent: Double
     let color: Color
+    var action: (() -> Void)?
 
     var body: some View {
+        Group {
+            if let action {
+                Button(action: action) { rowContent(showsChevron: true) }
+                    .buttonStyle(.plain)
+            } else {
+                rowContent(showsChevron: false)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func rowContent(showsChevron: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label).font(.caption)
@@ -325,6 +367,12 @@ private struct MetricRow: View {
                 Text(value)
                     .font(.caption)
                     .monospacedDigit()
+                    .foregroundStyle(.primary)
+                if showsChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
             SizeBar(percent: percent, color: color)
         }

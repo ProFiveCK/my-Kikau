@@ -42,16 +42,18 @@ public struct PlanReviewView: View {
 
             Divider()
 
-            // Items list
+            // Items list — biggest reclaimable items first in every section,
+            // so "what's actually worth reviewing" doesn't require scrolling
+            // through in whatever order the scanner happened to enumerate them.
             List {
                 Section("Will Remove (\(ByteSizeFormatter.format(plan.totalReclaimable)))") {
-                    ForEach(plan.items) { item in
+                    ForEach(sortedBySize(plan.items)) { item in
                         PlanItemRow(item: item)
                     }
                 }
                 if !plan.protectedItems.isEmpty {
                     Section("Protected (Skipped)") {
-                        ForEach(plan.protectedItems) { item in
+                        ForEach(sortedBySize(plan.protectedItems)) { item in
                             PlanItemRow(item: item)
                                 .foregroundStyle(.red)
                         }
@@ -59,7 +61,7 @@ public struct PlanReviewView: View {
                 }
                 if !plan.missingItems.isEmpty {
                     Section("Not Found") {
-                        ForEach(plan.missingItems) { item in
+                        ForEach(sortedBySize(plan.missingItems)) { item in
                             PlanItemRow(item: item)
                                 .foregroundStyle(.secondary)
                         }
@@ -89,6 +91,10 @@ public struct PlanReviewView: View {
             .padding()
         }
         .frame(minWidth: 500, minHeight: 400)
+    }
+
+    private func sortedBySize(_ items: [SafeFileDeleter.Item]) -> [SafeFileDeleter.Item] {
+        items.sorted { $0.sizeBytes > $1.sizeBytes }
     }
 }
 

@@ -16,6 +16,15 @@ struct UninstallView: View {
     @State private var completionAlert: CompletionAlert?
     @State private var searchText = ""
     @State private var sortOption: SortOption = .size
+    // Explicit focus control for the search field. Without this, clicking
+    // into the field could silently fail to accept keystrokes: macOS's
+    // NavigationSplitView sidebar is a `List(selection:)`, and AppKit can
+    // leave/return first-responder status there instead of transferring it
+    // to the TextField on click — a known SwiftUI-on-macOS quirk. Binding
+    // `.focused()` and setting it explicitly on tap forces the transfer
+    // rather than relying on SwiftUI's automatic click-to-focus, which is
+    // exactly what wasn't reliably happening.
+    @FocusState private var searchFieldFocused: Bool
 
     /// A completion popup at the end of an uninstall — the old small caption
     /// text at the bottom of the list was easy to miss entirely, especially
@@ -101,6 +110,7 @@ struct UninstallView: View {
                             .foregroundStyle(.secondary)
                         TextField("Search apps or bundle ID", text: $searchText)
                             .textFieldStyle(.plain)
+                            .focused($searchFieldFocused)
                         if !searchText.isEmpty {
                             Button {
                                 searchText = ""
@@ -113,6 +123,8 @@ struct UninstallView: View {
                     }
                     .padding(6)
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                    .onTapGesture { searchFieldFocused = true }
 
                     Picker("Sort", selection: $sortOption) {
                         ForEach(SortOption.allCases) { option in
@@ -250,6 +262,9 @@ struct UninstallView: View {
             await MainActor.run {
                 if appResult.failed == 0 {
                     apps.removeAll { $0.id == app.id }
+                    // Keeps the dashboard's "Apps" pill accurate without
+                    // forcing a full Rescan — see ScanEverythingCoordinator.
+                    ScanEverythingCoordinator.shared.removeApp(id: app.id)
                 }
                 teardownResult = teardown
                 executionSummary = summary.isEmpty ? "App removed; no teardown actions" : summary.joined(separator: ", ")

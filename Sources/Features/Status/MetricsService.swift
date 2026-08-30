@@ -7,19 +7,12 @@ import Foundation
 /// — duplicate work, and the two views' numbers could drift out of sync by up
 /// to a tick. Both now subscribe to this instead; the underlying poll runs
 /// once no matter how many views are on screen.
-///
-/// Also keeps a short rolling history of snapshots so views can draw trend
-/// sparklines without adding their own sampling logic.
 @MainActor
 public final class MetricsService: ObservableObject {
     public static let shared = MetricsService()
 
     @Published public private(set) var snapshot: MetricsSnapshot?
-    /// Recent snapshots, oldest first — enough for ~2 minutes of history at the
-    /// current 2s poll interval. Bounded so it never grows unbounded.
-    @Published public private(set) var history: [MetricsSnapshot] = []
 
-    private let historyLimit = 60
     private var timer: Timer?
     private var subscriberCount = 0
 
@@ -47,11 +40,6 @@ public final class MetricsService: ObservableObject {
     }
 
     private func refresh() async {
-        let snap = await MetricsCollector.shared.collect()
-        snapshot = snap
-        history.append(snap)
-        if history.count > historyLimit {
-            history.removeFirst(history.count - historyLimit)
-        }
+        snapshot = await MetricsCollector.shared.collect()
     }
 }

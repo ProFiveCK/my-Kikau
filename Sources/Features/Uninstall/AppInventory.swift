@@ -36,6 +36,18 @@ public enum AppInventory {
     }
 
     /// Scans standard application directories for .app bundles.
+    ///
+    /// Descends one level into plain (non-`.app`) subfolders of each root —
+    /// vendor installers commonly group related apps under a folder instead
+    /// of dropping them straight into `/Applications` (e.g. Adobe Acrobat
+    /// installs to `/Applications/Adobe Acrobat DC/Adobe Acrobat.app`, and
+    /// OpenVPN Connect follows the same pattern). A plain top-level listing
+    /// only ever saw the container folder — never a `.app` itself, so it was
+    /// silently skipped — which under-reported the app inventory without any
+    /// error to signal it. Doesn't recurse further than one level: that
+    /// covers the vendor-folder pattern without turning this into a full
+    /// filesystem walk (an `.app` bundle inside another `.app` — a plugin or
+    /// helper — is intentionally left alone; that's the outer app's business).
     public static func scan(deleter: SafeFileDeleter = .shared) -> [AppInfo] {
         let appDirs = [
             URL(fileURLWithPath: "/Applications"),
@@ -45,14 +57,29 @@ public enum AppInventory {
         for dir in appDirs {
             guard let entries = try? FileManager.default.contentsOfDirectory(
                 at: dir,
-                includingPropertiesForKeys: nil,
+                includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
             ) else {
                 continue
             }
-            for entry in entries where entry.pathExtension == "app" {
-                if let app = inspect(entry, deleter: deleter) {
-                    apps.append(app)
+            for entry in entries {
+                if entry.pathExtension == "app" {
+                    if let app = inspect(entry, deleter: deleter) {
+                        apps.append(app)
+                    }
+                    continue
+                }
+                let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                guard isDir else { continue }
+                guard let nested = try? FileManager.default.contentsOfDirectory(
+                    at: entry,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                ) else { continue }
+                for nestedEntry in nested where nestedEntry.pathExtension == "app" {
+                    if let app = inspect(nestedEntry, deleter: deleter) {
+                        apps.append(app)
+                    }
                 }
             }
         }

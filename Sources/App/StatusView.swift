@@ -47,10 +47,6 @@ struct StatusView: View {
                         )
 
                         FullSystemScanCard(onNavigate: onNavigate)
-
-                        if !snap.network.isEmpty {
-                            NetworkGraphCard(current: snap.network, history: metricsService.history)
-                        }
                     }
                     .padding()
                 }
@@ -97,94 +93,6 @@ private struct ProcessSheet: Identifiable {
     let mode: ProcessMonitor.SortMode
 }
 
-/// Network throughput card: a live download/upload graph over the shared
-/// `MetricsService.history` window (~2 minutes at the 2s poll interval),
-/// replacing the old plain per-interface number list — the shape of the
-/// traffic over time (a download burst vs. steady background chatter) is
-/// what's actually useful to see, not just the instantaneous rate.
-private struct NetworkGraphCard: View {
-    let current: [NetworkStatus]
-    let history: [MetricsSnapshot]
-
-    private var rxHistory: [Double] { history.map { snap in snap.network.reduce(0) { $0 + $1.rxRateMBs } } }
-    private var txHistory: [Double] { history.map { snap in snap.network.reduce(0) { $0 + $1.txRateMBs } } }
-    private var totalRx: Double { current.reduce(0) { $0 + $1.rxRateMBs } }
-    private var totalTx: Double { current.reduce(0) { $0 + $1.txRateMBs } }
-
-    /// The interface actually carrying traffic, for the small label under the
-    /// graph — falls back to the first known interface when everything's idle.
-    private var activeInterface: NetworkStatus? {
-        current.first(where: { $0.rxRateMBs > 0 || $0.txRateMBs > 0 }) ?? current.first
-    }
-
-    var body: some View {
-        StatCard(title: "Network") {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 16) {
-                    Label(String(format: "%.2f MB/s", totalRx), systemImage: "arrow.down")
-                        .foregroundStyle(.blue)
-                    Label(String(format: "%.2f MB/s", totalTx), systemImage: "arrow.up")
-                        .foregroundStyle(.green)
-                    Spacer()
-                    if let net = activeInterface {
-                        Text(net.ip.isEmpty ? net.name : "\(net.name) · \(net.ip)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .font(.subheadline.bold())
-                .monospacedDigit()
-
-                DualSparkline(primary: rxHistory, secondary: txHistory, primaryColor: .blue, secondaryColor: .green)
-                    .frame(height: 56)
-            }
-        }
-    }
-}
-
-/// Two overlaid trend lines sharing one normalized scale — used for the
-/// network graph's download/upload pair. Draws nothing (collapses to empty
-/// space) until there's more than one sample.
-private struct DualSparkline: View {
-    let primary: [Double]
-    let secondary: [Double]
-    let primaryColor: Color
-    let secondaryColor: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(.quaternary.opacity(0.4))
-                // Floor the scale so a fully idle window (all-zero history)
-                // doesn't divide-by-near-zero into a jittery flat line.
-                let maxV = max(primary.max() ?? 0, secondary.max() ?? 0, 0.05)
-                line(for: primary, maxV: maxV, size: geo.size)
-                    .stroke(primaryColor, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
-                line(for: secondary, maxV: maxV, size: geo.size)
-                    .stroke(secondaryColor, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    private func line(for values: [Double], maxV: Double, size: CGSize) -> Path {
-        Path { path in
-            guard values.count > 1 else { return }
-            let stepX = size.width / CGFloat(values.count - 1)
-            for (i, v) in values.enumerated() {
-                let x = CGFloat(i) * stepX
-                let y = size.height * (1 - CGFloat(v / maxV))
-                if i == 0 {
-                    path.move(to: CGPoint(x: x, y: y))
-                } else {
-                    path.addLine(to: CGPoint(x: x, y: y))
-                }
-            }
-        }
-    }
-}
-
 /// Full dashboard scan, the "Smart Care"-equivalent single entry point.
 /// Styled to match `HeroHealthCard`'s level of polish — an icon badge in the
 /// header, and (before the first scan) a preview grid of what it actually
@@ -198,8 +106,7 @@ private struct FullSystemScanCard: View {
     private static let categories: [ScanCategory] = [
         ScanCategory(icon: "internaldrive", title: "Clean", subtitle: "Cache & junk files", tint: ContentView.SidebarItem.clean.tint),
         ScanCategory(icon: "app.dashed", title: "Apps", subtitle: "Installed applications", tint: ContentView.SidebarItem.uninstall.tint),
-        ScanCategory(icon: "doc.on.doc", title: "Duplicates", subtitle: "Repeated files", tint: ContentView.SidebarItem.duplicates.tint),
-        ScanCategory(icon: "chart.bar.doc.horizontal", title: "Large Files", subtitle: "Space hogs", tint: ContentView.SidebarItem.analyze.tint),
+        ScanCategory(icon: "doc.on.doc", title: "Files", subtitle: "Duplicates & large files", tint: ContentView.SidebarItem.duplicates.tint),
         ScanCategory(icon: "checkmark.shield", title: "System Health", subtitle: "Settings & app records", tint: ContentView.SidebarItem.optimize.tint),
     ]
 
@@ -274,25 +181,26 @@ private struct FullSystemScanCard: View {
                             action: { onNavigate(.uninstall) }
                         )
                     }
+                    // One pill, not two: Duplicates and Large Files already
+                    // share a single scan pass and a single destination (the
+                    // Files tab's own segmented control still separates them
+                    // there, where that distinction is an actual decision to
+                    // make) — two dashboard tiles pointing at the same place
+                    // for one combined scan was redundant, not informative.
                     if let duplicateGroups = coordinator.duplicateGroups {
-                        let total = duplicateGroups.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+                        let largeFiles = coordinator.largeFiles ?? []
+                        let duplicateTotal = duplicateGroups.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+                        let largeTotal = largeFiles.reduce(Int64(0)) { $0 + $1.sizeBytes }
                         SummaryPill(
                             icon: "doc.on.doc",
-                            title: "Duplicates",
-                            value: "\(duplicateGroups.count) · \(ByteSizeFormatter.format(total))",
+                            title: "Files",
+                            value: "\(duplicateGroups.count + largeFiles.count) · \(ByteSizeFormatter.format(duplicateTotal + largeTotal))",
                             tint: ContentView.SidebarItem.duplicates.tint,
-                            action: { onNavigate(.duplicates) }
-                        )
-                    }
-                    if let largeFiles = coordinator.largeFiles {
-                        let total = largeFiles.reduce(Int64(0)) { $0 + $1.sizeBytes }
-                        SummaryPill(
-                            icon: "chart.bar.doc.horizontal",
-                            title: "Large Files",
-                            value: "\(largeFiles.count) · \(ByteSizeFormatter.format(total))",
-                            tint: ContentView.SidebarItem.analyze.tint,
                             action: {
-                                AppNavigation.shared.pendingDuplicatesMode = .largeFiles
+                                // Land on whichever sub-mode actually has more
+                                // to reclaim, rather than always defaulting to
+                                // Duplicates now that there's one combined pill.
+                                AppNavigation.shared.pendingDuplicatesMode = largeTotal > duplicateTotal ? .largeFiles : .duplicates
                                 onNavigate(.duplicates)
                             }
                         )
@@ -508,6 +416,24 @@ private struct HeroHealthCard: View {
         }
     }
 
+    /// Replaced the old standalone "Network" card (a full-width graph below
+    /// this one) with a compact tile in the same grid as everything else —
+    /// user feedback was that the graph wasn't earning its keep as its own
+    /// section. Combined throughput is still one glance away; a trend line
+    /// wasn't adding anything a plain rate number didn't already say.
+    private var networkValue: String {
+        let net = snapshot.network
+        let rx = net.reduce(0) { $0 + $1.rxRateMBs }
+        let tx = net.reduce(0) { $0 + $1.txRateMBs }
+        return String(format: "↓%.1f · ↑%.1f MB/s", rx, tx)
+    }
+
+    private var networkCaption: String? {
+        let net = snapshot.network
+        let active = net.first(where: { $0.rxRateMBs > 0 || $0.txRateMBs > 0 }) ?? net.first
+        return active?.name
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
@@ -592,6 +518,14 @@ private struct HeroHealthCard: View {
                         icon: "rectangle.3.group.fill",
                         title: "GPU",
                         value: gpuValue(gpu)
+                    )
+                }
+                if !snapshot.network.isEmpty {
+                    GlassTile(
+                        icon: "network",
+                        title: "Network",
+                        value: networkValue,
+                        caption: networkCaption
                     )
                 }
             }

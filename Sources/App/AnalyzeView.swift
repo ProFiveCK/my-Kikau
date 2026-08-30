@@ -17,6 +17,9 @@ struct AnalyzeView: View {
     // Marks that this user actually uses Analyse, so the launch-time
     // background preload (see myKikauApp) knows it's worth doing for them.
     @AppStorage(AppStorageKey.hasUsedAnalyze) private var hasUsedAnalyze = false
+    // Non-empty means Desktop/Documents/Downloads under-report or read as
+    // empty here without any visible error — see ProtectedFolderAccessCheck.
+    @State private var deniedFolders: [String] = ProtectedFolderAccessCheck.deniedFolders()
 
     private let tint = ContentView.SidebarItem.analyze.tint
 
@@ -43,6 +46,7 @@ struct AnalyzeView: View {
                     }
                 }
                 Button(session.isScanning ? "Scanning..." : (session.hasResults ? "Rescan" : "Scan Home")) {
+                    deniedFolders = ProtectedFolderAccessCheck.deniedFolders()
                     if session.hasResults {
                         session.rescanCurrent()
                     } else {
@@ -54,6 +58,12 @@ struct AnalyzeView: View {
                 .disabled(session.isScanning)
             }
             .padding()
+
+            if !deniedFolders.isEmpty {
+                ProtectedFolderAccessBanner(deniedFolders: deniedFolders)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+            }
 
             if let dir = session.currentDir, !session.entries.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {

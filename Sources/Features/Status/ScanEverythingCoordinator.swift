@@ -104,4 +104,25 @@ public final class ScanEverythingCoordinator: ObservableObject {
     public func clearCleanPlan(for section: CleanScanner.Section) {
         cleanPlans?[section] = SafeFileDeleter.Plan(items: [], protectedItems: [], missingItems: [])
     }
+
+    /// Called after `UninstallView` successfully removes an app, so the
+    /// dashboard's cached Apps count/footprint doesn't keep counting one
+    /// that's already gone — without this, the "Apps" pill on the Full
+    /// System Scan card only ever updated on the next full "Rescan".
+    public func removeApp(id: String) {
+        apps?.removeAll { $0.id == id }
+    }
+
+    /// Called after `DuplicatesView` successfully deletes the duplicate
+    /// copies in one or more groups (the group's keeper survives, but the
+    /// group itself no longer has duplicates once the rest are gone).
+    public func removeDuplicateGroups(ids: Set<String>) {
+        duplicateGroups?.removeAll { ids.contains($0.id) }
+    }
+
+    /// Called after `DuplicatesView` successfully deletes selected large
+    /// files, for the same reason as `removeDuplicateGroups`.
+    public func removeLargeFiles(ids: Set<String>) {
+        largeFiles?.removeAll { ids.contains($0.id) }
+    }
 }
