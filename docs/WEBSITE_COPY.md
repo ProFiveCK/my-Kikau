@@ -8,14 +8,14 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.6.1 · 3.0 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.7.0 · 3.1 MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
 
 - **See it before you delete it.** Every cleanup and uninstall shows a full preview — file paths, sizes, what's protected — before anything moves to the Trash.
 - **Uninstall actually means uninstall.** Removes the app, its LaunchAgents, login items, and leftover files across your whole `~/Library` — not just the `.app` bundle.
-- **Bounded, safe maintenance.** 10 vetted upkeep tasks — LaunchServices repair, cache refresh, orphaned Spotlight rules, and more — no admin password needed, with an optional preview mode.
+- **Bounded, safe maintenance.** 12 vetted upkeep tasks — LaunchServices repair, cache refresh, font cache reset, orphaned Spotlight rules, and more — no admin password needed, with an optional preview mode.
 - **A real system dashboard.** Live CPU, memory, disk, network, GPU, thermal, and battery — not a marketing gauge, actual native metrics, refreshed every 2 seconds, plus a menu bar HUD.
 - **Duplicates & large files.** Content-hash-verified duplicate detection plus a large-files view across Downloads, Documents, Desktop, Pictures, and Movies.
 - **Nothing hidden.** Every action is logged locally (`~/Library/Logs/myKikau/operations.log`) so you can see exactly what ran and when.
@@ -38,6 +38,22 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes (template — duplicate per version)
+
+### Version 0.7.0 — August 2026
+
+**New**
+- Network screen — connection details (interface, local IP, subnet, router, DNS, MAC) and a full Wi‑Fi radio readout: network name, band, channel and width, protocol, security, transmit rate, and signal/SNR
+- On-demand public-IP lookup, and one-click **Flush DNS Cache** / **Renew DHCP Lease** that run with a single macOS password prompt — no Terminal
+- The menu bar HUD now shows your connection and local IP address, with one-tap copy
+- Optimise gains a **Font Cache Reset** task — fixes garbled or missing text in apps, no admin password needed
+
+**Improved**
+- Disk Analyser opens on a whole-disk overview — used vs free space, the folders using the most storage, and a computed "macOS System" figure that adds up to your drive's full capacity — instead of starting in your home folder
+- Disk Analyser navigation redesigned: a Finder-style path bar you can click at any level, plus an Up button, replacing the single Back button
+- Hidden dot-folders (`.cache`, `.npm`, and the like) now appear as their own rows you can open, with a header toggle to hide them again — instead of one lumped-together "Hidden Items" total you couldn't drill into
+
+**Fixed**
+- Menu bar Quick Actions no longer show a "View Memory Users" button that just repeated the Memory row directly above it
 
 ### Version 0.6.1 — August 2026
 
