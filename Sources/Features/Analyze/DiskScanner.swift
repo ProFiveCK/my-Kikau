@@ -98,10 +98,7 @@ public enum DiskScanner {
         }
     }
 
-    private static let walkKeys: [URLResourceKey] = [
-        .isDirectoryKey, .isSymbolicLinkKey, .isVolumeKey, .isRegularFileKey,
-        .totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey,
-    ]
+    private static let walkKeys: [URLResourceKey] = Array(FileSizing.keys)
 
     /// Represents a scanned entry (file or directory) with its allocated disk size.
     public struct Entry: Identifiable, Hashable, Sendable {
@@ -342,8 +339,7 @@ public enum DiskScanner {
     }
 
     private static func fileSize(_ values: URLResourceValues?) -> Int64? {
-        guard let values, values.isRegularFile == true else { return nil }
-        return Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0)
+        FileSizing.fileSize(values)
     }
 
     /// Best available allocated size for a file URL, falling back to logical size.

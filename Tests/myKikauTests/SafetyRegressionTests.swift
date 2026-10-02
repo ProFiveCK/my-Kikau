@@ -313,7 +313,7 @@ struct SafeFileDeleterSafetyTests {
 
         // Listing the same path twice doesn't double it.
         #expect(plan.items.count == 2)
-        #expect(plan.keeping([a.path]).totalReclaimable == 10)
+        #expect(plan.keeping([a.path]).totalReclaimable == FileSizing.allocatedSize(of: a))
         #expect(plan.removing([a.path]).items.map(\.url) == [b])
     }
 
@@ -323,7 +323,10 @@ struct SafeFileDeleterSafetyTests {
         defer { try? FileManager.default.removeItem(at: tmp) }
         touch(tmp.appendingPathComponent("visible.bin"), size: 100)
         touch(tmp.appendingPathComponent(".hidden.bin"), size: 50)
-        #expect(SafeFileDeleter().directorySize(tmp) == 150)
+        let total = SafeFileDeleter().directorySize(tmp)
+        #expect(total >= 150)
+        #expect(total == FileSizing.allocatedSize(of: tmp.appendingPathComponent("visible.bin"))
+            + FileSizing.allocatedSize(of: tmp.appendingPathComponent(".hidden.bin")))
     }
 
     @Test("A cancelled run stops before touching the next item")

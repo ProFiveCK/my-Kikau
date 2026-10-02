@@ -433,40 +433,10 @@ public final class SafeFileDeleter: @unchecked Sendable {
         return Failure(path: url.path, reason: error.localizedDescription, needsAdministrator: false)
     }
 
-    /// Measures the total size of a file or directory (recursive), hidden
-    /// files included.
+    /// How much disk the item takes (allocated size, hidden files included).
+    /// See `FileSizing`.
     public func directorySize(_ url: URL) -> Int64 {
-        var isDir: ObjCBool = false
-        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir) else { return 0 }
-        // Single file — return its size directly (the enumerator path below
-        // returns 0 for non-directories).
-        if !isDir.boolValue {
-            if let attrs = try? fileManager.attributesOfItem(atPath: url.path),
-               let size = (attrs[.size] as? NSNumber)?.int64Value
-            {
-                return size
-            }
-            return 0
-        }
-        guard let enumerator = fileManager.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-            options: []
-        ) else { return 0 }
-        var total: Int64 = 0
-        var visited = 0
-        for case let fileURL as URL in enumerator {
-            visited += 1
-            if visited % 512 == 0, Task.isCancelled {
-                break
-            }
-            if let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-               values.isRegularFile == true
-            {
-                total += Int64(values.fileSize ?? 0)
-            }
-        }
-        return total
+        FileSizing.allocatedSize(of: url, fileManager: fileManager)
     }
 }
 

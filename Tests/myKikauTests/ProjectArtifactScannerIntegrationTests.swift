@@ -32,9 +32,9 @@ struct ProjectArtifactScannerIntegrationTests {
 
         let proj = home.appendingPathComponent("MyProjects/myproj")
         let nm = proj.appendingPathComponent("node_modules/react/index.js")
-        touch(nm, size: 200)
+        touch(nm, size: 200_000)
         let target = proj.appendingPathComponent("target/debug/myproj")
-        touch(target, size: 100)
+        touch(target, size: 100_000)
 
         // Mark both as old so they are not "recent".
         setModDate(proj.appendingPathComponent("node_modules"), daysAgo: 30)
@@ -45,9 +45,10 @@ struct ProjectArtifactScannerIntegrationTests {
         #expect(artifacts.count == 2)
         // Sorted by size descending.
         #expect(artifacts.first?.artifactType == "node_modules")
-        #expect(artifacts.first?.sizeBytes == 200)
+        #expect((artifacts.first?.sizeBytes ?? 0) >= 200_000)
         #expect(artifacts.last?.artifactType == "target")
-        #expect(artifacts.last?.sizeBytes == 100)
+        #expect((artifacts.last?.sizeBytes ?? 0) >= 100_000)
+        #expect((artifacts.last?.sizeBytes ?? 0) < 200_000)
         // Both > 7 days old.
         #expect(artifacts.allSatisfy { !$0.isRecent })
     }
@@ -141,13 +142,13 @@ struct ProjectArtifactScannerIntegrationTests {
         defer { try? FileManager.default.removeItem(at: home) }
 
         let proj = home.appendingPathComponent("MyProjects/planproj")
-        touch(proj.appendingPathComponent("dist/bundle.js"), size: 50)
+        touch(proj.appendingPathComponent("dist/bundle.js"), size: 50_000)
         setModDate(proj.appendingPathComponent("dist"), daysAgo: 30)
 
         let artifacts = ProjectArtifactScanner.scan(home: home)
         let plan = ProjectArtifactScanner.plan(for: artifacts)
         #expect(plan.items.count == 1)
         #expect(plan.items.first?.category == .artifact)
-        #expect(plan.items.first?.sizeBytes == 50)
+        #expect((plan.items.first?.sizeBytes ?? 0) >= 50_000)
     }
 }
