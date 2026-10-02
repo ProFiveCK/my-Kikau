@@ -46,6 +46,9 @@ myKikau's source is public and licensed under GPL-3.0.
 - **History** — everything myKikau has done, with **Put Back** for anything it moved to the Trash, export to CSV, and a log integrity check
 - **Startup Items** — see the launch agents and daemons that start in the background, and remove your own
 - Uninstall several apps at once, and **Find Leftovers** left behind by apps you removed earlier
+- **Check for Updates** in Apps asks each app's own update feed, and the App Store, for newer versions — then opens the app or its store page; nothing is installed for you
+- **Similar Photos** in Files groups pictures that look alike — resized copies, re-saved exports, burst shots — analysed on your Mac
+- The Apps list is a proper table: click a column to sort by name, last used or size
 - Choose which copy to keep in each set of duplicates; add your own folders to the Files scan; set the large-file size
 - Settings gains a **Never Remove** list, background scans with a notification when there's enough to reclaim, and a low-disk alert
 - Battery health and cycle count, and CPU / memory trend lines, on the dashboard
