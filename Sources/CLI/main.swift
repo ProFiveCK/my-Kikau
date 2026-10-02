@@ -14,6 +14,9 @@ import Features
 
 AppDefaults.store = UserDefaults(suiteName: AppDefaults.appDomain) ?? .standard
 
+// Kept in step with Info.plist by scripts/bump-version.sh.
+let cliVersion = "0.8.0"
+
 let usage = """
     Usage: mykikau-cli <command> [options]
 
@@ -201,7 +204,7 @@ case "policy":
 case "log":
     runLog(Array(arguments.dropFirst()))
 case "version", "--version":
-    print("mykikau-cli 0.7.0")
+    print("mykikau-cli \(cliVersion)")
 case "help", "--help", "-h", nil:
     print(usage)
 default:

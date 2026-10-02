@@ -96,11 +96,11 @@ public enum DiskScanner {
 
     private static let walkKeys: [URLResourceKey] = [
         .isDirectoryKey, .isSymbolicLinkKey, .isVolumeKey, .isRegularFileKey,
-        .totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey,
+        .totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey
     ]
 
     /// Represents a scanned entry (file or directory) with its allocated disk size.
-    public struct Entry: Identifiable, Hashable {
+    public struct Entry: Identifiable, Hashable, Sendable {
         public let id: String
         public let url: URL
         public let name: String
@@ -135,7 +135,7 @@ public enum DiskScanner {
     }
 
     /// Describes the startup volume's capacity for the whole-disk overview.
-    public struct VolumeInfo: Hashable {
+    public struct VolumeInfo: Hashable, Sendable {
         public let name: String
         public let totalBytes: Int64
         /// Free space including purgeable — matches Finder's "Available".
@@ -155,7 +155,7 @@ public enum DiskScanner {
         "/Users",
         "/Library",
         "/opt",
-        "/usr/local",
+        "/usr/local"
     ]
 
     /// Reads the startup volume's name and capacity, or `nil` if unavailable.
@@ -165,7 +165,7 @@ public enum DiskScanner {
             .volumeNameKey,
             .volumeTotalCapacityKey,
             .volumeAvailableCapacityForImportantUsageKey,
-            .volumeAvailableCapacityKey,
+            .volumeAvailableCapacityKey
         ]) else { return nil }
         let total = Int64(values.volumeTotalCapacity ?? 0)
         guard total > 0 else { return nil }
@@ -195,11 +195,8 @@ public enum DiskScanner {
         }
         // Walk the roots concurrently — `/Users` and `/Library` alone are large
         // enough that doing them serially makes the overview feel broken.
-        var sizes = [Int64](repeating: 0, count: roots.count)
-        sizes.withUnsafeMutableBufferPointer { buffer in
-            DispatchQueue.concurrentPerform(iterations: roots.count) { index in
-                buffer[index] = measure(URL(fileURLWithPath: roots[index]), token: token, cache: cache)
-            }
+        let sizes = concurrentMap(roots) { path in
+            measure(URL(fileURLWithPath: path), token: token, cache: cache)
         }
         if token?.isCancelled == true { return [] }
         var measured: [Entry] = []

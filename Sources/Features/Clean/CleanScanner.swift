@@ -70,7 +70,7 @@ public enum CleanScanner {
     private static let cachesOwnedByOtherSections: Set<String> = [
         "Google", "Firefox", "Microsoft Edge", "BraveSoftware", "Arc", "Vivaldi", "com.operasoftware.Opera",
         "com.spotify.client", "com.getdropbox.dropbox", "us.zoom.xos",
-        "go-build", "pip", "com.apple.dt.Xcode", "com.apple.helpd",
+        "go-build", "pip", "com.apple.dt.Xcode", "com.apple.helpd"
     ]
 
     /// Which app owns a cache that isn't named after its bundle ID. While
@@ -96,7 +96,7 @@ public enum CleanScanner {
         ("Library/Application Support/discord/Cache", "com.hnc.Discord"),
         ("Library/Application Support/discord/Code Cache", "com.hnc.Discord"),
         ("Library/Caches/us.zoom.xos", "us.zoom.xos"),
-        ("Library/Application Support/zoom.us/data/Cache", "us.zoom.xos"),
+        ("Library/Application Support/zoom.us/data/Cache", "us.zoom.xos")
     ]
 
     /// Returns the candidate URLs for a given section.
@@ -175,7 +175,7 @@ public enum CleanScanner {
                 home.appendingPathComponent("Library/Caches/BraveSoftware/Brave-Browser"),
                 home.appendingPathComponent("Library/Caches/Arc"),
                 home.appendingPathComponent("Library/Caches/Vivaldi"),
-                home.appendingPathComponent("Library/Caches/com.operasoftware.Opera"),
+                home.appendingPathComponent("Library/Caches/com.operasoftware.Opera")
             ]
 
         case .devTools:
@@ -194,7 +194,7 @@ public enum CleanScanner {
                 home.appendingPathComponent("Library/Caches/go-build"),
                 home.appendingPathComponent(".cargo/registry/cache"),
                 home.appendingPathComponent("Library/Caches/pip"),
-                home.appendingPathComponent(".gradle/caches"),
+                home.appendingPathComponent(".gradle/caches")
             ]
 
         case .systemLogs:
@@ -228,7 +228,7 @@ public enum CleanScanner {
                 home.appendingPathComponent("Library/Application Support/discord/Cache"),
                 home.appendingPathComponent("Library/Application Support/discord/Code Cache"),
                 home.appendingPathComponent("Library/Caches/us.zoom.xos"),
-                home.appendingPathComponent("Library/Application Support/zoom.us/data/Cache"),
+                home.appendingPathComponent("Library/Application Support/zoom.us/data/Cache")
             ]
 
         case .trash:
@@ -253,7 +253,7 @@ public enum CleanScanner {
                 sharedDir.appendingPathComponent("com.apple.LSSharedFileList.RecentDocuments.sfl2"),
                 sharedDir.appendingPathComponent("com.apple.LSSharedFileList.RecentServers.sfl2"),
                 sharedDir.appendingPathComponent("com.apple.LSSharedFileList.RecentHosts.sfl2"),
-                home.appendingPathComponent("Library/Preferences/com.apple.recentitems.plist"),
+                home.appendingPathComponent("Library/Preferences/com.apple.recentitems.plist")
             ]
         }
     }

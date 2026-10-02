@@ -69,7 +69,7 @@ public enum DuplicateFinder {
 
     /// Directories scanned by default, relative to the home directory.
     public static let defaultScanPaths: [String] = [
-        "Downloads", "Documents", "Desktop", "Pictures", "Movies",
+        "Downloads", "Documents", "Desktop", "Pictures", "Movies"
     ]
 
     /// Files smaller than this are never hashed — not worth the dedup UI
@@ -118,7 +118,7 @@ public enum DuplicateFinder {
         let keys: [URLResourceKey] = [
             .fileSizeKey, .isRegularFileKey, .contentModificationDateKey,
             .fileResourceIdentifierKey,
-            .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
+            .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey
         ]
         var report = WalkReport()
         var seenIdentifiers = Set<AnyHashable>()

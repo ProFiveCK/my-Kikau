@@ -49,7 +49,7 @@ struct myKikauApp: App {
         // Settings window.
         Window("myKikau", id: "main") {
             RootView()
-                .frame(minWidth: 800, minHeight: 500)
+                .frame(minWidth: 860, minHeight: 600)
                 .environmentObject(updaterViewModel)
                 .onAppear {
                     DockIconController.apply(showDockIcon: showDockIcon)
@@ -136,6 +136,7 @@ struct myKikauApp: App {
     }
 }
 
+@MainActor
 enum DockIconController {
     static func apply(showDockIcon: Bool) {
         NSApplication.shared.setActivationPolicy(showDockIcon ? .regular : .accessory)
@@ -219,7 +220,7 @@ struct RootView: View {
 /// Main window with sidebar navigation.
 struct ContentView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
-        case status, clean, uninstall, analyze, duplicates, network, optimize, purge, history, about
+        case status, clean, uninstall, analyze, duplicates, network, optimize, startup, purge, history, about
         var id: String { rawValue }
 
         /// Explicit display strings rather than `rawValue.capitalized` — the
@@ -235,6 +236,7 @@ struct ContentView: View {
             case .duplicates: "Files"
             case .network: "Network"
             case .optimize: "Optimise"
+            case .startup: "Startup"
             case .purge: "Purge"
             case .history: "History"
             case .about: "About"
@@ -261,6 +263,14 @@ struct ContentView: View {
             case maintain = "Maintain"
             case app = "myKikau"
             var id: String { rawValue }
+
+            /// Caption shown above the group, if it has one.
+            var title: String? {
+                switch self {
+                case .overview, .app: nil
+                default: rawValue
+                }
+            }
         }
 
         var group: Group {
@@ -268,7 +278,7 @@ struct ContentView: View {
             case .status: .overview
             case .clean, .uninstall, .duplicates, .purge: .cleanUp
             case .analyze, .network: .inspect
-            case .optimize: .maintain
+            case .optimize, .startup: .maintain
             case .history, .about: .app
             }
         }
@@ -282,6 +292,7 @@ struct ContentView: View {
             case .duplicates: "doc.on.doc"
             case .network: "wifi"
             case .optimize: "wrench.and.screwdriver"
+            case .startup: "power"
             case .purge: "hammer"
             case .history: "clock.arrow.circlepath"
             case .about: "info.circle"
@@ -300,6 +311,7 @@ struct ContentView: View {
             case .duplicates: .pink
             case .network: .indigo
             case .optimize: .orange
+            case .startup: .green
             case .purge: .brown
             case .history: .mint
             case .about: .secondary
@@ -326,11 +338,15 @@ struct ContentView: View {
                 ForEach(SidebarItem.Group.allCases) { group in
                     let groupItems = items.filter { $0.group == group }
                     if !groupItems.isEmpty {
-                        Section(group.rawValue) {
+                        Section {
                             ForEach(groupItems) { item in
                                 SidebarRow(item: item, selected: selection == item)
                                     .tag(item)
                             }
+                        } header: {
+                            // The first and last groups need no caption;
+                            // skipping them keeps the list inside the window.
+                            if let title = group.title { Text(title) }
                         }
                     }
                 }
@@ -342,18 +358,24 @@ struct ContentView: View {
         } detail: {
             // A screen that's hidden (developer tools off, or disabled by
             // policy) falls back to Status — e.g. a stale stored selection.
-            switch selection.flatMap({ items.contains($0) ? $0 : nil }) ?? .status {
-            case .status: StatusView(onNavigate: { selection = $0 })
-            case .clean: CleanView()
-            case .uninstall: UninstallView()
-            case .analyze: AnalyzeView()
-            case .duplicates: DuplicatesView()
-            case .network: NetworkView()
-            case .optimize: OptimizeView()
-            case .purge: PurgeView()
-            case .history: HistoryView()
-            case .about: AboutView()
+            Group {
+                switch selection.flatMap({ items.contains($0) ? $0 : nil }) ?? .status {
+                case .status: StatusView(onNavigate: { selection = $0 })
+                case .clean: CleanView()
+                case .uninstall: UninstallView()
+                case .analyze: AnalyzeView()
+                case .duplicates: DuplicatesView()
+                case .network: NetworkView()
+                case .optimize: OptimizeView()
+                case .startup: StartupView()
+                case .purge: PurgeView()
+                case .history: HistoryView()
+                case .about: AboutView()
+                }
             }
+            // A screen whose content doesn't fill the pane (an empty state)
+            // keeps its header at the top instead of floating mid-window.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onAppear {
             if selection == nil {

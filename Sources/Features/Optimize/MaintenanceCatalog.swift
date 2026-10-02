@@ -9,7 +9,7 @@ public enum MaintenanceCatalog {
     }
 
     /// A maintenance task definition.
-    public struct Task: Identifiable, Hashable {
+    public struct Task: Identifiable, Hashable, Sendable {
         public let id: String        // action slug
         public let name: String      // display name
         public let summary: String   // one-line description
@@ -83,6 +83,6 @@ public enum MaintenanceCatalog {
              requiresSudo: false, safeForAuto: true),
         Task(id: "network_privacy", name: "System Privacy Records",
              summary: "Detect duplicate, conflicting, and orphaned Local Network app permissions",
-             requiresSudo: false, safeForAuto: false, kind: .guidedDiagnostic),
+             requiresSudo: false, safeForAuto: false, kind: .guidedDiagnostic)
     ]
 }

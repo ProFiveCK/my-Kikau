@@ -108,7 +108,10 @@ struct OptimizeView: View {
                 ContentUnavailableView(
                     "Scan to Find Issues",
                     systemImage: "wrench.and.screwdriver",
-                    description: Text("Checks \(MaintenanceCatalog.tasks.count) safe, reversible maintenance tasks — broken preferences, stale caches, orphaned launch agents — and recommends exactly what to fix.")
+                    description: Text(
+                        "Checks \(MaintenanceCatalog.tasks.count) safe, reversible maintenance tasks — broken preferences, "
+                            + "stale caches, orphaned launch agents — and recommends exactly what to fix."
+                    )
                 )
             case .scanning:
                 VStack(spacing: 10) {
@@ -223,6 +226,18 @@ struct OptimizeView: View {
                 dryRun: false
             )
             inFlight.remove(id)
+        }
+        // Check each fixed task again, so what's on screen is the state now:
+        // a task that's no longer needed moves to "Already Optimised", and
+        // one that failed stays recommended.
+        for id in ids {
+            let recheck = await runner.run(taskID: id, dryRun: true)
+            scanResults[id] = recheck
+            if case .applied = recheck.outcome {
+                // Still something to do (the fix didn't take).
+            } else {
+                selectedTasks.remove(id)
+            }
         }
         applying = false
     }
@@ -381,7 +396,8 @@ private struct GuidedRepairSheet: View {
                     .frame(maxHeight: 260)
 
                     Label(
-                        "macOS has no supported per-app reset. myKikau can prepare verified backups and exact Recovery instructions, but it will never silently disable SIP or include this in Fix All.",
+                        "macOS has no supported per-app reset. myKikau can prepare verified backups and exact Recovery instructions, "
+                            + "but it will never silently disable SIP or include this in Fix All.",
                         systemImage: "lock.shield"
                     )
                     .font(.caption)
@@ -664,10 +680,8 @@ private struct MaintenanceTaskCard: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(task.name). \(task.summary)")
         .accessibilityValue(accessibilityState)
-        .accessibilityAddTraits(.isButton)
     }
 
     private var accessibilityState: String {
@@ -760,6 +774,6 @@ private struct CountBadge: View {
             Text(label)
                 .font(.caption)
         }
-        .foregroundStyle(count > 0 ? color : .secondary)
+        .foregroundStyle(count > 0 ? color : .secondary) // swiftlint:disable:this empty_count
     }
 }

@@ -375,7 +375,7 @@ public final class OperationLog: @unchecked Sendable {
                 let fields = [
                     formatter.string(from: entry.timestamp), entry.action, entry.outcome.rawValue,
                     entry.mode.rawValue, String(entry.dryRun), String(entry.sizeBytes),
-                    entry.path, entry.trashedPath ?? "", entry.detail ?? "",
+                    entry.path, entry.trashedPath ?? "", entry.detail ?? ""
                 ]
                 text += fields.map(Self.csvEscape).joined(separator: ",") + "\n"
             }

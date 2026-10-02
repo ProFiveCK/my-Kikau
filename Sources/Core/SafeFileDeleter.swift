@@ -308,7 +308,10 @@ public final class SafeFileDeleter: @unchecked Sendable {
             skipped += 1
         }
 
-        Log.deletion.info("\(action, privacy: .public): \(succeeded) removed, \(failed) failed, \(skipped) skipped, \(freed) bytes\(dryRun ? " (simulated)" : "", privacy: .public)\(cancelled ? " (cancelled)" : "", privacy: .public)")
+        let flags = (dryRun ? " (simulated)" : "") + (cancelled ? " (cancelled)" : "")
+        Log.deletion.info(
+            "\(action, privacy: .public): \(succeeded) removed, \(failed) failed, \(skipped) skipped, \(freed) bytes\(flags, privacy: .public)"
+        )
 
         return ExecutionResult(
             freedBytes: freed, succeeded: succeeded,

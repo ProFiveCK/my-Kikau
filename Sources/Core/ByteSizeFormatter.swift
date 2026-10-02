@@ -2,7 +2,8 @@ import Foundation
 
 /// Formats byte counts into human-readable strings (e.g. "12.3 GB").
 public enum ByteSizeFormatter {
-    private static let formatter: ByteCountFormatter = {
+    // Configured once and only ever read; formatters are safe to use from any thread.
+    nonisolated(unsafe) private static let formatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
         f.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
         f.countStyle = .file

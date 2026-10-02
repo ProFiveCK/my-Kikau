@@ -300,7 +300,7 @@ private struct PieChartSection: View {
     }
 
     private static let palette: [Color] = [
-        .teal, .blue, .purple, .pink, .orange, .yellow, .green, .indigo, .mint, .cyan,
+        .teal, .blue, .purple, .pink, .orange, .yellow, .green, .indigo, .mint, .cyan
     ]
 
     /// Neutral greys for the computed rows so they don't compete with the
@@ -428,9 +428,7 @@ private struct PieChartSection: View {
                         .contextMenu {
                             if let entry = slice.entry, entry.isNavigable { PathMenu(url: entry.url) }
                         }
-                        .accessibilityElement(children: .ignore)
                         .accessibilityLabel("\(slice.name), \(ByteSizeFormatter.format(slice.sizeBytes)), \(percentString(slice.sizeBytes))")
-                        .accessibilityAddTraits(slice.isNavigable ? .isButton : [])
                     }
                 }
             }

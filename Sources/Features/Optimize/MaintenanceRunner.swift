@@ -167,7 +167,7 @@ public final class MaintenanceRunner {
         guard let lsregister = lsregisterPath() else { return [] }
         return [
             (lsregister, ["-gc"]),
-            (lsregister, ["-r", "-f", "-domain", "local", "-domain", "user", "-domain", "system"]),
+            (lsregister, ["-r", "-f", "-domain", "local", "-domain", "user", "-domain", "system"])
         ]
     }
 
@@ -201,7 +201,7 @@ public final class MaintenanceRunner {
     private func lsregisterPath() -> String? {
         let candidates = [
             "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
-            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
         ]
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path

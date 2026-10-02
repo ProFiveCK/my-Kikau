@@ -298,11 +298,9 @@ private struct DuplicateFileRow: View {
         .buttonStyle(.plain)
         .help(file.url.path)
         .contextMenu { PathMenu(url: file.url) }
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(file.url.lastPathComponent) in \(file.url.deletingLastPathComponent().lastPathComponent)")
         .accessibilityValue(isKeeper ? "Will be kept" : "Will be removed")
         .accessibilityHint(isKeeper ? "" : "Keeps this copy instead")
-        .accessibilityAddTraits(.isButton)
     }
 }
 

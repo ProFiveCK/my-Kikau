@@ -161,7 +161,10 @@ private struct SafetySettings: View {
             } header: {
                 Text("Never Remove")
             } footer: {
-                Text("Files and folders listed here — and everything inside them — are skipped by every scan and can never be removed by myKikau. System folders, keychains, mail and security software are always protected.")
+                Text(
+                    "Files and folders listed here — and everything inside them — are skipped by every scan and can never be removed "
+                        + "by myKikau. System folders, keychains, mail and security software are always protected."
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

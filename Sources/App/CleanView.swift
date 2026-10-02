@@ -203,9 +203,7 @@ private struct CleanSectionCard: View {
             .cardSurface()
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(section.displayName), \(ByteSizeFormatter.format(plan.totalReclaimable)), \(countText)")
         .accessibilityHint("Opens the list of items to review")
-        .accessibilityAddTraits(.isButton)
     }
 }

@@ -76,7 +76,7 @@ struct PathProtectionTests {
         for relative in [
             "Library/Keychains/login.keychain-db", ".ssh/id_ed25519", ".gnupg/pubring.kbx",
             "Library/Mail/V10", "Library/Messages/chat.db", "Library/Mobile Documents/com~apple~CloudDocs/a.txt",
-            "Library/Logs/myKikau", "Library/Logs/myKikau/operations.log",
+            "Library/Logs/myKikau", "Library/Logs/myKikau/operations.log"
         ] {
             #expect(protection.shouldProtect(home.appendingPathComponent(relative)) == true, "~/\(relative) should be protected")
         }

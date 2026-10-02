@@ -7,11 +7,12 @@ Built for macOS 14+ (Sonoma), fully native Swift. One external dependency: [Spar
 ## Features
 
 - **Clean** — caches, logs, temporary files and Trash, reviewed item by item before anything moves
-- **Uninstall** — app inventory, plus the app's leftovers matched by exact bundle ID, in one review sheet
+- **Uninstall** — app inventory, plus each app's leftovers matched by exact bundle ID, in one review sheet; uninstall several at once, and find files left by apps removed earlier
 - **Analyse** — disk space explorer with a donut chart, squarified treemap, and sorted list views, folder-by-folder drill-down
 - **Duplicates** — content-hash-verified duplicate files (you choose which copy to keep), plus a large-files mode, across Downloads/Documents/Desktop/Pictures/Movies and any folders you add
 - **Status** — live CPU / memory / disk / network / battery-health / thermal dashboard + menu bar HUD, with a one-click, cancellable "Scan Everything"
 - **Optimise** — 9 bounded, no-sudo maintenance tasks (LaunchServices repair, Finder cache, broken config/plist repair, stale launch agents, etc.), each listing the exact files it will touch
+- **Startup** — launch agents and daemons that start in the background; remove your own, see the system-wide ones
 - **History** — everything myKikau has done, with Put Back for anything it moved to the Trash
 - **Project Purge** — build artifacts (`node_modules`, `target`, `build`, `dist`, `venv`); off by default, enabled with Settings → Advanced → Developer tools
 

@@ -51,7 +51,7 @@ struct CleanTargetSafetyTests {
             "Library/Safari",
             "Library/Developer/Xcode/Archives",
             ".m2/repository",
-            "Library/Group Containers/UBF8T346G9.com.microsoft.teams",
+            "Library/Group Containers/UBF8T346G9.com.microsoft.teams"
         ]
         for relative in forbidden { makeDir(home.appendingPathComponent(relative)) }
 
@@ -368,7 +368,7 @@ struct LeftoverFinderSafetyTests {
         let found = Set(LeftoverFinder.findLeftovers(bundleID: mine, home: home).map(\.lastPathComponent))
 
         #expect(found == [
-            mine, "\(mine).plist", "\(mine).A1B2C3D4-0000-1111-2222-333344445555.plist", "group.\(mine)",
+            mine, "\(mine).plist", "\(mine).A1B2C3D4-0000-1111-2222-333344445555.plist", "group.\(mine)"
         ])
     }
 
@@ -619,7 +619,6 @@ struct ScanningTests {
     }
 }
 
-
 // MARK: - Findings from the independent review
 
 @Suite("Review follow-ups")
@@ -765,5 +764,110 @@ struct ReviewFollowUpTests {
 
         let found = Set(ProjectArtifactScanner.scan(deleter: SafeFileDeleter(), home: home).map(\.artifactType))
         #expect(found == [".build", ".next"])
+    }
+}
+
+// MARK: - Leftovers from removed apps, startup items
+
+@Suite("OrphanFinder")
+struct OrphanFinderTests {
+    private func seed(_ home: URL, _ relative: String, daysOld: Double) {
+        let url = home.appendingPathComponent("Library").appendingPathComponent(relative)
+        if url.pathExtension.isEmpty {
+            touch(url.appendingPathComponent("data.bin"))
+            setModDate(url.appendingPathComponent("data.bin"), daysAgo: daysOld)
+        } else {
+            touch(url)
+        }
+        setModDate(url, daysAgo: daysOld)
+    }
+
+    @Test("Only old, fully-qualified, unowned identifiers are suggested")
+    func findsOnlyTrueOrphans() {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        seed(home, "Application Support/com.gone.oldapp", daysOld: 200)
+        seed(home, "Preferences/com.gone.oldapp.plist", daysOld: 200)
+        // Still installed.
+        seed(home, "Caches/com.vendor.present", daysOld: 200)
+        // A helper of an installed app.
+        seed(home, "Caches/com.vendor.present.helper", daysOld: 200)
+        // Used recently.
+        seed(home, "Caches/com.gone.recent", daysOld: 5)
+        // Apple's, a security agent's, and names that aren't identifiers.
+        seed(home, "Caches/com.apple.something", daysOld: 200)
+        seed(home, "Caches/com.crowdstrike.falcon.Agent", daysOld: 200)
+        seed(home, "Application Support/Google", daysOld: 200)
+        seed(home, "Application Support/My App", daysOld: 200)
+        seed(home, "Caches/pip", daysOld: 200)
+        seed(home, "Caches/vendor.app", daysOld: 200)
+        // Registered with Launch Services though not in /Applications.
+        seed(home, "Caches/com.elsewhere.tool", daysOld: 200)
+        // Containers are never searched.
+        seed(home, "Containers/com.gone.sandboxed", daysOld: 200)
+
+        let found = OrphanFinder.find(
+            home: home,
+            installedBundleIDs: ["com.vendor.present"],
+            isRegistered: { $0 == "com.elsewhere.tool" }
+        )
+
+        #expect(found.map(\.url.lastPathComponent).sorted() == ["com.gone.oldapp", "com.gone.oldapp.plist"])
+        #expect(Set(found.map(\.bundleID)) == ["com.gone.oldapp"])
+    }
+
+    @Test("A folder with something recent inside is not an orphan")
+    func recentContentsKeepAFolder() {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let folder = home.appendingPathComponent("Library/Application Support/com.gone.active")
+        touch(folder.appendingPathComponent("state.db"))
+        setModDate(folder, daysAgo: 300)
+
+        #expect(OrphanFinder.find(home: home, installedBundleIDs: [], isRegistered: { _ in false }).isEmpty)
+    }
+
+    @Test("Entry names that aren't bundle identifiers are ignored")
+    func parsesBundleIDs() {
+        #expect(OrphanFinder.bundleID(fromEntryName: "com.example.app") == "com.example.app")
+        #expect(OrphanFinder.bundleID(fromEntryName: "com.example.app.plist") == "com.example.app")
+        #expect(OrphanFinder.bundleID(fromEntryName: "com.example.app.savedState") == "com.example.app")
+        #expect(OrphanFinder.bundleID(fromEntryName: "example.app") == nil)
+        #expect(OrphanFinder.bundleID(fromEntryName: "Google") == nil)
+        #expect(OrphanFinder.bundleID(fromEntryName: "1.2.3") == nil)
+        #expect(OrphanFinder.bundleID(fromEntryName: "My App.v2.data") == nil)
+    }
+}
+
+@Suite("StartupItems")
+struct StartupItemsTests {
+    @Test("User agents are removable; Apple's and security agents' are not")
+    func classifiesItems() {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let agents = home.appendingPathComponent("Library/LaunchAgents")
+        makeDir(agents)
+        (["Label": "com.vendor.updater", "Program": "/nonexistent/vendor/updater", "RunAtLoad": true] as NSDictionary)
+            .write(to: agents.appendingPathComponent("com.vendor.updater.plist"), atomically: true)
+        (["Label": "com.vendor.inapp", "ProgramArguments": ["/Applications/Vendor.app/Contents/MacOS/helper"]] as NSDictionary)
+            .write(to: agents.appendingPathComponent("com.vendor.inapp.plist"), atomically: true)
+        (["Label": "com.apple.thing", "Program": "/nonexistent"] as NSDictionary)
+            .write(to: agents.appendingPathComponent("com.apple.thing.plist"), atomically: true)
+        (["Label": "com.jamf.agent", "Program": "/nonexistent"] as NSDictionary)
+            .write(to: agents.appendingPathComponent("com.jamf.agent.plist"), atomically: true)
+
+        let items = StartupItems.scan(home: home).filter { $0.scope == .user }
+        let byLabel = Dictionary(uniqueKeysWithValues: items.map { ($0.label, $0) })
+
+        #expect(byLabel["com.vendor.updater"]?.isRemovable == true)
+        #expect(byLabel["com.vendor.updater"]?.programMissing == true)
+        #expect(byLabel["com.vendor.updater"]?.runsAtLoad == true)
+        #expect(byLabel["com.vendor.inapp"]?.owningAppName == "Vendor")
+        #expect(byLabel["com.apple.thing"]?.isRemovable == false)
+        #expect(byLabel["com.jamf.agent"]?.isRemovable == false)
+
+        // The plan drops anything that isn't removable, whatever is passed in.
+        let plan = StartupItems.removalPlan(for: items, deleter: SafeFileDeleter())
+        #expect(Set(plan.items.map(\.url.lastPathComponent)) == ["com.vendor.updater.plist", "com.vendor.inapp.plist"])
     }
 }

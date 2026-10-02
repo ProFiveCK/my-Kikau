@@ -8,14 +8,14 @@
 
 **Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.7.0 · 3.1 MB
+**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.8.0 · [size] MB
 **Secondary link:** Requires macOS 14 Sonoma or later
 
 ## Why myKikau (feature highlights)
 
-- **See it before you delete it.** Every cleanup and uninstall shows a full preview — file paths, sizes, what's protected — before anything moves to the Trash.
+- **See it before you delete it.** Every cleanup and uninstall shows a full preview — file paths, sizes, what's protected — with a checkbox on every item, before anything moves to the Trash. History lets you put anything back.
 - **Uninstall actually means uninstall.** Removes the app, its LaunchAgents, login items, and leftover files across your whole `~/Library` — not just the `.app` bundle.
-- **Bounded, safe maintenance.** 12 vetted upkeep tasks — LaunchServices repair, cache refresh, font cache reset, orphaned Spotlight rules, and more — no admin password needed, with an optional preview mode.
+- **Bounded, safe maintenance.** Nine vetted upkeep tasks — LaunchServices repair, cache refresh, font cache reset, broken preference repair, and more — no admin password needed, and each one lists the exact files it will touch before you confirm.
 - **A real system dashboard.** Live CPU, memory, disk, network, GPU, thermal, and battery — not a marketing gauge, actual native metrics, refreshed every 2 seconds, plus a menu bar HUD.
 - **Duplicates & large files.** Content-hash-verified duplicate detection plus a large-files view across Downloads, Documents, Desktop, Pictures, and Movies.
 - **Nothing hidden.** Every action is logged locally (`~/Library/Logs/myKikau/operations.log`) so you can see exactly what ran and when.
@@ -38,6 +38,37 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes (template — duplicate per version)
+
+### Version 0.8.0 — October 2026
+
+**New**
+- Review sheet rebuilt: every item has a checkbox, the button says exactly what will happen ("Move 12 Items to Trash"), you see progress with a Cancel button, and a result page lists anything that couldn't be removed and why
+- **History** — everything myKikau has done, with **Put Back** for anything it moved to the Trash, export to CSV, and a log integrity check
+- **Startup Items** — see the launch agents and daemons that start in the background, and remove your own
+- Uninstall several apps at once, and **Find Leftovers** left behind by apps you removed earlier
+- Choose which copy to keep in each set of duplicates; add your own folders to the Files scan; set the large-file size
+- Settings gains a **Never Remove** list, background scans with a notification when there's enough to reclaim, and a low-disk alert
+- Battery health and cycle count, and CPU / memory trend lines, on the dashboard
+- For managed Macs: MDM-controlled settings, a pre-approval profile for Full Disk Access, and a read-only `mykikau-cli` for fleet reporting
+
+**Safer**
+- Clean only ever targets data an app rebuilds by itself. Browser profiles, Xcode Archives and the temp folder itself are no longer targets; caches of apps that are open are skipped
+- Keychains, SSH keys, Mail, Messages, iCloud Drive and security software are protected everywhere, and protection is checked again at the moment of deletion
+- Leftover matching is exact: uninstalling an app can no longer select a sibling app's files (Chrome vs Chrome Canary), and a second installed copy keeps its data
+- Duplicates are re-checked on disk before anything is queued; files stored only in iCloud are skipped instead of being downloaded
+- Two Optimise tasks that edited live system data (download quarantine history, Spotlight rules) were removed; Optimise now lists the exact files a fix will touch
+
+**Improved**
+- Scans show progress and can be cancelled; results stay when you switch screens
+- The dashboard no longer starts a helper process every two seconds; memory pressure now matches Activity Monitor
+- Disk Analyser remembers folder sizes, so drilling in is instant
+- Keyboard: ⌘1–⌘9 to switch screens, ⌘R to rescan. The sidebar is grouped and reopens where you left off
+- VoiceOver labels throughout
+
+**Fixed**
+- Uninstall could report a login item as removed when macOS had refused the request
+- After Optimise applied fixes, the screen still listed them as issues
+- Project Purge never found dot-named folders such as `.build` and `.venv`
 
 ### Version 0.7.0 — August 2026
 

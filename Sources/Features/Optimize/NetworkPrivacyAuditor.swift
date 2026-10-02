@@ -145,7 +145,7 @@ public enum NetworkPrivacyAuditor {
     ) -> [InstalledApplication] {
         let directories = applicationDirectories ?? [
             URL(fileURLWithPath: "/Applications"),
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"),
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
         ]
         var applications: Set<InstalledApplication> = []
         for directory in directories {

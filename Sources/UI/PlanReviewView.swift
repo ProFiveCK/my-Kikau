@@ -54,6 +54,7 @@ public struct PlanReviewView: View {
 
     /// - Parameters:
     ///   - action: operation-log action name (e.g. `"clean"`).
+    ///   - preselected: whether every item starts ticked.
     ///   - onClose: called when the sheet should be dismissed. The result is
     ///     `nil` if the user cancelled without running anything.
     public init(
@@ -62,6 +63,7 @@ public struct PlanReviewView: View {
         subtitle: String? = nil,
         action: String,
         deleter: SafeFileDeleter = .shared,
+        preselected: Bool = true,
         prepare: Prepare? = nil,
         onClose: @escaping (SafeFileDeleter.ExecutionResult?) -> Void
     ) {
@@ -72,7 +74,9 @@ public struct PlanReviewView: View {
         self.deleter = deleter
         self.prepare = prepare
         self.onClose = onClose
-        _selection = State(initialValue: Set(plan.items.map(\.id)))
+        // Suggestions built on weaker evidence start unticked: the user
+        // opts in to each one.
+        _selection = State(initialValue: preselected ? Set(plan.items.map(\.id)) : [])
     }
 
     private var selectedItems: [SafeFileDeleter.Item] {
@@ -111,7 +115,7 @@ public struct PlanReviewView: View {
 
     private var groups: [(category: SafeFileDeleter.Category, items: [SafeFileDeleter.Item])] {
         let order: [SafeFileDeleter.Category] = [
-            .app, .leftover, .cache, .log, .artifact, .duplicate, .largeFile, .installer, .trash,
+            .app, .leftover, .cache, .log, .artifact, .duplicate, .largeFile, .installer, .trash
         ]
         let byCategory = Dictionary(grouping: plan.items, by: \.category)
         return order.compactMap { category in

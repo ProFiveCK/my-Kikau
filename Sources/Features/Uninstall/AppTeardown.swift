@@ -78,7 +78,7 @@ public final class AppTeardown {
     /// System launch locations requiring sudo (skipped in this phase).
     public static let systemLaunchPaths: [String] = [
         "/Library/LaunchAgents",
-        "/Library/LaunchDaemons",
+        "/Library/LaunchDaemons"
     ]
 
     private func unloadLaunchAgents(
@@ -255,7 +255,7 @@ public final class AppTeardown {
     public func lsregisterPath() -> String? {
         let candidates = [
             "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
-            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
         ]
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
@@ -288,7 +288,13 @@ public final class AppTeardown {
     // MARK: - Logging
 
     private func logTeardown(app: AppInventory.AppInfo, result: TeardownResult, dryRun: Bool) {
-        let summary = "agents=\(result.launchAgentsUnloaded.count) helpers=\(result.loginItemHelpersBootedOut.count) loginItems=\(result.loginItemsRemoved.count) ls=\(result.unregisteredLaunchServices) errors=\(result.errors.count)"
+        let summary = [
+            "agents=\(result.launchAgentsUnloaded.count)",
+            "helpers=\(result.loginItemHelpersBootedOut.count)",
+            "loginItems=\(result.loginItemsRemoved.count)",
+            "ls=\(result.unregisteredLaunchServices)",
+            "errors=\(result.errors.count)",
+        ].joined(separator: " ")
         opLog.append(.init(
             action: "uninstall.teardown",
             path: app.url.path,

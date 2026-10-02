@@ -150,6 +150,8 @@ struct ReviewRequest: Identifiable {
     let title: String
     var subtitle: String?
     let action: String
+    /// Whether every item starts ticked in the review sheet.
+    var preselected = true
 }
 
 /// Icons for app bundles, cached — `NSWorkspace.icon(forFile:)` is too slow

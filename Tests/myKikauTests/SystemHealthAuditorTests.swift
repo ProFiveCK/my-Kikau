@@ -21,7 +21,7 @@ struct SystemHealthAuditorTests {
                 .init(
                     bundleIdentifier: "com.google.Chrome",
                     executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-                ),
+                )
             ],
             fileExists: { $0.hasPrefix("/Applications/") }
         )
@@ -49,13 +49,13 @@ struct SystemHealthAuditorTests {
                 executablePath: "/private/var/folders/test/code_sign_clone.old/Google Chrome",
                 isDenied: false,
                 preferenceWasSet: true
-            ),
+            )
         ]
 
         let report = NetworkPrivacyAuditor.audit(
             rules: rules,
             installedApplications: [
-                .init(bundleIdentifier: "com.google.Chrome", executablePath: installedPath),
+                .init(bundleIdentifier: "com.google.Chrome", executablePath: installedPath)
             ],
             fileExists: { $0 == installedPath }
         )
@@ -110,7 +110,7 @@ struct SystemHealthAuditorTests {
                 executablePath: "/private/var/folders/test/code_sign_clone.old/Google Chrome",
                 isDenied: false,
                 preferenceWasSet: true
-            ),
+            )
         ])
 
         let report = try NetworkPrivacyAuditor.inspect(
@@ -134,7 +134,7 @@ struct SystemHealthAuditorTests {
         try Data().write(to: executable)
         let info: NSDictionary = [
             "CFBundleIdentifier": "com.example.App",
-            "CFBundleExecutable": "Example",
+            "CFBundleExecutable": "Example"
         ]
         #expect(info.write(to: contents.appendingPathComponent("Info.plist"), atomically: true))
         defer { try? FileManager.default.removeItem(at: root) }
@@ -144,7 +144,7 @@ struct SystemHealthAuditorTests {
         )
 
         #expect(installed == [
-            .init(bundleIdentifier: "com.example.App", executablePath: executable.path),
+            .init(bundleIdentifier: "com.example.App", executablePath: executable.path)
         ])
     }
 

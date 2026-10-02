@@ -15,7 +15,7 @@ import Foundation
 public enum FullDiskAccessCheck {
     private static let probePaths: [String] = [
         "/Library/Application Support/com.apple.TCC/TCC.db",
-        NSHomeDirectory() + "/Library/Safari/CloudTabs.db",
+        NSHomeDirectory() + "/Library/Safari/CloudTabs.db"
     ]
 
     /// Returns true if any known FDA-gated path can actually be opened for reading.

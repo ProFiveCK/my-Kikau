@@ -35,7 +35,9 @@ struct HistoryView: View {
 
     private var visible: [OperationLog.Entry] {
         switch filter {
-        case .all: entries
+        // Optimise's scan checks every task as a simulation; those are
+        // routine, so they stay under "Simulated" rather than crowding "All".
+        case .all: entries.filter { !($0.dryRun && $0.path.isEmpty) }
         case .removed: entries.filter { $0.outcome == .success && !$0.dryRun && !$0.path.isEmpty }
         case .failed: entries.filter { $0.outcome == .failed }
         case .simulated: entries.filter(\.dryRun)
@@ -210,10 +212,14 @@ private struct HistoryRow: View {
     }
 
     private var detail: String {
-        var parts = [Self.actionLabel(entry.action)]
-        if !entry.path.isEmpty { parts.append(URL(fileURLWithPath: entry.path).deletingLastPathComponent().path) }
-        if entry.path.isEmpty, let note = entry.detail, !note.isEmpty { parts.append(note) }
-        return parts.joined(separator: " · ")
+        // An entry without a path (a maintenance task) is titled by its
+        // action, so the second line carries only what it did.
+        if entry.path.isEmpty { return entry.detail ?? "" }
+        let folder = URL(fileURLWithPath: entry.path).deletingLastPathComponent().path
+        if entry.outcome == .failed, let reason = entry.detail, !reason.isEmpty {
+            return "\(Self.actionLabel(entry.action)) · \(reason)"
+        }
+        return "\(Self.actionLabel(entry.action)) · \(folder)"
     }
 
     var body: some View {
@@ -224,7 +230,7 @@ private struct HistoryRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).lineLimit(1)
-                Text(entry.path.isEmpty ? detail : (entry.outcome == .failed ? (entry.detail ?? detail) : detail))
+                Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -267,6 +273,8 @@ private struct HistoryRow: View {
         switch action {
         case "clean": return "Clean"
         case "uninstall", "uninstall.app", "uninstall.leftovers": return "Uninstall"
+        case "uninstall.orphans": return "Leftovers from removed apps"
+        case "startup": return "Startup Items"
         case "uninstall.teardown": return "Uninstall — background services stopped"
         case "duplicates": return "Duplicates"
         case "largeFiles": return "Large Files"

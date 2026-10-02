@@ -37,3 +37,9 @@ identifier_name:
   min_length: 1
   max_length: 60
   allowed_symbols: ["_"]
+
+# Tuples that mirror a C struct (the kernel's four CPU tick counters, a
+# sockaddr triple) read better as tuples than as one-off structs.
+large_tuple:
+  warning: 4
+  error: 5

@@ -70,4 +70,10 @@ fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $new_version" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $new_build" "$PLIST"
 
+# The command-line tool has no Info.plist; its version is a constant.
+CLI_MAIN="Sources/CLI/main.swift"
+if [[ -f "$CLI_MAIN" ]]; then
+  sed -i '' -E "s/^(let cliVersion = \")[^\"]+(\")/\\1${new_version}\\2/" "$CLI_MAIN"
+fi
+
 echo "✓ bumped myKikau $current_version ($current_build) -> $new_version ($new_build)"

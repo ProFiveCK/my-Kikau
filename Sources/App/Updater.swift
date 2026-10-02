@@ -8,6 +8,7 @@ import SwiftUI
 /// Starts the updater on launch (Sparkle reads `SUFeedURL` / `SUPublicEDKey` /
 /// `SUEnableAutomaticChecks` / `SUScheduledCheckInterval` from Info.plist — see the
 /// placeholders there, which must be filled in with real values before shipping).
+@MainActor
 final class UpdaterViewModel: ObservableObject {
     private let updaterController: SPUStandardUpdaterController
     @Published var canCheckForUpdates = false

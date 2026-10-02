@@ -7,17 +7,17 @@ import Foundation
 /// checks it when a plan is built and again when the plan is executed. It
 /// compares both the standardised path and the symlink-resolved path, so a
 /// `..` segment or a link that leads into a protected tree is still caught.
-public struct PathProtection {
+public struct PathProtection: Sendable {
     public static let shared = PathProtection()
 
     private let home: String
-    private let exclusions: () -> [String]
-    private let extraBundlePrefixes: () -> [String]
+    private let exclusions: @Sendable () -> [String]
+    private let extraBundlePrefixes: @Sendable () -> [String]
 
     public init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-        exclusions: @escaping () -> [String] = { ExclusionStore.shared.normalisedPaths },
-        extraBundlePrefixes: @escaping () -> [String] = { ManagedPolicy.shared.protectedBundlePrefixes }
+        exclusions: @escaping @Sendable () -> [String] = { ExclusionStore.shared.normalisedPaths },
+        extraBundlePrefixes: @escaping @Sendable () -> [String] = { ManagedPolicy.shared.protectedBundlePrefixes }
     ) {
         self.home = Self.normalise(home.path)
         self.exclusions = exclusions
@@ -39,21 +39,21 @@ public struct PathProtection {
         "/sbin",
         "/etc",
         "/var/db",
-        "/cores",
+        "/cores"
     ]
 
     /// Containers that must never be deleted themselves; their contents are
     /// judged individually.
     private static let protectedContainers: Set<String> = [
         "/", "/Users", "/Users/Shared", "/Applications", "/Applications/Utilities", "/Library",
-        "/Volumes", "/opt", "/var", "/var/folders", "/tmp", "/private",
+        "/Volumes", "/opt", "/var", "/var/folders", "/tmp", "/private"
     ]
 
     /// Home-relative containers that must never be deleted themselves.
     private static let protectedHomeContainers: [String] = [
         "", "Library", "Library/Application Support", "Library/Caches", "Library/Preferences",
         "Library/Containers", "Library/Group Containers", "Library/Logs", "Library/LaunchAgents",
-        "Documents", "Desktop", "Downloads", "Pictures", "Movies", "Music", "Applications", ".Trash",
+        "Documents", "Desktop", "Downloads", "Pictures", "Movies", "Music", "Applications", ".Trash"
     ]
 
     /// Home-relative subtrees holding credentials or irreplaceable user data.
@@ -65,7 +65,7 @@ public struct PathProtection {
         "Library/Application Support/com.apple.TCC",
         "Library/Logs/myKikau",
         ".ssh",
-        ".gnupg",
+        ".gnupg"
     ]
 
     /// Critical system bundle IDs protected from uninstallation.
@@ -101,7 +101,7 @@ public struct PathProtection {
         "wifi*", "network*", "tcc", "notification*", "accessibility*",
         "universalaccess*", "HIToolbox*", "textinput*", "TextInput*",
         "keyboard*", "Keyboard*", "inputsource*", "InputSource*",
-        "keylayout*", "KeyLayout*", "GlobalPreferences", ".GlobalPreferences",
+        "keylayout*", "KeyLayout*", "GlobalPreferences", ".GlobalPreferences"
     ]
 
     /// Endpoint security / EDR / MDM bundle prefixes. Anything these agents
@@ -117,7 +117,7 @@ public struct PathProtection {
         "com.trendmicro.", "com.symantec.", "com.broadcom.", "com.mcafee.", "com.trellix.",
         "com.bitdefender.", "com.malwarebytes.", "com.elastic.", "co.elastic.",
         "com.tanium.", "com.zscaler.", "com.netskope.", "com.fortinet.", "com.checkpoint.",
-        "com.cybereason.", "com.fireeye.", "com.rapid7.", "com.qualys.", "com.tenable.",
+        "com.cybereason.", "com.fireeye.", "com.rapid7.", "com.qualys.", "com.tenable."
     ]
 
     private static let endpointPrefixesLowercased = endpointSecurityBundlePrefixes.map { $0.lowercased() }

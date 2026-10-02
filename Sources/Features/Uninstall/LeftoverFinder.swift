@@ -25,7 +25,7 @@ public enum LeftoverFinder {
         "Containers",
         "Group Containers",
         "Application Scripts",
-        "Cookies",
+        "Cookies"
     ]
 
     /// System-level launch agent/daemon locations. Removing anything here
@@ -33,7 +33,7 @@ public enum LeftoverFinder {
     public static let launchPaths: [String] = [
         "/Library/LaunchDaemons",
         "/Library/LaunchAgents",
-        "/Library/PrivilegedHelperTools",
+        "/Library/PrivilegedHelperTools"
     ]
 
     /// User-level launch agent locations.
@@ -47,7 +47,7 @@ public enum LeftoverFinder {
     /// different bundle.
     static let leftoverExtensions: Set<String> = [
         "plist", "savedState", "binarycookies", "json", "db", "sqlite", "log",
-        "lockfile", "plist.lockfile", "sfl2", "sfl3",
+        "lockfile", "plist.lockfile", "sfl2", "sfl3"
     ]
 
     /// Sub-bundle locations inside an `.app` whose identifiers count as the
@@ -58,7 +58,7 @@ public enum LeftoverFinder {
         ("Contents/PlugIns", ["appex", "plugin"]),
         ("Contents/Helpers", ["app"]),
         ("Contents/Frameworks", ["app"]),
-        ("Contents/Library/LaunchServices", ["app"]),
+        ("Contents/Library/LaunchServices", ["app"])
     ]
 
     /// A bundle ID is usable as leftover evidence only if it's a real

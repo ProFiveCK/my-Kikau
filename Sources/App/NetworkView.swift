@@ -373,8 +373,8 @@ final class NetworkInfoModel: NSObject, ObservableObject {
 
 extension NetworkInfoModel: CLLocationManagerDelegate {
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
         Task { @MainActor in
-            let status = manager.authorizationStatus
             if status == .authorized || status == .authorizedAlways {
                 self.refresh()
             }

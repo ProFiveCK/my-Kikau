@@ -25,7 +25,7 @@
             <string>myKikau Settings</string>
 
             <!-- Hide whole features. Any of: clean, uninstall, analyze,
-                 duplicates, network, optimize, purge -->
+                 duplicates, network, optimize, startup, purge -->
             <key>DisabledFeatures</key>
             <array>
                 <string>purge</string>

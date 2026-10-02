@@ -8,9 +8,12 @@ struct UninstallView: View {
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
     @ObservedObject private var model = AppsModel.shared
     @State private var pending: PendingUninstall?
-    @State private var preparingAppID: String?
-    @State private var quitPrompt: AppInventory.AppInfo?
+    @State private var orphanReview: ReviewRequest?
+    @State private var preparing = false
+    @State private var findingOrphans = false
+    @State private var quitPrompt: [AppInventory.AppInfo]?
     @State private var notice: Notice?
+    @State private var selectedAppIDs: Set<String> = []
     @State private var searchText = ""
     @State private var sortOption: SortOption = .size
     @State private var filter: Filter = .all
@@ -23,18 +26,18 @@ struct UninstallView: View {
     // rather than relying on SwiftUI's automatic click-to-focus.
     @FocusState private var searchFieldFocused: Bool
 
-    /// An app whose removal plan is open in the review sheet: the bundle and
-    /// its leftovers in one list.
+    /// One or more apps whose removal plan is open in the review sheet: the
+    /// bundles and their leftovers in one list.
     private struct PendingUninstall: Identifiable {
         let id = UUID()
-        let app: AppInventory.AppInfo
+        let apps: [AppInventory.AppInfo]
         let plan: SafeFileDeleter.Plan
         /// Launch daemons and privileged helpers in /Library that need an
         /// administrator to remove — reported, not planned.
         let systemLevelItems: [URL]
-        /// Another bundle with the same bundle ID is installed: the app's
-        /// data belongs to that copy too, so only this bundle is planned.
-        let otherCopyInstalled: Bool
+        /// Apps with another installed copy (same bundle ID): their data
+        /// belongs to that copy too, so only the bundle is planned.
+        let appsWithOtherCopy: [AppInventory.AppInfo]
     }
 
     private struct Notice: Identifiable {
@@ -65,6 +68,11 @@ struct UninstallView: View {
     private let tint = ContentView.SidebarItem.uninstall.tint
 
     private var apps: [AppInventory.AppInfo] { coordinator.apps ?? [] }
+
+    /// Ticked apps that still exist and can be uninstalled.
+    private var selectedApps: [AppInventory.AppInfo] {
+        apps.filter { selectedAppIDs.contains($0.id) && !AppInventory.isProtected($0) }
+    }
 
     private var subtitle: String {
         if model.isScanning { return "Listing installed apps…" }
@@ -101,8 +109,15 @@ struct UninstallView: View {
 
     var body: some View {
         let visible = visibleApps()
+        let selected = selectedApps
         VStack(spacing: 0) {
             ScreenHeader("Applications", subtitle: subtitle, systemImage: ContentView.SidebarItem.uninstall.icon, tint: tint) {
+                if preparing || findingOrphans {
+                    ProgressView().controlSize(.small)
+                }
+                Button("Find Leftovers…") { findOrphans() }
+                    .help("Looks for files left behind by apps that are no longer installed")
+                    .disabled(findingOrphans || preparing)
                 Button(coordinator.apps == nil ? "Scan Apps" : "Rescan") { model.scan() }
                     .keyboardShortcut("r", modifiers: .command)
                     .buttonStyle(.borderedProminent)
@@ -142,17 +157,41 @@ struct UninstallView: View {
                 List(visible) { app in
                     AppRow(
                         app: app,
-                        isPreparing: preparingAppID == app.id,
-                        onUninstall: { beginUninstall(app) }
+                        isSelected: Binding(
+                            get: { selectedAppIDs.contains(app.id) },
+                            set: { isOn in
+                                if isOn { selectedAppIDs.insert(app.id) } else { selectedAppIDs.remove(app.id) }
+                            }
+                        ),
+                        busy: preparing,
+                        onUninstall: { beginUninstall([app]) }
                     )
                     .contextMenu { PathMenu(url: app.url) }
+                }
+
+                if !selected.isEmpty {
+                    HStack {
+                        Text("\(selected.count) selected · \(ByteSizeFormatter.format(selected.reduce(0) { $0 + $1.sizeBytes }))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Clear") { selectedAppIDs = [] }
+                            .controlSize(.small)
+                        Spacer()
+                        Button("Uninstall \(selected.count) App\(selected.count == 1 ? "" : "s")…") {
+                            beginUninstall(selected)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(tint)
+                        .disabled(preparing)
+                    }
+                    .padding()
                 }
             }
         }
         .sheet(item: $pending) { item in
             PlanReviewView(
                 plan: item.plan,
-                title: "Uninstall \(item.app.name)",
+                title: item.apps.count == 1 ? "Uninstall \(item.apps[0].name)" : "Uninstall \(item.apps.count) Apps",
                 subtitle: reviewSubtitle(for: item),
                 action: "uninstall",
                 prepare: { simulate, selectedIDs in
@@ -160,8 +199,9 @@ struct UninstallView: View {
                 },
                 onClose: { result in
                     if let result, !result.dryRun {
-                        if result.removedIDs.contains(item.app.url.path) {
-                            coordinator.removeApp(id: item.app.id)
+                        for app in item.apps where result.removedIDs.contains(app.url.path) {
+                            coordinator.removeApp(id: app.id)
+                            selectedAppIDs.remove(app.id)
                         }
                         if !result.removedIDs.isEmpty { AnalyzeScanSession.shared.markStale() }
                     }
@@ -169,23 +209,46 @@ struct UninstallView: View {
                 }
             )
         }
+        .sheet(item: $orphanReview) { request in
+            PlanReviewView(
+                plan: request.plan,
+                title: request.title,
+                subtitle: request.subtitle,
+                action: request.action,
+                preselected: request.preselected
+            ) { result in
+                if let result, !result.dryRun, !result.removedIDs.isEmpty {
+                    AnalyzeScanSession.shared.markStale()
+                }
+                orphanReview = nil
+            }
+        }
         .confirmationDialog(
-            "\(quitPrompt?.name ?? "This app") is open",
+            quitPromptTitle,
             isPresented: Binding(get: { quitPrompt != nil }, set: { if !$0 { quitPrompt = nil } }),
             titleVisibility: .visible
         ) {
-            if let app = quitPrompt {
-                Button("Quit \(app.name) and Continue") {
+            if let apps = quitPrompt {
+                Button("Quit and Continue") {
                     quitPrompt = nil
-                    quitThenReview(app)
+                    quitThenReview(apps)
                 }
             }
             Button("Cancel", role: .cancel) { quitPrompt = nil }
         } message: {
-            Text("It has to be quit before it can be uninstalled. Save any open work first.")
+            Text("An app has to be quit before it can be uninstalled. Save any open work first.")
         }
         .alert(item: $notice) { notice in
             Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("OK")))
+        }
+    }
+
+    private var quitPromptTitle: String {
+        let running = (quitPrompt ?? []).filter(AppInventory.isRunning)
+        switch running.count {
+        case 0: return "An app is open"
+        case 1: return "\(running[0].name) is open"
+        default: return "\(running.count) of these apps are open"
         }
     }
 
@@ -239,106 +302,159 @@ struct UninstallView: View {
     }
 
     private func reviewSubtitle(for item: PendingUninstall) -> String {
-        if item.app.requiresAdministrator {
-            return "This app was installed for all users. myKikau can remove its leftovers; if moving the app itself is refused, drag it to the Trash in Finder."
+        var parts: [String] = []
+        if item.apps.count == 1, let app = item.apps.first {
+            if !item.appsWithOtherCopy.isEmpty {
+                parts.append("Another copy of \(app.name) is installed, so its settings, data and background services are left in place. Only this copy is removed.")
+            } else {
+                let leftovers = item.plan.items.count - 1
+                parts.append(leftovers > 0
+                    ? "The app and \(leftovers) leftover item\(leftovers == 1 ? "" : "s") it created. Untick anything you want to keep."
+                    : "No leftover files were found for this app.")
+            }
+        } else {
+            parts.append("\(item.apps.count) apps and the leftover files they created. Untick anything you want to keep.")
+            if !item.appsWithOtherCopy.isEmpty {
+                parts.append("Data is kept for apps that have another copy installed.")
+            }
         }
-        if item.otherCopyInstalled {
-            return "Another copy of \(item.app.name) is installed, so its settings, data and background services are left in place. Only this copy is removed."
+        if item.apps.contains(where: \.requiresAdministrator) {
+            parts.append("Apps installed for all users may be refused; drag those to the Trash in Finder instead.")
         }
-        let leftovers = item.plan.items.count - 1
-        return leftovers > 0
-            ? "The app and \(leftovers) leftover item\(leftovers == 1 ? "" : "s") it created. Untick anything you want to keep."
-            : "No leftover files were found for this app."
+        return parts.joined(separator: " ")
     }
 
     // MARK: - Flow
 
-    private func beginUninstall(_ app: AppInventory.AppInfo) {
-        if AppInventory.isRunning(app) {
-            quitPrompt = app
+    private func beginUninstall(_ targets: [AppInventory.AppInfo]) {
+        let removable = targets.filter { !AppInventory.isProtected($0) }
+        guard !removable.isEmpty else { return }
+        if removable.contains(where: AppInventory.isRunning) {
+            quitPrompt = removable
         } else {
-            openReview(for: app)
+            openReview(for: removable)
         }
     }
 
-    private func quitThenReview(_ app: AppInventory.AppInfo) {
-        preparingAppID = app.id
+    private func quitThenReview(_ targets: [AppInventory.AppInfo]) {
+        preparing = true
         Task {
-            for instance in AppInventory.runningInstances(of: app) {
-                instance.terminate()
+            for app in targets {
+                for instance in AppInventory.runningInstances(of: app) {
+                    instance.terminate()
+                }
             }
-            // Give it a few seconds to save and exit.
-            for _ in 0..<25 where AppInventory.isRunning(app) {
+            // Give them a few seconds to save and exit.
+            for _ in 0..<25 where targets.contains(where: AppInventory.isRunning) {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
-            if AppInventory.isRunning(app) {
-                preparingAppID = nil
-                notice = Notice(
-                    title: "\(app.name) Is Still Open",
-                    message: "It didn't quit — it may be waiting for you to save something. Quit it, then try again."
-                )
+            let stillOpen = targets.filter(AppInventory.isRunning)
+            if stillOpen.isEmpty {
+                openReview(for: targets)
             } else {
-                openReview(for: app)
+                preparing = false
+                notice = Notice(
+                    title: stillOpen.count == 1 ? "\(stillOpen[0].name) Is Still Open" : "\(stillOpen.count) Apps Are Still Open",
+                    message: "\(stillOpen.map(\.name).joined(separator: ", ")) didn't quit — it may be waiting for you to save something. Quit it, then try again."
+                )
             }
         }
     }
 
-    private func openReview(for app: AppInventory.AppInfo) {
-        preparingAppID = app.id
+    private func openReview(for targets: [AppInventory.AppInfo]) {
+        preparing = true
         Task {
             let item = await Task.detached(priority: .userInitiated) { () -> PendingUninstall in
-                let plans = LeftoverFinder.uninstallPlan(app: app)
-                let otherCopy = !AppInventory.otherCopies(of: app).isEmpty
-                let embedded = LeftoverFinder.embeddedBundleIDs(appURL: app.url)
-                let systemItems = otherCopy ? [] : (app.bundleID.map {
-                    LeftoverFinder.systemLevelLeftovers(bundleID: $0, embeddedBundleIDs: embedded)
-                } ?? [])
+                let installed = AppInventory.appBundleURLs()
+                var plans: [SafeFileDeleter.Plan] = []
+                var systemItems: [URL] = []
+                var withOtherCopy: [AppInventory.AppInfo] = []
+                for app in targets {
+                    let pair = LeftoverFinder.uninstallPlan(app: app)
+                    plans.append(pair.appPlan)
+                    plans.append(pair.leftoverPlan)
+                    if !AppInventory.otherCopies(of: app, among: installed).isEmpty {
+                        withOtherCopy.append(app)
+                    } else if let bundleID = app.bundleID {
+                        systemItems += LeftoverFinder.systemLevelLeftovers(
+                            bundleID: bundleID,
+                            embeddedBundleIDs: LeftoverFinder.embeddedBundleIDs(appURL: app.url)
+                        )
+                    }
+                }
                 return PendingUninstall(
-                    app: app,
-                    plan: .merged([plans.appPlan, plans.leftoverPlan]),
+                    apps: targets,
+                    plan: .merged(plans),
                     systemLevelItems: systemItems,
-                    otherCopyInstalled: otherCopy
+                    appsWithOtherCopy: withOtherCopy
                 )
             }.value
-            preparingAppID = nil
+            preparing = false
             pending = item
         }
     }
 
-    /// Stops the app's background services before its files are moved — only
-    /// if the app bundle itself is among the ticked items.
+    /// Stops each app's background services before its files are moved —
+    /// only for apps whose bundle is among the ticked items.
     private func prepare(_ item: PendingUninstall, simulate: Bool, selectedIDs: Set<String>) async -> [String] {
+        var agents = 0
+        var helpers = 0
+        var loginItems = 0
         var notes: [String] = []
-        if selectedIDs.contains(item.app.url.path) {
-            let teardown = await AppTeardown().teardown(app: item.app, dryRun: simulate)
-            let verb = simulate ? "would be" : "were"
-            if !teardown.launchAgentsUnloaded.isEmpty {
-                notes.append("\(teardown.launchAgentsUnloaded.count) background agent(s) \(verb) stopped")
-            }
-            if !teardown.loginItemHelpersBootedOut.isEmpty {
-                notes.append("\(teardown.loginItemHelpersBootedOut.count) login helper(s) \(verb) stopped")
-            }
-            if !teardown.loginItemsRemoved.isEmpty {
-                notes.append("“Open at Login” entry \(simulate ? "would be" : "was") removed")
-            }
+        for app in item.apps where selectedIDs.contains(app.url.path) {
+            let teardown = await AppTeardown().teardown(app: app, dryRun: simulate)
+            agents += teardown.launchAgentsUnloaded.count
+            helpers += teardown.loginItemHelpersBootedOut.count
+            loginItems += teardown.loginItemsRemoved.count
             if teardown.skippedBecauseOtherCopyInstalled {
-                notes.append("Background services left running — another copy of the app is installed")
+                notes.append("\(app.name): background services left running — another copy is installed")
             }
             for error in teardown.errors {
-                notes.append("Note: \(error)")
+                notes.append("\(app.name): \(error)")
             }
         }
+        let verb = simulate ? "would be" : "were"
+        if loginItems > 0 { notes.insert("\(loginItems) “Open at Login” entr\(loginItems == 1 ? "y" : "ies") \(verb) removed", at: 0) }
+        if helpers > 0 { notes.insert("\(helpers) login helper(s) \(verb) stopped", at: 0) }
+        if agents > 0 { notes.insert("\(agents) background agent(s) \(verb) stopped", at: 0) }
         if !item.systemLevelItems.isEmpty {
             let names = item.systemLevelItems.map(\.lastPathComponent).joined(separator: ", ")
             notes.append("Left in place (needs an administrator): \(names)")
         }
         return notes
     }
+
+    /// Looks for files left by apps that are no longer installed. Nothing is
+    /// ticked by default: without the app to read, the match is a suggestion.
+    private func findOrphans() {
+        findingOrphans = true
+        Task {
+            let plan = await Task.detached(priority: .userInitiated) {
+                OrphanFinder.plan(for: OrphanFinder.find())
+            }.value
+            findingOrphans = false
+            if plan.items.isEmpty {
+                notice = Notice(
+                    title: "No Leftovers Found",
+                    message: "Nothing in your Library looks like it was left behind by an app that's no longer installed."
+                )
+            } else {
+                orphanReview = ReviewRequest(
+                    plan: plan,
+                    title: "Leftovers From Removed Apps",
+                    subtitle: "These are named after apps that aren't installed any more and haven't changed in three months. Tick the ones you recognise.",
+                    action: "uninstall.orphans",
+                    preselected: false
+                )
+            }
+        }
+    }
 }
 
 private struct AppRow: View {
     let app: AppInventory.AppInfo
-    let isPreparing: Bool
+    @Binding var isSelected: Bool
+    let busy: Bool
     let onUninstall: () -> Void
 
     private var protectionReason: String? { AppInventory.protectionReason(app) }
@@ -346,10 +462,14 @@ private struct AppRow: View {
     var body: some View {
         let protected = protectionReason != nil
         HStack(spacing: 12) {
+            Toggle(isOn: $isSelected) { EmptyView() }
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .disabled(protected)
+                .accessibilityLabel("Select \(app.name)")
             Image(nsImage: AppIconCache.icon(for: app.url))
                 .resizable()
                 .frame(width: 32, height: 32)
-                .opacity(protected ? 0.6 : 1)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -386,17 +506,11 @@ private struct AppRow: View {
                 .font(.subheadline.bold())
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-            if isPreparing {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 78)
-            } else {
-                Button("Uninstall…", role: .destructive, action: onUninstall)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(protected)
-                    .accessibilityLabel("Uninstall \(app.name)")
-            }
+            Button("Uninstall…", role: .destructive, action: onUninstall)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(protected || busy)
+                .accessibilityLabel("Uninstall \(app.name)")
         }
         .padding(.vertical, 4)
         .opacity(protected ? 0.6 : 1)

@@ -32,7 +32,7 @@ A key is honoured only when a profile forces it. A value a user writes with `def
 
 | Key | Type | Effect |
 |---|---|---|
-| `DisabledFeatures` | array of strings | Hides features: `clean`, `uninstall`, `analyze`, `duplicates`, `network`, `optimize`, `purge`. They are also skipped by the full scan and the CLI. |
+| `DisabledFeatures` | array of strings | Hides features: `clean`, `uninstall`, `analyze`, `duplicates`, `network`, `optimize`, `startup`, `purge`. They are also skipped by the full scan and the CLI. |
 | `ProtectedPaths` | array of strings | Paths (and everything beneath them) that can never be removed. Shown read-only in Settings → Safety. |
 | `ProtectedBundlePrefixes` | array of strings | Bundle-ID prefixes treated like security agents: their caches, preferences and containers are never touched and the apps cannot be uninstalled. |
 | `ForceOperationLog` | boolean | The operation log cannot be switched off or cleared. |

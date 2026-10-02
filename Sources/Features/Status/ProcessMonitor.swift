@@ -3,7 +3,7 @@ import Foundation
 import Core
 
 public enum ProcessMonitor {
-    public enum SortMode {
+    public enum SortMode: Sendable {
         case cpu
         case memory
     }

@@ -14,7 +14,6 @@
 --allman false
 --semicolons inline
 --trimwhitespace always
---insertblanklines false
 
 # Keep code intent unchanged where it doesn't hurt readability.
 --disable organizeDeclarations

@@ -1,6 +1,11 @@
 // swift-tools-version: 5.10
 import PackageDescription
 
+// Complete data-race checking on every source target, so a new violation
+// shows up as a warning now rather than as a wall of errors when the package
+// moves to the Swift 6 language mode.
+let strictConcurrency: [SwiftSetting] = [.enableExperimentalFeature("StrictConcurrency")]
+
 let package = Package(
     name: "myKikau",
     platforms: [
@@ -27,26 +32,31 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/App",
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist"],
+            swiftSettings: strictConcurrency
         ),
         .executableTarget(
             name: "CLI",
             dependencies: ["Core", "Features"],
-            path: "Sources/CLI"
+            path: "Sources/CLI",
+            swiftSettings: strictConcurrency
         ),
         .target(
             name: "Core",
-            path: "Sources/Core"
+            path: "Sources/Core",
+            swiftSettings: strictConcurrency
         ),
         .target(
             name: "Features",
             dependencies: ["Core"],
-            path: "Sources/Features"
+            path: "Sources/Features",
+            swiftSettings: strictConcurrency
         ),
         .target(
             name: "UI",
             dependencies: ["Core", "Features"],
-            path: "Sources/UI"
+            path: "Sources/UI",
+            swiftSettings: strictConcurrency
         ),
         .testTarget(
             name: "myKikauTests",

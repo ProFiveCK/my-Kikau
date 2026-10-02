@@ -17,7 +17,7 @@ public enum ProjectArtifactScanner {
         "DerivedData",
         ".next",
         ".turbo",
-        ".cache",
+        ".cache"
     ]
 
     /// Default project search paths.
@@ -28,7 +28,7 @@ public enum ProjectArtifactScanner {
         "~/Developer",
         "~/code",
         "~/src",
-        "~/MyProjects",
+        "~/MyProjects"
     ]
 
     /// A discovered artifact to potentially purge.

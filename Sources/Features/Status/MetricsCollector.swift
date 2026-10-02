@@ -4,7 +4,10 @@ import IOKit
 import IOKit.ps
 
 /// Collects system metrics concurrently using TaskGroup.
-public final class MetricsCollector {
+///
+/// Not internally synchronised: each sample is diffed against the previous
+/// one, so collections must not overlap. `MetricsService` runs one at a time.
+public final class MetricsCollector: @unchecked Sendable {
     public static let shared = MetricsCollector()
 
     /// Previous user/system/idle/nice tick counters.
@@ -130,7 +133,7 @@ public final class MetricsCollector {
         guard result == KERN_SUCCESS else {
             return MemoryStatus(total: totalMemory)
         }
-        return Self.memoryStatus(from: stats, pageSize: UInt64(vm_kernel_page_size), total: totalMemory, pressureLevel: Self.kernelPressureLevel())
+        return Self.memoryStatus(from: stats, pageSize: UInt64(max(0, sysconf(_SC_PAGESIZE))), total: totalMemory, pressureLevel: Self.kernelPressureLevel())
     }
 
     /// "Memory Used" the way Activity Monitor defines it: app memory
@@ -180,7 +183,7 @@ public final class MetricsCollector {
         // purge on demand. Analyse uses the same figure, so the two screens agree.
         let root = URL(fileURLWithPath: "/")
         guard let values = try? root.resourceValues(forKeys: [
-            .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey,
+            .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey
         ]), let totalCapacity = values.volumeTotalCapacity, totalCapacity > 0 else {
             return []
         }

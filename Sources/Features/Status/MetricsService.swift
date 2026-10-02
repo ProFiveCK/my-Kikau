@@ -12,6 +12,18 @@ public final class MetricsService: ObservableObject {
     public static let shared = MetricsService()
 
     @Published public private(set) var snapshot: MetricsSnapshot?
+    /// Recent CPU and memory readings, oldest first, for trend lines — about
+    /// the last five minutes while something is subscribed.
+    @Published public private(set) var history: [Sample] = []
+
+    public struct Sample: Identifiable, Sendable {
+        public let id: Int
+        public let cpuPercent: Double
+        public let memoryPercent: Double
+    }
+
+    private static let historyLimit = 150
+    private var sampleCounter = 0
 
     private var timer: Timer?
     private var subscriberCount = 0
@@ -49,6 +61,13 @@ public final class MetricsService: ObservableObject {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
-        snapshot = await MetricsCollector.shared.collect()
+        let latest = await MetricsCollector.shared.collect()
+        snapshot = latest
+        sampleCounter += 1
+        // The very first sample has no previous CPU reading to diff against.
+        if sampleCounter > 1 {
+            history.append(Sample(id: sampleCounter, cpuPercent: latest.cpu.usage, memoryPercent: latest.memory.usedPercent))
+            if history.count > Self.historyLimit { history.removeFirst(history.count - Self.historyLimit) }
+        }
     }
 }

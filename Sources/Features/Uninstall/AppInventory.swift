@@ -64,13 +64,8 @@ public enum AppInventory {
     /// Bundles are measured concurrently; sizing is the slow part.
     public static func scan(deleter: SafeFileDeleter = .shared) -> [AppInfo] {
         let bundles = appBundleURLs()
-        var slots = [AppInfo?](repeating: nil, count: bundles.count)
-        slots.withUnsafeMutableBufferPointer { buffer in
-            DispatchQueue.concurrentPerform(iterations: bundles.count) { index in
-                buffer[index] = inspect(bundles[index], deleter: deleter)
-            }
-        }
-        return slots.compactMap { $0 }
+        return concurrentMap(bundles) { inspect($0, deleter: deleter) }
+            .compactMap { $0 }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -78,7 +73,7 @@ public enum AppInventory {
     public static func appBundleURLs() -> [URL] {
         let appDirs = [
             URL(fileURLWithPath: "/Applications"),
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"),
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
         ]
         var bundles: [URL] = []
         for dir in appDirs {
