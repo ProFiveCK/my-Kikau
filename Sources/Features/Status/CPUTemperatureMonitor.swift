@@ -8,13 +8,13 @@ import IOKit
 /// `ThermalMonitor`'s original comment refers to) never worked here.
 ///
 /// This is a real sensor read, not a synthesized estimate — it doesn't
-/// reintroduce the "false overheating readings" problem the original Mole
-/// port avoided by leaving `cpuTemp` at 0. It only reports a temperature when
+/// reintroduce the "false overheating readings" problem the original
+/// implementation avoided by leaving `cpuTemp` at 0. It only reports a temperature when
 /// the SoC die sensors are actually present and readable; Intel Macs (and any
 /// future HID sensor naming change) fall back to the same 0 = "unavailable"
 /// sentinel `ThermalStatus.cpuTemp` already used.
 public enum CPUTemperatureMonitor {
-    private static let hidPageAppleVendor: Int64 = 0xff00
+    private static let hidPageAppleVendor: Int64 = 0xFF00
     private static let hidUsageAppleVendorTemperatureSensor: Int64 = 0x0005
     private static let eventTypeTemperature: Int64 = 15
 
@@ -51,7 +51,7 @@ public enum CPUTemperatureMonitor {
         let client = IOHIDEventSystemClientCreate(kCFAllocatorDefault).takeRetainedValue()
         let match: [String: Any] = [
             "PrimaryUsagePage": hidPageAppleVendor,
-            "PrimaryUsage": hidUsageAppleVendorTemperatureSensor
+            "PrimaryUsage": hidUsageAppleVendorTemperatureSensor,
         ]
         IOHIDEventSystemClientSetMatching(client, match as CFDictionary)
 
@@ -79,7 +79,9 @@ public final class CPUTempSampleBox {
     public init() {}
 
     func cachedDieSensors(match: () -> (client: AnyObject, services: [AnyObject])) -> [AnyObject] {
-        if let services { return services }
+        if let services {
+            return services
+        }
         let result = match()
         client = result.client
         services = result.services
@@ -88,6 +90,7 @@ public final class CPUTempSampleBox {
 }
 
 // MARK: - Private IOHIDEventSystemClient bindings
+
 //
 // Undocumented but long-stable IOKit.framework symbols — not part of the
 // public Swift IOKit module, so bound directly by symbol name (`@_silgen_name`).

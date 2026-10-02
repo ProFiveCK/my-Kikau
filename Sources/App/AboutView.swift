@@ -1,5 +1,6 @@
 import AppKit
 import Core
+import Features
 import SwiftUI
 
 /// Replaces the old "History" sidebar destination — a raw operation log
@@ -17,6 +18,19 @@ struct AboutView: View {
 
     private var buildNumber: String {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+    }
+
+    private func saveDiagnostics() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "myKikau-diagnostics.txt"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let version = shortVersion
+        let build = buildNumber
+        Task.detached {
+            let report = DiagnosticsReport.generate(appVersion: version, build: build)
+            try? Data(report.utf8).write(to: url, options: .atomic)
+        }
     }
 
     var body: some View {
@@ -78,34 +92,31 @@ struct AboutView: View {
                 }
 
                 InfoCard(title: "This Install") {
-                    InfoRow(label: "Trash-recoverable operations logged", value: "\(operationCount)")
+                    InfoRow(label: "Operations logged", value: "\(operationCount)")
                     InfoRow(label: "Total freed to date", value: ByteSizeFormatter.format(totalFreed))
                     HStack {
-                        Text("Log file")
+                        Text("Activity")
                             .font(.subheadline)
                         Spacer()
-                        Button("Reveal in Finder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([OperationLog.shared.fileURL])
+                        Button("Open History") {
+                            AppNavigation.shared.pendingSelection = .history
                         }
                         .font(.caption)
+                    }
+                    HStack {
+                        Text("Support")
+                            .font(.subheadline)
+                        Spacer()
+                        Button("Save Diagnostics…") { saveDiagnostics() }
+                            .font(.caption)
+                            .help("Saves app settings and counts for a support request. No file names or paths are included.")
                     }
                 }
 
                 InfoCard(title: "About") {
                     InfoRow(label: "Publisher", value: "Project Five")
                     InfoRow(label: "License", value: "GPL-3.0")
-                    HStack {
-                        Text("Built on")
-                            .font(.subheadline)
-                        Spacer()
-                        Button("Mole (GPL-3.0)") {
-                            if let url = URL(string: "https://github.com/tw93/Mole") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                        .font(.caption)
-                    }
-                    Text("Logic reimplemented natively in Swift, informed by Mole (Go + Bash CLI). Mole is credited as the source; myKikau is independent and released under the same license.")
+                    Text("Built from scratch in native Swift for macOS.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -120,8 +131,11 @@ struct AboutView: View {
             .frame(maxWidth: .infinity)
         }
         .onAppear {
-            totalFreed = OperationLog.shared.totalFreed()
-            operationCount = OperationLog.shared.recent(limit: 10_000).count
+            Task {
+                let totals = await Task.detached { OperationLog.shared.totals() }.value
+                totalFreed = totals.freedBytes
+                operationCount = totals.operations
+            }
         }
     }
 }

@@ -1,7 +1,6 @@
 import Foundation
 
 /// A snapshot of system metrics at a point in time.
-/// Mirrors Mole's `MetricsSnapshot` struct in `cmd/status/metrics.go`.
 public struct MetricsSnapshot: Codable, Hashable {
     public let collectedAt: Date
     public let host: String
@@ -85,7 +84,7 @@ public struct MemoryStatus: Codable, Hashable {
     public var total: UInt64
     public var available: UInt64
     public var usedPercent: Double
-    public var pressure: String  // "normal", "warn", "critical"
+    public var pressure: String // "normal", "warn", "critical"
 
     public init(used: UInt64 = 0, total: UInt64 = 0, available: UInt64 = 0, usedPercent: Double = 0, pressure: String = "normal") {
         self.used = used
@@ -111,8 +110,8 @@ public struct DiskStatus: Codable, Hashable {
 }
 
 public struct DiskIOStatus: Codable, Hashable {
-    public var readRate: Double   // MB/s
-    public var writeRate: Double  // MB/s
+    public var readRate: Double // MB/s
+    public var writeRate: Double // MB/s
 
     public init(readRate: Double = 0, writeRate: Double = 0) {
         self.readRate = readRate
@@ -122,9 +121,9 @@ public struct DiskIOStatus: Codable, Hashable {
 
 public struct BatteryStatus: Codable, Hashable {
     public var percent: Double
-    public var status: String     // "Charging", "Charged", "Discharging"
+    public var status: String // "Charging", "Charged", "Discharging"
     public var cycleCount: Int
-    public var capacity: Int      // Max capacity percentage (e.g. 85 = 85%)
+    public var capacity: Int // Max capacity percentage (e.g. 85 = 85%)
 
     public init(percent: Double = 0, status: String = "", cycleCount: Int = 0, capacity: Int = 0) {
         self.percent = percent
@@ -135,13 +134,13 @@ public struct BatteryStatus: Codable, Hashable {
 }
 
 public struct ThermalStatus: Codable, Hashable {
-    public var cpuTemp: Double       // Celsius, from real Apple Silicon die sensors; 0 = unavailable (e.g. Intel)
-    public var batteryTemp: Double  // Battery temperature in Celsius
-    public var fanSpeed: Int         // RPM
+    public var cpuTemp: Double // Celsius, from real Apple Silicon die sensors; 0 = unavailable (e.g. Intel)
+    public var batteryTemp: Double // Battery temperature in Celsius
+    public var fanSpeed: Int // RPM
     public var fanCount: Int
-    public var systemPower: Double   // System power consumption in Watts
-    public var adapterPower: Double  // AC adapter max power in Watts
-    public var batteryPower: Double  // Battery charge/discharge power in Watts (positive = discharging)
+    public var systemPower: Double // System power consumption in Watts
+    public var adapterPower: Double // AC adapter max power in Watts
+    public var batteryPower: Double // Battery charge/discharge power in Watts (positive = discharging)
 
     public init(
         cpuTemp: Double = 0,
@@ -162,7 +161,7 @@ public struct ThermalStatus: Codable, Hashable {
     }
 }
 
-/// Per-interface network throughput. Mirrors Mole's `NetworkStatus`.
+/// Per-interface network throughput.
 public struct NetworkStatus: Codable, Hashable {
     public var name: String
     public var rxRateMBs: Double
@@ -177,10 +176,10 @@ public struct NetworkStatus: Codable, Hashable {
     }
 }
 
-/// GPU status. Mirrors Mole's `GPUStatus`.
+/// GPU status.
 public struct GPUStatus: Codable, Hashable {
     public var name: String
-    public var usage: Double        // Percent; -1 means unavailable
+    public var usage: Double // Percent; -1 means unavailable
     public var memoryUsed: Double
     public var memoryTotal: Double
     public var coreCount: Int

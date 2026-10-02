@@ -17,17 +17,19 @@ public struct NetworkInfo: Sendable, Hashable {
         public var ssid: String?
         public var bssid: String?
         public var channelNumber: Int
-        public var band: String        // "2.4 GHz" / "5 GHz" / "6 GHz" / ""
-        public var width: String       // "20 MHz" / "40 MHz" / "80 MHz" / "160 MHz" / ""
-        public var rssi: Int            // dBm, 0 = unknown
-        public var noise: Int           // dBm, 0 = unknown
+        public var band: String // "2.4 GHz" / "5 GHz" / "6 GHz" / ""
+        public var width: String // "20 MHz" / "40 MHz" / "80 MHz" / "160 MHz" / ""
+        public var rssi: Int // dBm, 0 = unknown
+        public var noise: Int // dBm, 0 = unknown
         public var txRateMbps: Double
-        public var phyMode: String      // "Wi-Fi 6 (802.11ax)" etc.
+        public var phyMode: String // "Wi-Fi 6 (802.11ax)" etc.
         public var security: String
         public var countryCode: String?
 
         /// Signal-to-noise ratio in dB, or 0 when either input is unknown.
-        public var snr: Int { (rssi != 0 && noise != 0) ? rssi - noise : 0 }
+        public var snr: Int {
+            (rssi != 0 && noise != 0) ? rssi - noise : 0
+        }
 
         /// A 0–100 signal-quality estimate mapped from RSSI (−100 dBm → 0,
         /// −50 dBm or better → 100).
@@ -137,13 +139,12 @@ public struct NetworkInfo: Sendable, Hashable {
             }
         }
 
-        let connectionName: String
-        if isWiFiConnection {
-            connectionName = "Wi-Fi"
+        let connectionName: String = if isWiFiConnection {
+            "Wi-Fi"
         } else if let iface = primaryInterface {
-            connectionName = iface.hasPrefix("en") ? "Ethernet" : iface
+            iface.hasPrefix("en") ? "Ethernet" : iface
         } else {
-            connectionName = "Not connected"
+            "Not connected"
         }
 
         return NetworkInfo(
@@ -172,22 +173,46 @@ public struct NetworkInfo: Sendable, Hashable {
     /// Plain-text dump of every field, for "Copy All Details".
     public func plainTextSummary() -> String {
         var lines = ["Connection: \(connectionName)"]
-        if let i = primaryInterface { lines.append("Interface: \(i)") }
-        if let ip = localIPv4 { lines.append("Local IP: \(ip)") }
-        if let m = subnetMask { lines.append("Subnet mask: \(m)") }
-        if let ip6 = localIPv6 { lines.append("IPv6: \(ip6)") }
-        if let r = router { lines.append("Router: \(r)") }
-        if !dnsServers.isEmpty { lines.append("DNS: \(dnsServers.joined(separator: ", "))") }
-        if let mac = macAddress { lines.append("MAC: \(mac)") }
+        if let i = primaryInterface {
+            lines.append("Interface: \(i)")
+        }
+        if let ip = localIPv4 {
+            lines.append("Local IP: \(ip)")
+        }
+        if let m = subnetMask {
+            lines.append("Subnet mask: \(m)")
+        }
+        if let ip6 = localIPv6 {
+            lines.append("IPv6: \(ip6)")
+        }
+        if let r = router {
+            lines.append("Router: \(r)")
+        }
+        if !dnsServers.isEmpty {
+            lines.append("DNS: \(dnsServers.joined(separator: ", "))")
+        }
+        if let mac = macAddress {
+            lines.append("MAC: \(mac)")
+        }
         if let w = wifi {
-            if let s = w.ssid { lines.append("Wi-Fi network: \(s)") }
-            if let b = w.bssid { lines.append("BSSID: \(b)") }
+            if let s = w.ssid {
+                lines.append("Wi-Fi network: \(s)")
+            }
+            if let b = w.bssid {
+                lines.append("BSSID: \(b)")
+            }
             lines.append("Band / channel: \(w.band) · ch \(w.channelNumber) · \(w.width)")
-            if w.rssi != 0 { lines.append("Signal: \(w.rssi) dBm (noise \(w.noise) dBm, SNR \(w.snr) dB)") }
-            if w.txRateMbps > 0 { lines.append("Tx rate: \(Int(w.txRateMbps)) Mbps") }
+            if w.rssi != 0 {
+                lines.append("Signal: \(w.rssi) dBm (noise \(w.noise) dBm, SNR \(w.snr) dB)")
+            }
+            if w.txRateMbps > 0 {
+                lines.append("Tx rate: \(Int(w.txRateMbps)) Mbps")
+            }
             lines.append("Protocol: \(w.phyMode)")
             lines.append("Security: \(w.security)")
-            if let c = w.countryCode { lines.append("Country: \(c)") }
+            if let c = w.countryCode {
+                lines.append("Country: \(c)")
+            }
         }
         return lines.joined(separator: "\n")
     }
@@ -196,7 +221,9 @@ public struct NetworkInfo: Sendable, Hashable {
 
     public enum PublicIPError: Error, LocalizedError {
         case unavailable
-        public var errorDescription: String? { "Couldn't reach the public-IP service." }
+        public var errorDescription: String? {
+            "Couldn't reach the public-IP service."
+        }
     }
 
     /// Fetches the Mac's public IPv4 from `api.ipify.org`. This is an outbound
@@ -210,7 +237,8 @@ public struct NetworkInfo: Sendable, Hashable {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
               let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty, text.count <= 45 else {
+              !text.isEmpty, text.count <= 45
+        else {
             throw PublicIPError.unavailable
         }
         return text
@@ -227,7 +255,9 @@ public struct NetworkInfo: Sendable, Hashable {
             defer { cursor = entry.pointee.ifa_next }
             guard let addr = entry.pointee.ifa_addr, addr.pointee.sa_family == UInt8(AF_INET) else { continue }
             let name = String(cString: entry.pointee.ifa_name)
-            if name == "lo0" || NetworkMonitor.isNoiseInterface(name) { continue }
+            if name == "lo0" || NetworkMonitor.isNoiseInterface(name) {
+                continue
+            }
             let flags = Int32(entry.pointee.ifa_flags)
             guard flags & IFF_UP == IFF_UP, flags & IFF_RUNNING == IFF_RUNNING else { continue }
             return name
@@ -285,7 +315,7 @@ public struct NetworkInfo: Sendable, Hashable {
             let alen = Int(dl.sdl_alen)
             guard alen == 6 else { return nil }
             let bytes: [UInt8] = withUnsafeBytes(of: &dl.sdl_data) { raw in
-                (0..<6).map { raw[nlen + $0] }
+                (0 ..< 6).map { raw[nlen + $0] }
             }
             guard bytes.contains(where: { $0 != 0 }) else { return nil }
             return bytes.map { String(format: "%02x", $0) }.joined(separator: ":")
@@ -297,12 +327,14 @@ public struct NetworkInfo: Sendable, Hashable {
     private static func resolveDNSServers(store: SCDynamicStore?, primaryService: String?) -> [String] {
         if let store, let primaryService,
            let dns = SCDynamicStoreCopyValue(store, "State:/Network/Service/\(primaryService)/DNS" as CFString) as? [String: Any],
-           let servers = dns["ServerAddresses"] as? [String], !servers.isEmpty {
+           let servers = dns["ServerAddresses"] as? [String], !servers.isEmpty
+        {
             return servers
         }
         if let store,
            let dns = SCDynamicStoreCopyValue(store, "State:/Network/Global/DNS" as CFString) as? [String: Any],
-           let servers = dns["ServerAddresses"] as? [String], !servers.isEmpty {
+           let servers = dns["ServerAddresses"] as? [String], !servers.isEmpty
+        {
             return servers
         }
         // Last resort: /etc/resolv.conf (usually just points at 127.0.0.1 for
@@ -322,18 +354,20 @@ public struct NetworkInfo: Sendable, Hashable {
         case .band2GHz: return "2.4 GHz"
         case .band5GHz: return "5 GHz"
         default:
-            if let band, band.rawValue == 3 { return "6 GHz" }  // .band6GHz (macOS 12+)
+            if let band, band.rawValue == 3 {
+                return "6 GHz"
+            } // .band6GHz (macOS 12+)
             return ""
         }
     }
 
     private static func widthLabel(_ width: CWChannelWidth?) -> String {
         switch width {
-        case .width20MHz: return "20 MHz"
-        case .width40MHz: return "40 MHz"
-        case .width80MHz: return "80 MHz"
-        case .width160MHz: return "160 MHz"
-        default: return ""
+        case .width20MHz: "20 MHz"
+        case .width40MHz: "40 MHz"
+        case .width80MHz: "80 MHz"
+        case .width160MHz: "160 MHz"
+        default: ""
         }
     }
 
@@ -346,26 +380,28 @@ public struct NetworkInfo: Sendable, Hashable {
         case .mode11ac: return "Wi-Fi 5 (802.11ac)"
         case .mode11ax: return "Wi-Fi 6 (802.11ax)"
         default:
-            if mode.rawValue == 7 { return "Wi-Fi 7 (802.11be)" }
+            if mode.rawValue == 7 {
+                return "Wi-Fi 7 (802.11be)"
+            }
             return "Unknown"
         }
     }
 
     private static func securityLabel(_ security: CWSecurity) -> String {
         switch security {
-        case .none: return "Open (no encryption)"
-        case .WEP, .dynamicWEP: return "WEP"
-        case .wpaPersonal, .wpaPersonalMixed: return "WPA Personal"
-        case .wpa2Personal: return "WPA2 Personal"
-        case .wpa3Personal: return "WPA3 Personal"
-        case .wpa3Transition: return "WPA2/WPA3 Personal"
-        case .personal: return "Personal"
-        case .wpaEnterprise, .wpaEnterpriseMixed: return "WPA Enterprise"
-        case .wpa2Enterprise: return "WPA2 Enterprise"
-        case .wpa3Enterprise: return "WPA3 Enterprise"
-        case .enterprise: return "Enterprise"
-        case .OWE, .oweTransition: return "Enhanced Open (OWE)"
-        default: return "Secured"
+        case .none: "Open (no encryption)"
+        case .WEP, .dynamicWEP: "WEP"
+        case .wpaPersonal, .wpaPersonalMixed: "WPA Personal"
+        case .wpa2Personal: "WPA2 Personal"
+        case .wpa3Personal: "WPA3 Personal"
+        case .wpa3Transition: "WPA2/WPA3 Personal"
+        case .personal: "Personal"
+        case .wpaEnterprise, .wpaEnterpriseMixed: "WPA Enterprise"
+        case .wpa2Enterprise: "WPA2 Enterprise"
+        case .wpa3Enterprise: "WPA3 Enterprise"
+        case .enterprise: "Enterprise"
+        case .OWE, .oweTransition: "Enhanced Open (OWE)"
+        default: "Secured"
         }
     }
 }

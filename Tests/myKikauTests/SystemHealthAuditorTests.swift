@@ -55,7 +55,7 @@ struct SystemHealthAuditorTests {
         let report = NetworkPrivacyAuditor.audit(
             rules: rules,
             installedApplications: [
-                .init(bundleIdentifier: "com.google.Chrome", executablePath: installedPath),
+                .init(bundleIdentifier: "com.google.Chrome", executablePath: installedPath)
             ],
             fileExists: { $0 == installedPath }
         )
@@ -144,7 +144,7 @@ struct SystemHealthAuditorTests {
         )
 
         #expect(installed == [
-            .init(bundleIdentifier: "com.example.App", executablePath: executable.path),
+            .init(bundleIdentifier: "com.example.App", executablePath: executable.path)
         ])
     }
 

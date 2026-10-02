@@ -1,8 +1,9 @@
 import Darwin
 import Foundation
+import Core
 
 public enum ProcessMonitor {
-    public enum SortMode {
+    public enum SortMode: Sendable {
         case cpu
         case memory
     }
@@ -16,7 +17,7 @@ public enum ProcessMonitor {
         public let residentBytes: Int64
 
         public init(pid: Int, command: String, cpuPercent: Double, memoryPercent: Double, residentBytes: Int64) {
-            self.id = pid
+            id = pid
             self.pid = pid
             self.command = command
             self.cpuPercent = cpuPercent
@@ -34,25 +35,10 @@ public enum ProcessMonitor {
     }
 
     public static func top(sort: SortMode, limit: Int = 12) async -> [ProcessInfo] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
         // pmem=/rss= dropped deliberately — see `footprint(pid:)`.
-        process.arguments = ["-axo", "pid=,pcpu=,comm="]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            return []
-        }
-        // Read before waitUntilExit. `ps` output can exceed a pipe buffer on
-        // busy systems; waiting first can deadlock the UI sheet indefinitely.
-        guard let data = try? pipe.fileHandleForReading.readToEnd() else { return [] }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0,
-              let output = String(data: data, encoding: .utf8) else { return [] }
+        let result = await ProcessRunner.run("/bin/ps", ["-axo", "pid=,pcpu=,comm="], timeout: 15)
+        guard result.succeeded else { return [] }
+        let output = result.stdout
 
         let totalMemory = Double(Foundation.ProcessInfo.processInfo.physicalMemory)
         let rows = output
@@ -75,12 +61,11 @@ public enum ProcessMonitor {
                 )
             }
 
-        let sorted: [ProcessInfo]
-        switch sort {
+        let sorted: [ProcessInfo] = switch sort {
         case .cpu:
-            sorted = rows.sorted { $0.cpuPercent > $1.cpuPercent }
+            rows.sorted { $0.cpuPercent > $1.cpuPercent }
         case .memory:
-            sorted = rows.sorted { $0.residentBytes > $1.residentBytes }
+            rows.sorted { $0.residentBytes > $1.residentBytes }
         }
         return Array(sorted.prefix(limit))
     }

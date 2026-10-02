@@ -9,13 +9,25 @@ import UI
 struct myKikauApp: App {
     @StateObject private var updaterViewModel = UpdaterViewModel()
     @AppStorage(AppStorageKey.showDockIcon) private var showDockIcon = true
-    // Gates the launch-time Analyze preload below — only set once the user
-    // has actually opened Analyse at least once (see AnalyzeView.onAppear).
+    /// Gates the launch-time Analyze preload below — only set once the user
+    /// has actually opened Analyse at least once (see AnalyzeView.onAppear).
     @AppStorage(AppStorageKey.hasUsedAnalyze) private var hasUsedAnalyze = false
     // Shared singleton, not a fresh instance — @ObservedObject here just
     // subscribes this Scene to its existing @Published changes so the menu
     // bar icon can react to the last Scan Everything result.
     @ObservedObject private var scanCoordinator = ScanEverythingCoordinator.shared
+    @AppStorage(AppStorageKey.developerToolsEnabled) private var developerTools = false
+
+    init() {
+        BackgroundScanScheduler.shared.start()
+        // Log entries are written asynchronously; make sure the last ones
+        // reach the disk before the process exits.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: nil
+        ) { _ in
+            OperationLog.shared.flush()
+        }
+    }
 
     /// Whether the menu bar icon's accent dot should show. Deliberately a
     /// high bar (500MB, matching the "worth flagging" threshold already used
@@ -37,7 +49,7 @@ struct myKikauApp: App {
         // Settings window.
         Window("myKikau", id: "main") {
             RootView()
-                .frame(minWidth: 800, minHeight: 500)
+                .frame(minWidth: 860, minHeight: 600)
                 .environmentObject(updaterViewModel)
                 .onAppear {
                     DockIconController.apply(showDockIcon: showDockIcon)
@@ -51,6 +63,18 @@ struct myKikauApp: App {
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesCommand(updaterViewModel: updaterViewModel)
+            }
+            // ⌘1…⌘9 jump straight to a screen, in sidebar order.
+            CommandMenu("Go") {
+                let items = ContentView.SidebarItem.visibleCases(developerTools: developerTools)
+                ForEach(Array(items.enumerated()), id: \.element) { index, item in
+                    if index < 9 {
+                        Button(item.label) { AppNavigation.shared.pendingSelection = item }
+                            .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                    } else {
+                        Button(item.label) { AppNavigation.shared.pendingSelection = item }
+                    }
+                }
             }
         }
 
@@ -91,6 +115,7 @@ struct myKikauApp: App {
         // was no Launch at Login option anywhere.
         Settings {
             SettingsView()
+                .environmentObject(updaterViewModel)
         }
     }
 
@@ -111,6 +136,7 @@ struct myKikauApp: App {
     }
 }
 
+@MainActor
 enum DockIconController {
     static func apply(showDockIcon: Bool) {
         NSApplication.shared.setActivationPolicy(showDockIcon ? .regular : .accessory)
@@ -131,7 +157,8 @@ enum DockIconController {
     /// NSImage's template flag surviving SwiftUI's `Image(nsImage:)` bridge.
     static func menuBarImage() -> NSImage {
         if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "pdf"),
-           let image = NSImage(contentsOf: url) {
+           let image = NSImage(contentsOf: url)
+        {
             image.isTemplate = true
             image.size = NSSize(width: 18, height: 18)
             return image
@@ -164,12 +191,16 @@ enum DockIconController {
         let knotH: CGFloat = 3.5
         let knot = NSBezierPath()
         knot.move(to: NSPoint(x: cx - knotW / 2, y: cy - knotH / 2))
-        knot.curve(to: NSPoint(x: cx + knotW / 2, y: cy + knotH / 2),
-                   controlPoint1: NSPoint(x: cx - knotW / 2, y: cy + knotH),
-                   controlPoint2: NSPoint(x: cx + knotW / 2, y: cy - knotH))
-        knot.curve(to: NSPoint(x: cx - knotW / 2, y: cy - knotH / 2),
-                   controlPoint1: NSPoint(x: cx + knotW / 2, y: cy + knotH),
-                   controlPoint2: NSPoint(x: cx - knotW / 2, y: cy - knotH))
+        knot.curve(
+            to: NSPoint(x: cx + knotW / 2, y: cy + knotH / 2),
+            controlPoint1: NSPoint(x: cx - knotW / 2, y: cy + knotH),
+            controlPoint2: NSPoint(x: cx + knotW / 2, y: cy - knotH)
+        )
+        knot.curve(
+            to: NSPoint(x: cx - knotW / 2, y: cy - knotH / 2),
+            controlPoint1: NSPoint(x: cx + knotW / 2, y: cy + knotH),
+            controlPoint2: NSPoint(x: cx - knotW / 2, y: cy - knotH)
+        )
         knot.lineWidth = 1.2
         knot.stroke()
 
@@ -194,8 +225,10 @@ struct RootView: View {
 /// Main window with sidebar navigation.
 struct ContentView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
-        case status, clean, uninstall, analyze, duplicates, network, optimize, purge, history, about
-        var id: String { rawValue }
+        case status, clean, uninstall, analyze, duplicates, network, optimize, startup, purge, history, about
+        var id: String {
+            rawValue
+        }
 
         /// Explicit display strings rather than `rawValue.capitalized` — the
         /// case names are American-spelled internal identifiers ("analyze",
@@ -203,27 +236,64 @@ struct ContentView: View {
         /// uses "Analyse"/"Optimise".
         var label: String {
             switch self {
-            case .status: "Status"
-            case .clean: "Clean"
-            case .uninstall: "Apps"
-            case .analyze: "Analyse"
-            case .duplicates: "Files"
-            case .network: "Network"
-            case .optimize: "Optimise"
-            case .purge: "Purge"
-            case .history: "History"
-            case .about: "About"
+            case .status: String(localized: "Status")
+            case .clean: String(localized: "Clean")
+            case .uninstall: String(localized: "Apps")
+            case .analyze: String(localized: "Analyse")
+            case .duplicates: String(localized: "Files")
+            case .network: String(localized: "Network")
+            case .optimize: String(localized: "Optimise")
+            case .startup: String(localized: "Startup")
+            case .purge: String(localized: "Purge")
+            case .history: String(localized: "History")
+            case .about: String(localized: "About")
             }
         }
 
-        /// Sidebar items shown to the user. Purge is pulled from this release
-        /// (see docs/IMPLEMENTATION_PLAN.md) but the case, its view, and its
-        /// scanner are left intact to bring back later — just excluded here.
-        /// History is replaced by About (a raw operation log wasn't useful as
-        /// its own sidebar destination) — the operation log itself still
-        /// exists and is reachable from About via "Reveal Log File".
-        static var visibleCases: [SidebarItem] {
-            allCases.filter { $0 != .purge && $0 != .history }
+        /// Sidebar items shown to the user, in order. Purge is a developer
+        /// feature, shown only when "Developer tools" is on in Settings; any
+        /// feature an administrator has disabled by policy is left out.
+        static func visibleCases(developerTools: Bool) -> [SidebarItem] {
+            let policy = ManagedPolicy.shared
+            return allCases.filter { item in
+                if item == .purge, !developerTools {
+                    return false
+                }
+                if item == .status || item == .about || item == .history {
+                    return true
+                }
+                return !policy.isFeatureDisabled(item.rawValue)
+            }
+        }
+
+        /// Sidebar grouping.
+        enum Group: String, CaseIterable, Identifiable {
+            case overview = "Overview"
+            case cleanUp = "Clean Up"
+            case inspect = "Inspect"
+            case maintain = "Maintain"
+            case app = "myKikau"
+            var id: String {
+                rawValue
+            }
+
+            /// Caption shown above the group, if it has one.
+            var title: String? {
+                switch self {
+                case .overview, .app: nil
+                default: rawValue
+                }
+            }
+        }
+
+        var group: Group {
+            switch self {
+            case .status: .overview
+            case .clean, .uninstall, .duplicates, .purge: .cleanUp
+            case .analyze, .network: .inspect
+            case .optimize, .startup: .maintain
+            case .history, .about: .app
+            }
         }
 
         var icon: String {
@@ -235,6 +305,7 @@ struct ContentView: View {
             case .duplicates: "doc.on.doc"
             case .network: "wifi"
             case .optimize: "wrench.and.screwdriver"
+            case .startup: "power"
             case .purge: "hammer"
             case .history: "clock.arrow.circlepath"
             case .about: "info.circle"
@@ -253,47 +324,91 @@ struct ContentView: View {
             case .duplicates: .pink
             case .network: .indigo
             case .optimize: .orange
+            case .startup: .green
             case .purge: .brown
-            case .history: .secondary
+            case .history: .mint
             case .about: .secondary
             }
         }
     }
 
     // Status is the landing screen — it acts as the dashboard/hub that
-    // launches every other feature.
-    @State private var selection: SidebarItem? = .status
+    // launches every other feature. The last screen used is restored on launch.
+    @State private var selection: SidebarItem?
+    @AppStorage(AppStorageKey.lastSidebarSelection) private var storedSelection = SidebarItem.status.rawValue
+    @AppStorage(AppStorageKey.developerToolsEnabled) private var developerTools = false
     @ObservedObject private var navigation = AppNavigation.shared
+    @ObservedObject private var deletionActivity = DeletionActivity.shared
+
+    private var visibleItems: [SidebarItem] {
+        SidebarItem.visibleCases(developerTools: developerTools)
+    }
 
     var body: some View {
+        let items = visibleItems
         NavigationSplitView {
-            List(SidebarItem.visibleCases, selection: $selection) { item in
-                SidebarRow(item: item, selected: selection == item)
-                    .tag(item)
+            List(selection: $selection) {
+                ForEach(SidebarItem.Group.allCases) { group in
+                    let groupItems = items.filter { $0.group == group }
+                    if !groupItems.isEmpty {
+                        Section {
+                            ForEach(groupItems) { item in
+                                SidebarRow(item: item, selected: selection == item)
+                                    .tag(item)
+                            }
+                        } header: {
+                            // The first and last groups need no caption;
+                            // skipping them keeps the list inside the window.
+                            if let title = group.title {
+                                Text(title)
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle("myKikau")
-            .frame(minWidth: 180)
+            .frame(minWidth: 190)
+            // No switching screens while files are being removed.
+            .disabled(deletionActivity.isRunning)
         } detail: {
-            switch selection {
-            case .status: StatusView(onNavigate: { selection = $0 })
-            case .clean: CleanView()
-            case .uninstall: UninstallView()
-            case .analyze: AnalyzeView()
-            case .duplicates: DuplicatesView()
-            case .network: NetworkView()
-            case .optimize: OptimizeView()
-            case .about: AboutView()
-            // .purge and .history intentionally omitted — both pulled from the
-            // sidebar (see SidebarItem.visibleCases); fall through to `default`
-            // below if ever reached (e.g. stale @AppStorage selection from a
-            // previous build). Their views/data still exist, just unrouted.
-            default: StatusView(onNavigate: { selection = $0 })
+            // A screen that's hidden (developer tools off, or disabled by
+            // policy) falls back to Status — e.g. a stale stored selection.
+            Group {
+                switch selection.flatMap({ items.contains($0) ? $0 : nil }) ?? .status {
+                case .status: StatusView(onNavigate: { selection = $0 })
+                case .clean: CleanView()
+                case .uninstall: UninstallView()
+                case .analyze: AnalyzeView()
+                case .duplicates: DuplicatesView()
+                case .network: NetworkView()
+                case .optimize: OptimizeView()
+                case .startup: StartupView()
+                case .purge: PurgeView()
+                case .history: HistoryView()
+                case .about: AboutView()
+                }
+            }
+            // A screen whose content doesn't fill the pane (an empty state)
+            // keeps its header at the top instead of floating mid-window.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .onAppear {
+            if selection == nil {
+                selection = SidebarItem(rawValue: storedSelection) ?? .status
             }
         }
-        // Picked up when the menu bar HUD requests a specific screen (e.g. "Open Clean…").
+        .onChange(of: selection) { _, value in
+            if let value {
+                storedSelection = value.rawValue
+            }
+        }
+        // Picked up when the menu bar HUD or a ⌘-number shortcut requests a
+        // specific screen.
         .onReceive(navigation.$pendingSelection) { pending in
             guard let pending else { return }
-            selection = pending
+            if items.contains(pending), !deletionActivity.isRunning {
+                selection = pending
+            }
             navigation.pendingSelection = nil
         }
     }
@@ -318,5 +433,6 @@ private struct SidebarRow: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
     }
 }

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Sample managed-preferences profile for myKikau (domain com.profiveck.myKikau).
+
+  Every key is optional — delete the ones you don't want to enforce. A key that
+  is present is locked: the matching control in Settings is disabled and shows
+  "Set by your organisation". See docs/ENTERPRISE_DEPLOYMENT.md for the full
+  key reference.
+-->
+<plist version="1.0">
+<dict>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.profiveck.myKikau</string>
+            <key>PayloadIdentifier</key>
+            <string>com.profiveck.myKikau.settings.payload</string>
+            <key>PayloadUUID</key>
+            <string>6A55E8E8-4487-47BC-A899-241B08969D6C</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>PayloadDisplayName</key>
+            <string>myKikau Settings</string>
+
+            <!-- Hide whole features. Any of: clean, uninstall, analyze,
+                 duplicates, network, optimize, startup, purge -->
+            <key>DisabledFeatures</key>
+            <array>
+                <string>purge</string>
+            </array>
+
+            <!-- Folders myKikau must never remove anything from. -->
+            <key>ProtectedPaths</key>
+            <array>
+                <string>/Users/Shared/Finance</string>
+                <string>/Library/Application Support/YourCompany</string>
+            </array>
+
+            <!-- Bundle-ID prefixes treated like security agents: their caches,
+                 preferences and the apps themselves are never touched. -->
+            <key>ProtectedBundlePrefixes</key>
+            <array>
+                <string>com.yourcompany.</string>
+            </array>
+
+            <!-- Keep the operation log on; users can't switch it off or clear it. -->
+            <key>ForceOperationLog</key>
+            <true/>
+
+            <!-- Updates are deployed by you, not fetched by the app. -->
+            <key>DisableAutomaticUpdates</key>
+            <true/>
+
+            <!-- Hide actions that ask for an administrator password
+                 (Flush DNS, Renew DHCP). -->
+            <key>DisablePrivilegedTools</key>
+            <true/>
+
+            <!-- Measure reclaimable space every N hours. Never removes anything. -->
+            <key>ScheduledScanIntervalHours</key>
+            <integer>168</integer>
+        </dict>
+    </array>
+    <key>PayloadDisplayName</key>
+    <string>myKikau — Settings</string>
+    <key>PayloadIdentifier</key>
+    <string>com.profiveck.myKikau.settings</string>
+    <key>PayloadOrganization</key>
+    <string>Your Organisation</string>
+    <key>PayloadScope</key>
+    <string>System</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>2239312D-4A3B-4C55-BB85-E0C94A37DAF1</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+</dict>
+</plist>

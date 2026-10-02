@@ -77,7 +77,9 @@ public enum NetworkPrivacyAuditor {
         public let remediation: Remediation
         public let detail: String
 
-        public var id: String { "\(kind.rawValue):\(signingIdentifier)" }
+        public var id: String {
+            "\(kind.rawValue):\(signingIdentifier)"
+        }
     }
 
     public struct Report: Hashable, Sendable {
@@ -88,8 +90,13 @@ public enum NetworkPrivacyAuditor {
             findings.count { $0.remediation == .automatic }
         }
 
-        public var issueCount: Int { findings.count }
-        public var isHealthy: Bool { findings.isEmpty }
+        public var issueCount: Int {
+            findings.count
+        }
+
+        public var isHealthy: Bool {
+            findings.isEmpty
+        }
     }
 
     /// Decodes only the path-controller fields needed for the audit. The file
@@ -130,8 +137,8 @@ public enum NetworkPrivacyAuditor {
         installedApplications: [InstalledApplication],
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) throws -> Report {
-        audit(
-            rules: try loadRules(from: archiveURL),
+        try audit(
+            rules: loadRules(from: archiveURL),
             installedApplications: installedApplications,
             fileExists: fileExists
         )
@@ -249,7 +256,9 @@ public enum NetworkPrivacyAuditor {
         }
 
         findings.sort {
-            if $0.severity != $1.severity { return $0.severity > $1.severity }
+            if $0.severity != $1.severity {
+                return $0.severity > $1.severity
+            }
             if findingPriority($0.kind) != findingPriority($1.kind) {
                 return findingPriority($0.kind) < findingPriority($1.kind)
             }
@@ -269,7 +278,9 @@ public enum NetworkPrivacyAuditor {
 
     private static func resolveString(_ reference: Any?, objects: [Any]) -> String? {
         guard let reference else { return nil }
-        if let value = reference as? String { return value }
+        if let value = reference as? String {
+            return value
+        }
         guard let index = keyedArchiveIndex(reference), objects.indices.contains(index) else { return nil }
         return objects[index] as? String
     }
@@ -289,8 +300,8 @@ public enum NetworkPrivacyAuditor {
         let pattern = #"<key>CF\$UID</key>\s*<integer>(\d+)</integer>"#
         guard let expression = try? NSRegularExpression(pattern: pattern),
               let match = expression.firstMatch(
-                in: text,
-                range: NSRange(text.startIndex..., in: text)
+                  in: text,
+                  range: NSRange(text.startIndex..., in: text)
               ),
               let range = Range(match.range(at: 1), in: text)
         else {

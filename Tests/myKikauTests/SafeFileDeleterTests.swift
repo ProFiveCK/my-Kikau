@@ -79,6 +79,27 @@ struct SafeFileDeleterTests {
 
         let deleter = SafeFileDeleter()
         let size = deleter.directorySize(tmp)
-        #expect(size == 1024)
+        // Allocated size: at least the bytes written, in whole blocks.
+        #expect(size >= 1024)
+        #expect(size == FileSizing.allocatedSize(of: file))
+    }
+
+    @Test("Reclaimable space is what the file occupies, not its logical length")
+    func sparseFilesCountAllocatedBlocks() throws {
+        let tmp = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let sparse = tmp.appendingPathComponent("sparse.bin")
+        // One byte written 50 MB in: a 50 MB logical file that occupies a block or two.
+        let handle = try FileHandle(forWritingTo: {
+            FileManager.default.createFile(atPath: sparse.path, contents: nil)
+            return sparse
+        }())
+        try handle.seek(toOffset: 50_000_000)
+        try handle.write(contentsOf: Data([1]))
+        try handle.close()
+
+        let logical = try #require(try sparse.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        #expect(logical > 50_000_000)
+        #expect(SafeFileDeleter().directorySize(sparse) < 1_000_000)
     }
 }

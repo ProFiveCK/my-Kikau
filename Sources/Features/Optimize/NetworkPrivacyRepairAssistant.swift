@@ -42,7 +42,7 @@ public enum NetworkPrivacyRepairAssistant {
 
         let root = destinationRoot
             ?? FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Documents/myKikau Repairs")
+            .appendingPathComponent("Documents/myKikau Repairs")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
         let formatter = DateFormatter()

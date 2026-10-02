@@ -158,7 +158,6 @@ struct HUDView: View {
 
     /// Connection + local IP, tappable to open the full Network screen, with a
     /// one-tap copy for the IP address itself (a frequent "what's my IP" reach).
-    @ViewBuilder
     private func networkRow(_ net: NetworkInfo) -> some View {
         HStack(spacing: 8) {
             Button {
@@ -206,9 +205,9 @@ struct HUDView: View {
 
     private func networkSymbol(_ net: NetworkInfo) -> String {
         switch net.connectionName {
-        case "Wi-Fi": return "wifi"
-        case "Ethernet": return "cable.connector"
-        default: return "network.slash"
+        case "Wi-Fi": "wifi"
+        case "Ethernet": "cable.connector"
+        default: "network.slash"
         }
     }
 
@@ -241,8 +240,8 @@ struct HUDView: View {
         let trashURL = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
         guard let items = try? FileManager.default.contentsOfDirectory(
-            at: trashURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        ), !items.isEmpty else {
+            at: trashURL, includingPropertiesForKeys: nil, options: []
+        ).filter({ $0.lastPathComponent != ".DS_Store" }), !items.isEmpty else {
             trashStatus = "Trash is already empty"
             return
         }
@@ -261,10 +260,19 @@ struct HUDView: View {
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        let result = SafeFileDeleter.shared.execute(plan, mode: .permanent, dryRun: false, action: "menubar.emptyTrash")
-        trashStatus = "Freed \(ByteSizeFormatter.format(result.freedBytes))"
-        if result.failed == 0 {
-            ScanEverythingCoordinator.shared.clearCleanPlan(for: .trash)
+        trashStatus = "Emptying Trash…"
+        Task {
+            // Off the main thread: a full Trash can take a while to delete.
+            let result = await SafeFileDeleter.shared.executeAsync(
+                plan, mode: .permanent, dryRun: false, action: "menubar.emptyTrash"
+            )
+            trashStatus = result.failed > 0
+                ? "Freed \(ByteSizeFormatter.format(result.freedBytes)) — \(result.failed) item(s) couldn't be deleted"
+                : "Freed \(ByteSizeFormatter.format(result.freedBytes))"
+            ScanEverythingCoordinator.shared.removeCleanItems(ids: result.removedIDs)
+            if !result.removedIDs.isEmpty {
+                AnalyzeScanSession.shared.markStale()
+            }
         }
     }
 

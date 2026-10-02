@@ -78,6 +78,24 @@ if ! otool -l "$app_bundle/Contents/MacOS/myKikau" | grep -F -q "@executable_pat
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$app_bundle/Contents/MacOS/myKikau"
 fi
 
+# Bundle the read-only command-line tool, so a managed Mac has it at a known
+# path: myKikau.app/Contents/Helpers/mykikau-cli
+if [[ -x "$bin_dir/mykikau-cli" ]]; then
+  echo "› bundling mykikau-cli"
+  mkdir -p "$app_bundle/Contents/Helpers"
+  cp "$bin_dir/mykikau-cli" "$app_bundle/Contents/Helpers/mykikau-cli"
+fi
+
+# Bundle the privileged helper and its launchd plist. It stays dormant until
+# the user installs it from Settings and an administrator approves it.
+# MYKIKAU_INCLUDE_HELPER=0 leaves it out (a build for a fleet that forbids it).
+if [[ "${MYKIKAU_INCLUDE_HELPER:-1}" == "1" && -x "$bin_dir/myKikauHelper" ]]; then
+  echo "› bundling myKikauHelper"
+  cp "$bin_dir/myKikauHelper" "$app_bundle/Contents/MacOS/myKikauHelper"
+  mkdir -p "$app_bundle/Contents/Library/LaunchDaemons"
+  cp Sources/Helper/com.profiveck.myKikau.helper.plist "$app_bundle/Contents/Library/LaunchDaemons/"
+fi
+
 # Copy the Info.plist.
 cp Sources/App/Info.plist "$app_bundle/Contents/Info.plist"
 
@@ -91,6 +109,15 @@ elif [[ -f AppIcon/AppIcon.icns ]]; then
   cp AppIcon/AppIcon.icns "$app_bundle/Contents/Resources/AppIcon.icns"
 else
   echo "⚠ no app icon found; bundle will have no icon"
+fi
+
+# Compile the String Catalog into per-language .lproj folders. With only the
+# English source strings in the catalog this produces nothing — the keys are
+# the English text — so the app simply runs in English.
+if [[ -f Resources/Localizable.xcstrings ]]; then
+  echo "› compiling Localizable.xcstrings"
+  xcrun xcstringstool compile Resources/Localizable.xcstrings \
+    --output-directory "$app_bundle/Contents/Resources"
 fi
 
 # Copy the menu bar (status item) icon — a separate, simplified monochrome

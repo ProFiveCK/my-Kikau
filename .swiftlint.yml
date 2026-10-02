@@ -24,6 +24,8 @@ disabled_rules:
   - file_length
   - function_body_length
   - cyclomatic_complexity
+  # SwiftFormat owns trailing commas; two tools enforcing it fight each other.
+  - trailing_comma
 
 line_length:
   warning: 140
@@ -37,3 +39,13 @@ identifier_name:
   min_length: 1
   max_length: 60
   allowed_symbols: ["_"]
+
+# Tuples that mirror a C struct (the kernel's four CPU tick counters, a
+# sockaddr triple) read better as tuples than as one-off structs.
+large_tuple:
+  warning: 4
+  error: 5
+
+# SwiftFormat decides brace placement for wrapped conditions.
+opening_brace:
+  ignore_multiline_statement_conditions: true

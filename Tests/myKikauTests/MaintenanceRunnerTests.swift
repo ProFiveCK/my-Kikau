@@ -72,16 +72,6 @@ struct MaintenanceRunnerTests {
         #expect(keys.contains { $0.key == "skip-verify-remote" })
     }
 
-    @Test("quarantineDBPath resolves under the injected home")
-    func quarantineDBPathUnderHome() {
-        let home = makeHome()
-        defer { try? FileManager.default.removeItem(at: home) }
-        let runner = MaintenanceRunner(home: home)
-        let path = runner.quarantineDBPath()
-        #expect(path.path.contains(home.path))
-        #expect(path.lastPathComponent == "com.apple.LaunchServices.QuarantineEventsV2")
-    }
-
     // MARK: - Dry-run
 
     @Test("runProcess in dry-run returns synthetic success without spawning")
@@ -277,20 +267,117 @@ struct MaintenanceRunnerTests {
         }
     }
 
-    // MARK: - quarantine
-
-    @Test("quarantine unchanged when database not present")
-    func quarantineUnchangedWhenAbsent() async {
+    @Test("launch_agents leaves PATH-resolved, external-volume and Apple agents alone")
+    func launchAgentsIgnoresNonEvidence() async {
         let home = makeHome()
         defer { try? FileManager.default.removeItem(at: home) }
 
+        let agentsDir = home.appendingPathComponent("Library/LaunchAgents")
+        makeDir(agentsDir)
+        // launchd resolves a bare name through PATH — not a missing binary.
+        (["Label": "com.bare.agent", "ProgramArguments": ["sh", "-c", "true"]] as NSDictionary)
+            .write(to: agentsDir.appendingPathComponent("com.bare.agent.plist"), atomically: true)
+        // On a volume that isn't mounted right now — unavailable, not broken.
+        (["Label": "com.external.agent", "Program": "/Volumes/Backup/tools/agent"] as NSDictionary)
+            .write(to: agentsDir.appendingPathComponent("com.external.agent.plist"), atomically: true)
+        // Apple's own agents are never judged.
+        (["Label": "com.apple.thing", "Program": "/nonexistent/apple/binary"] as NSDictionary)
+            .write(to: agentsDir.appendingPathComponent("com.apple.thing.plist"), atomically: true)
+
         let runner = MaintenanceRunner(home: home)
-        let result = await runner.run(taskID: "quarantine", dryRun: false)
+        let result = await runner.run(taskID: "launch_agents", dryRun: true)
 
         if case .unchanged = result.outcome {
             // expected
         } else {
-            Issue.record("Expected .unchanged when no quarantine DB, got \(result.outcome)")
+            Issue.record("Expected .unchanged, got \(result.outcome)")
+        }
+        #expect(result.output.isEmpty)
+    }
+
+    @Test("launch_agents dry-run lists the exact plist it would remove")
+    func launchAgentsDryRunListsPaths() async {
+        let home = makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let agentsDir = home.appendingPathComponent("Library/LaunchAgents")
+        makeDir(agentsDir)
+        let brokenPlist = agentsDir.appendingPathComponent("com.broken.agent.plist")
+        (["Label": "com.broken.agent", "Program": "/usr/local/nonexistent/binary"] as NSDictionary)
+            .write(to: brokenPlist, atomically: true)
+
+        let runner = MaintenanceRunner(home: home)
+        let result = await runner.run(taskID: "launch_agents", dryRun: true)
+
+        #expect(result.output.count == 1)
+        #expect(result.output.first.map { URL(fileURLWithPath: $0).lastPathComponent } == "com.broken.agent.plist")
+    }
+
+    // MARK: - broken_configs
+
+    @Test("broken_configs flags a corrupt third-party plist and lists it, but never com.apple.*")
+    func brokenConfigsDetectsCorrupt() async {
+        let home = makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let prefs = home.appendingPathComponent("Library/Preferences")
+        makeDir(prefs)
+        let corrupt = prefs.appendingPathComponent("com.example.broken.plist")
+        try? Data("not a property list".utf8).write(to: corrupt)
+        let appleCorrupt = prefs.appendingPathComponent("com.apple.something.plist")
+        try? Data("not a property list".utf8).write(to: appleCorrupt)
+        let valid = prefs.appendingPathComponent("com.example.fine.plist")
+        (["key": "value"] as NSDictionary).write(to: valid, atomically: true)
+        // Older than the "being written right now" window.
+        for url in [corrupt, appleCorrupt, valid] { setModDate(url, daysAgo: 1) }
+
+        let runner = MaintenanceRunner(home: home)
+        let result = await runner.run(taskID: "broken_configs", dryRun: true)
+
+        if case .applied = result.outcome {
+            // expected
+        } else {
+            Issue.record("Expected .applied, got \(result.outcome)")
+        }
+        #expect(result.output.map { URL(fileURLWithPath: $0).lastPathComponent } == ["com.example.broken.plist"])
+        #expect(FileManager.default.fileExists(atPath: corrupt.path))
+    }
+
+    @Test("broken_configs leaves a plist that was written moments ago")
+    func brokenConfigsSkipsFreshlyWritten() async {
+        let home = makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let prefs = home.appendingPathComponent("Library/Preferences")
+        makeDir(prefs)
+        try? Data("half written".utf8).write(to: prefs.appendingPathComponent("com.example.busy.plist"))
+
+        let runner = MaintenanceRunner(home: home)
+        let result = await runner.run(taskID: "broken_configs", dryRun: true)
+
+        if case .unchanged = result.outcome {
+            // expected
+        } else {
+            Issue.record("Expected .unchanged, got \(result.outcome)")
+        }
+    }
+
+    // MARK: - Retired tasks
+
+    @Test("retired tasks that edited live system data report unavailable and are not in the catalogue")
+    func retiredTasksUnavailable() async {
+        let home = makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let runner = MaintenanceRunner(home: home)
+        for id in ["quarantine", "spotlight_orphans"] {
+            let result = await runner.run(taskID: id, dryRun: false)
+            if case .unavailable = result.outcome {
+                // expected
+            } else {
+                Issue.record("Expected .unavailable for \(id), got \(result.outcome)")
+            }
+            #expect(!MaintenanceCatalog.tasks.contains { $0.id == id })
         }
     }
 

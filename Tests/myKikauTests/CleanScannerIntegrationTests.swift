@@ -37,7 +37,9 @@ struct CleanScannerIntegrationTests {
         // Every scanned item should be categorized as cache.
         #expect(plan.items.allSatisfy { $0.category == .cache })
         // Reclaimable total is the sum of both directory sizes.
-        #expect(plan.totalReclaimable == 96)
+        // Reclaimable space is allocated size (whole blocks), never less than the bytes written.
+        #expect(plan.totalReclaimable >= 96)
+        #expect(plan.totalReclaimable == plan.items.reduce(0) { $0 + FileSizing.allocatedSize(of: $1.url) })
     }
 
     @Test("browserCache returns only existing browser cache targets")
@@ -72,7 +74,7 @@ struct CleanScannerIntegrationTests {
 
         #expect(plan.items.count == 1)
         #expect(plan.items.first?.category == .trash)
-        #expect(plan.totalReclaimable == 16)
+        #expect(plan.totalReclaimable >= 16)
     }
 
     @Test("recentItems section maps to leftover category")
@@ -90,7 +92,7 @@ struct CleanScannerIntegrationTests {
 
         #expect(plan.items.count == 2)
         #expect(plan.items.allSatisfy { $0.category == .leftover })
-        #expect(plan.totalReclaimable == 12)
+        #expect(plan.totalReclaimable >= 12)
     }
 
     @Test("scanAll covers every section without touching real ~/Library")

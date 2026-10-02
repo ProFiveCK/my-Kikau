@@ -108,7 +108,7 @@ myKikau/
 │   │   ├── Optimize/MaintenanceCatalog.swift
 │   │   └── Purge/ProjectArtifactScanner.swift
 │   └── UI/                   Shared SwiftUI components
-│       ├── PlanReviewView.swift  Dry-run preview + confirm (shared)
+│       ├── PlanReviewView.swift  Review, run and report a deletion plan (shared)
 │       └── Components/SizeBar.swift
 ├── Tests/myKikauTests/        Unit tests (Swift Testing framework)
 └── docs/SETUP.md              This file
@@ -127,7 +127,7 @@ App → UI → Features → Core
 
 ## Safety Design
 
-myKikau inherits Mole's safety-first principles:
+myKikau is built on safety-first principles:
 
 1. **Single deletion funnel** — every deletion routes through `SafeFileDeleter` which:
    - Routes to Trash by default (Finder-recoverable)
@@ -141,22 +141,9 @@ myKikau inherits Mole's safety-first principles:
 
 4. **Endpoint security** — EDR/MDM agent bundle prefixes (CrowdStrike, SentinelOne, ESET, Jamf) are never touched to avoid tamper detection
 
-5. **Exact bundle-ID matching** — leftover files match by exact bundle ID only. No vendor-prefix, generic-name, or fallback-wildcard matching (per Mole AGENTS.md)
+5. **Exact bundle-ID matching** — leftover files match by exact bundle ID only. No vendor-prefix, generic-name, or fallback-wildcard matching
 
-6. **Preview before delete** — every destructive action shows a `PlanReviewView` with item counts, sizes, and a Dry Run toggle before execution
-
-## Reference
-
-Logic reimplemented natively in Swift, informed by [Mole](https://github.com/tw93/Mole) (GPL-3.0, Go + Bash CLI). See `../Mole/AGENTS.md` for the original safety rules and product direction that guide this project.
-
-Key Mole files referenced during porting:
-
-- `lib/core/file_ops.sh` — deletion funnel design
-- `lib/core/app_protection_data.sh` — protected bundle ID list
-- `lib/clean/*.sh` — cleanup target paths
-- `lib/uninstall/*.sh` — leftover teardown logic
-- `lib/optimize/catalog.sh` — maintenance task catalog
-- `cmd/status/metrics.go` + `metrics_health.go` — metrics + health score
+6. **Preview before delete** — every destructive action opens `PlanReviewView`: each item has a checkbox, the button states what will happen, and a "Simulate" option runs the plan without touching anything
 
 ## Release Process
 

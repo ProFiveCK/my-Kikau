@@ -113,14 +113,14 @@ struct AppTeardownTests {
         let helper = loginItems.appendingPathComponent("Helper.app")
         makeDir(helper.appendingPathComponent("Contents"))
         writePlist(helper.appendingPathComponent("Contents/Info.plist"), [
-            "CFBundleIdentifier": "com.mycompany.myapp.helper",
+            "CFBundleIdentifier": "com.mycompany.myapp.helper"
         ])
 
         // Apple helper — must be filtered out.
         let appleHelper = loginItems.appendingPathComponent("AppleHelper.app")
         makeDir(appleHelper.appendingPathComponent("Contents"))
         writePlist(appleHelper.appendingPathComponent("Contents/Info.plist"), [
-            "CFBundleIdentifier": "com.apple.helper",
+            "CFBundleIdentifier": "com.apple.helper"
         ])
 
         let teardown = AppTeardown(home: home)
@@ -140,7 +140,7 @@ struct AppTeardownTests {
         let helper = loginItems.appendingPathComponent("Helper.app")
         makeDir(helper.appendingPathComponent("Contents"))
         writePlist(helper.appendingPathComponent("Contents/Info.plist"), [
-            "CFBundleIdentifier": "com.mycompany.myapp.helper",
+            "CFBundleIdentifier": "com.mycompany.myapp.helper"
         ])
 
         let appInfo = makeAppInfo(url: app, bundleID: "com.mycompany.myapp")
@@ -163,7 +163,7 @@ struct AppTeardownTests {
         let helper = loginItems.appendingPathComponent("Helper.app")
         makeDir(helper.appendingPathComponent("Contents"))
         writePlist(helper.appendingPathComponent("Contents/Info.plist"), [
-            "CFBundleIdentifier": "com.mycompany.myapp.helper",
+            "CFBundleIdentifier": "com.mycompany.myapp.helper"
         ])
 
         let appInfo = makeAppInfo(url: app, bundleID: "com.mycompany.myapp")

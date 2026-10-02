@@ -86,8 +86,12 @@ struct NetworkView: View {
             InfoRow("Local IP address", model.info.localIPv4, copiedField: $copiedField, onCopy: flash)
             InfoRow("Subnet mask", model.info.subnetMask, copiedField: $copiedField, onCopy: flash)
             InfoRow("Router", model.info.router, copiedField: $copiedField, onCopy: flash)
-            InfoRow("DNS servers", model.info.dnsServers.isEmpty ? nil : model.info.dnsServers.joined(separator: ", "),
-                    copiedField: $copiedField, onCopy: flash)
+            InfoRow(
+                "DNS servers",
+                model.info.dnsServers.isEmpty ? nil : model.info.dnsServers.joined(separator: ", "),
+                copiedField: $copiedField,
+                onCopy: flash
+            )
             InfoRow("IPv6", model.info.localIPv6, copiedField: $copiedField, onCopy: flash)
             InfoRow("MAC address", model.info.macAddress, copiedField: $copiedField, onCopy: flash)
         }
@@ -95,9 +99,9 @@ struct NetworkView: View {
 
     private var connectionIcon: String {
         switch model.info.connectionName {
-        case "Wi-Fi": return "wifi"
-        case "Ethernet": return "cable.connector"
-        default: return "network.slash"
+        case "Wi-Fi": "wifi"
+        case "Ethernet": "cable.connector"
+        default: "network.slash"
         }
     }
 
@@ -132,13 +136,21 @@ struct NetworkView: View {
                 InfoRow("Network (SSID)", wifi.ssid, copiedField: $copiedField, onCopy: flash)
                 InfoRow("BSSID", wifi.bssid, copiedField: $copiedField, onCopy: flash)
                 InfoRow("Band", wifi.band.isEmpty ? nil : wifi.band, copiedField: $copiedField, onCopy: flash)
-                InfoRow("Channel", wifi.channelNumber > 0
+                InfoRow(
+                    "Channel",
+                    wifi.channelNumber > 0
                         ? "\(wifi.channelNumber)\(wifi.width.isEmpty ? "" : " · \(wifi.width)")" : nil,
-                        copiedField: $copiedField, onCopy: flash)
+                    copiedField: $copiedField,
+                    onCopy: flash
+                )
                 InfoRow("Protocol", wifi.phyMode, copiedField: $copiedField, onCopy: flash)
                 InfoRow("Security", wifi.security, copiedField: $copiedField, onCopy: flash)
-                InfoRow("Transmit rate", wifi.txRateMbps > 0 ? "\(Int(wifi.txRateMbps)) Mbps" : nil,
-                        copiedField: $copiedField, onCopy: flash)
+                InfoRow(
+                    "Transmit rate",
+                    wifi.txRateMbps > 0 ? "\(Int(wifi.txRateMbps)) Mbps" : nil,
+                    copiedField: $copiedField,
+                    onCopy: flash
+                )
                 if let country = wifi.countryCode {
                     InfoRow("Country", country, copiedField: $copiedField, onCopy: flash)
                 }
@@ -163,9 +175,9 @@ struct NetworkView: View {
 
     private func signalColor(_ quality: Int) -> Color {
         switch quality {
-        case ..<35: return .red
-        case 35..<65: return .orange
-        default: return .green
+        case ..<35: .red
+        case 35 ..< 65: .orange
+        default: .green
         }
     }
 
@@ -215,64 +227,68 @@ struct NetworkView: View {
 
         var id: String {
             switch self {
-            case .flushDNS: return "flushDNS"
-            case .renewDHCP: return "renewDHCP"
+            case .flushDNS: "flushDNS"
+            case .renewDHCP: "renewDHCP"
             }
         }
 
         var title: String {
             switch self {
-            case .flushDNS: return "Flush DNS cache"
-            case .renewDHCP: return "Renew DHCP lease"
+            case .flushDNS: "Flush DNS cache"
+            case .renewDHCP: "Renew DHCP lease"
             }
         }
 
         var detail: String {
             switch self {
             case .flushDNS:
-                return "Clears cached DNS lookups so stale or wrong addresses are re-resolved."
-            case .renewDHCP(let iface):
-                return "Asks the router for a fresh IP address on \(iface). The connection drops for a second or two."
+                "Clears cached DNS lookups so stale or wrong addresses are re-resolved."
+            case let .renewDHCP(iface):
+                "Asks the router for a fresh IP address on \(iface). The connection drops for a second or two."
             }
         }
 
         var buttonLabel: String {
             switch self {
-            case .flushDNS: return "Flush"
-            case .renewDHCP: return "Renew"
+            case .flushDNS: "Flush"
+            case .renewDHCP: "Renew"
             }
         }
 
         var runningLabel: String {
             switch self {
-            case .flushDNS: return "Flushing…"
-            case .renewDHCP: return "Renewing…"
+            case .flushDNS: "Flushing…"
+            case .renewDHCP: "Renewing…"
             }
         }
 
         var successMessage: String {
             switch self {
-            case .flushDNS: return "DNS cache flushed."
-            case .renewDHCP: return "DHCP lease renewed."
+            case .flushDNS: "DNS cache flushed."
+            case .renewDHCP: "DHCP lease renewed."
             }
         }
 
         var command: String {
             switch self {
             case .flushDNS:
-                return "/usr/bin/dscacheutil -flushcache; /usr/bin/killall -HUP mDNSResponder"
-            case .renewDHCP(let iface):
-                return "/usr/sbin/ipconfig set \(iface) DHCP"
+                "/usr/bin/dscacheutil -flushcache; /usr/bin/killall -HUP mDNSResponder"
+            case let .renewDHCP(iface):
+                "/usr/sbin/ipconfig set \(iface) DHCP"
             }
         }
     }
 
     private var toolsCard: some View {
         Card(title: "Tools", systemImage: "wrench.and.screwdriver", tint: tint) {
-            toolRow(.flushDNS)
-            Divider()
-            toolRow(.renewDHCP(interface: safeInterface))
-            Divider()
+            // Both need an administrator password; an organisation can turn
+            // those actions off.
+            if !ManagedPolicy.shared.disablePrivilegedTools {
+                toolRow(.flushDNS)
+                Divider()
+                toolRow(.renewDHCP(interface: safeInterface))
+                Divider()
+            }
             ToolRow(
                 title: "Wireless Diagnostics",
                 detail: "Apple's built-in tool for capturing and analysing Wi-Fi problems.",
@@ -286,7 +302,6 @@ struct NetworkView: View {
         }
     }
 
-    @ViewBuilder
     private func toolRow(_ tool: NetTool) -> some View {
         ToolRow(
             title: tool.title,
@@ -326,7 +341,9 @@ struct NetworkView: View {
     private func flash(_ field: String) {
         copiedField = field
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-            if copiedField == field { copiedField = nil }
+            if copiedField == field {
+                copiedField = nil
+            }
         }
     }
 }
@@ -369,8 +386,8 @@ final class NetworkInfoModel: NSObject, ObservableObject {
 
 extension NetworkInfoModel: CLLocationManagerDelegate {
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
         Task { @MainActor in
-            let status = manager.authorizationStatus
             if status == .authorized || status == .authorizedAlways {
                 self.refresh()
             }
@@ -408,7 +425,7 @@ private struct InfoRow: View {
     init(_ label: String, _ value: String?, copiedField: Binding<String?>, onCopy: @escaping (String) -> Void) {
         self.label = label
         self.value = value
-        self._copiedField = copiedField
+        _copiedField = copiedField
         self.onCopy = onCopy
     }
 

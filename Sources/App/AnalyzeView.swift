@@ -9,16 +9,18 @@ struct AnalyzeView: View {
         case chart = "Chart"
         case map = "Map"
         case list = "List"
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     @ObservedObject private var session = AnalyzeScanSession.shared
     @State private var mode: ViewMode = .chart
-    // Marks that this user actually uses Analyse, so the launch-time
-    // background preload (see myKikauApp) knows it's worth doing for them.
+    /// Marks that this user actually uses Analyse, so the launch-time
+    /// background preload (see myKikauApp) knows it's worth doing for them.
     @AppStorage(AppStorageKey.hasUsedAnalyze) private var hasUsedAnalyze = false
-    // Non-empty means Desktop/Documents/Downloads under-report or read as
-    // empty here without any visible error — see ProtectedFolderAccessCheck.
+    /// Non-empty means Desktop/Documents/Downloads under-report or read as
+    /// empty here without any visible error — see ProtectedFolderAccessCheck.
     @State private var deniedFolders: [String] = ProtectedFolderAccessCheck.deniedFolders()
 
     private let tint = ContentView.SidebarItem.analyze.tint
@@ -33,18 +35,19 @@ struct AnalyzeView: View {
                 if !session.entries.isEmpty {
                     Picker("View", selection: $mode) {
                         ForEach(ViewMode.allCases) { m in
-                            Text(m.rawValue).tag(m)
+                            Text(LocalizedStringKey(m.rawValue)).tag(m)
                         }
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 200)
                 }
-                if !session.isOverview && !session.entries.isEmpty {
+                if !session.isOverview, !session.entries.isEmpty {
                     Menu {
                         Toggle("Show hidden items", isOn: $session.showHidden)
                     } label: {
                         Image(systemName: session.showHidden ? "eye" : "eye.slash")
+                            .accessibilityLabel("Hidden items")
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
@@ -65,11 +68,21 @@ struct AnalyzeView: View {
                         session.scanVolumeOverview()
                     }
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
                 .disabled(session.isScanning)
             }
             .padding()
+
+            if session.isScanning {
+                ScanProgressBar(
+                    "Measuring disk usage",
+                    detail: session.progressPath,
+                    onCancel: session.cancelScan
+                )
+                .padding([.horizontal, .bottom])
+            }
 
             if !deniedFolders.isEmpty {
                 ProtectedFolderAccessBanner(deniedFolders: deniedFolders)
@@ -96,7 +109,7 @@ struct AnalyzeView: View {
                 .padding(.bottom, 8)
             }
 
-            if session.entries.isEmpty && !session.isScanning {
+            if session.entries.isEmpty, !session.isScanning {
                 ContentUnavailableView {
                     Label("No Scan Yet", systemImage: "chart.pie")
                 } description: {
@@ -106,14 +119,10 @@ struct AnalyzeView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(tint)
                 }
-            } else if session.isScanning && session.entries.isEmpty {
-                VStack(spacing: 10) {
-                    ProgressView()
-                    Text("Measuring disk usage…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if session.entries.isEmpty {
+                // Scanning with nothing to show yet — the progress bar above
+                // says what's happening.
+                Spacer()
             } else if mode == .chart {
                 PieChartSection(
                     entries: session.entries,
@@ -134,7 +143,9 @@ struct AnalyzeView: View {
                         label: { $0.name },
                         sublabel: { ByteSizeFormatter.format($0.sizeBytes) },
                         onSelect: { entry in
-                            if entry.isNavigable { session.scan(entry.url) }
+                            if entry.isNavigable {
+                                session.scan(entry.url)
+                            }
                         }
                     )
                     .frame(minWidth: 360)
@@ -143,7 +154,14 @@ struct AnalyzeView: View {
                         AnalyzeRow(entry: entry, tint: tint, maxSize: mapEntries.map(\.sizeBytes).max() ?? 1)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                if entry.isNavigable { session.scan(entry.url) }
+                                if entry.isNavigable {
+                                    session.scan(entry.url)
+                                }
+                            }
+                            .contextMenu {
+                                if entry.isNavigable {
+                                    PathMenu(url: entry.url)
+                                }
                             }
                     }
                     .frame(minWidth: 260, idealWidth: 320)
@@ -155,7 +173,14 @@ struct AnalyzeView: View {
                     AnalyzeRow(entry: entry, tint: tint, maxSize: maxSize)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if entry.isNavigable { session.scan(entry.url) }
+                            if entry.isNavigable {
+                                session.scan(entry.url)
+                            }
+                        }
+                        .contextMenu {
+                            if entry.url.path.hasPrefix("/"), !entry.id.hasPrefix("synthetic://") {
+                                PathMenu(url: entry.url)
+                            }
                         }
                 }
             }
@@ -169,7 +194,9 @@ struct AnalyzeView: View {
     }
 
     private var scanButtonTitle: String {
-        if session.isScanning { return "Scanning..." }
+        if session.isScanning {
+            return "Scanning..."
+        }
         return session.hasResults ? "Rescan" : "Analyse Disk"
     }
 
@@ -219,7 +246,7 @@ private struct BreadcrumbBar: View {
     private struct Crumb: Identifiable {
         let id: Int
         let name: String
-        let url: URL?   // nil == the disk-overview root
+        let url: URL? // nil == the disk-overview root
     }
 
     private var crumbs: [Crumb] {
@@ -240,7 +267,11 @@ private struct BreadcrumbBar: View {
                 ForEach(Array(crumbs.enumerated()), id: \.element.id) { index, crumb in
                     let isLast = index == crumbs.count - 1
                     Button {
-                        if let url = crumb.url { onSelect(url) } else { onSelectRoot() }
+                        if let url = crumb.url {
+                            onSelect(url)
+                        } else {
+                            onSelectRoot()
+                        }
                     } label: {
                         HStack(spacing: 3) {
                             if index == 0 {
@@ -282,8 +313,10 @@ private struct PieChartSection: View {
         let name: String
         let sizeBytes: Int64
         let color: Color
-        let entry: DiskScanner.Entry?   // nil for the aggregated "Other" slice
-        var isNavigable: Bool { entry?.isNavigable == true }
+        let entry: DiskScanner.Entry? // nil for the aggregated "Other" slice
+        var isNavigable: Bool {
+            entry?.isNavigable == true
+        }
     }
 
     private static let palette: [Color] = [
@@ -294,9 +327,9 @@ private struct PieChartSection: View {
     /// folder palette — Free is the lightest, System a mid grey.
     private static func neutralColor(for name: String) -> Color {
         switch name {
-        case "Free": return Color(white: 0.82)
-        case "macOS System": return Color(white: 0.55)
-        default: return Color(white: 0.68)   // "Hidden Items" and any other aggregate
+        case "Free": Color(white: 0.82)
+        case "macOS System": Color(white: 0.55)
+        default: Color(white: 0.68) // "Hidden Items" and any other aggregate
         }
     }
 
@@ -305,7 +338,7 @@ private struct PieChartSection: View {
         // smaller ones roll up into "Other". Computed rows (Free, macOS System,
         // Hidden Items) always keep their own slice — never folded into "Other"
         // — so the donut visibly sums to the whole disk.
-        let navigable = entries.filter { $0.isNavigable }
+        let navigable = entries.filter(\.isNavigable)
         let computed = entries.filter { !$0.isNavigable }
 
         let topCount = 9
@@ -345,8 +378,12 @@ private struct PieChartSection: View {
         // "Free", which is pinned last so the donut reads used-space first,
         // then the gap.
         return result.sorted { lhs, rhs in
-            if lhs.name == "Free" { return false }
-            if rhs.name == "Free" { return true }
+            if lhs.name == "Free" {
+                return false
+            }
+            if rhs.name == "Free" {
+                return true
+            }
             return lhs.sizeBytes > rhs.sizeBytes
         }
     }
@@ -368,6 +405,8 @@ private struct PieChartSection: View {
                     .cornerRadius(4)
                 }
                 .chartLegend(.hidden)
+                .accessibilityLabel("Disk usage chart")
+                .accessibilityValue(slices.prefix(5).map { "\($0.name) \(percentString($0.sizeBytes))" }.joined(separator: ", "))
                 .frame(minWidth: 240, idealWidth: 280, maxWidth: 320, minHeight: 240, idealHeight: 280, maxHeight: 320)
 
                 VStack(spacing: 2) {
@@ -383,7 +422,9 @@ private struct PieChartSection: View {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(slices) { slice in
                         Button {
-                            if let entry = slice.entry, entry.isNavigable { onSelect(entry) }
+                            if let entry = slice.entry, entry.isNavigable {
+                                onSelect(entry)
+                            }
                         } label: {
                             HStack(spacing: 10) {
                                 Circle().fill(slice.color).frame(width: 10, height: 10)
@@ -410,6 +451,12 @@ private struct PieChartSection: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(!slice.isNavigable)
+                        .contextMenu {
+                            if let entry = slice.entry, entry.isNavigable {
+                                PathMenu(url: entry.url)
+                            }
+                        }
+                        .accessibilityLabel("\(slice.name), \(ByteSizeFormatter.format(slice.sizeBytes)), \(percentString(slice.sizeBytes))")
                     }
                 }
             }
@@ -468,5 +515,9 @@ private struct AnalyzeRow: View {
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(entry.name), \(ByteSizeFormatter.format(entry.sizeBytes))")
+        .accessibilityHint(entry.isNavigable ? "Opens this folder" : "")
+        .accessibilityAddTraits(entry.isNavigable ? .isButton : [])
     }
 }

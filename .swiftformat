@@ -14,7 +14,6 @@
 --allman false
 --semicolons inline
 --trimwhitespace always
---insertblanklines false
 
 # Keep code intent unchanged where it doesn't hurt readability.
 --disable organizeDeclarations
@@ -27,3 +26,7 @@
 
 # Prefer Swift types over Foundation equivalents where idiomatic.
 --enable typeSugar
+
+# os.Logger's string interpolation is an autoclosure, where Swift requires an
+# explicit `self.`; this rule would strip it and break the build.
+--disable redundantSelf

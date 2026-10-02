@@ -1,4 +1,5 @@
 import AppKit
+import Charts
 import SwiftUI
 import Core
 import Features
@@ -38,6 +39,7 @@ struct StatusView: View {
                     VStack(spacing: 12) {
                         HeroHealthCard(
                             snapshot: snap,
+                            history: metricsService.history,
                             onNavigate: onNavigate,
                             freeingMemory: freeingMemory,
                             memoryActionMessage: memoryActionMessage,
@@ -57,8 +59,10 @@ struct StatusView: View {
         }
         .onAppear {
             metricsService.subscribe()
-            totalFreed = OperationLog.shared.totalFreed()
             hasFullDiskAccess = FullDiskAccessCheck.probe()
+            Task {
+                totalFreed = await Task.detached { OperationLog.shared.totalFreed() }.value
+            }
         }
         .onDisappear { metricsService.unsubscribe() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -128,7 +132,7 @@ private struct FullSystemScanCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(coordinator.isScanning ? "Scanning…" : (coordinator.hasResults ? "Rescan" : "Scan")) {
+                Button(coordinator.hasResults ? "Rescan" : "Scan") {
                     Task { await coordinator.scanEverything() }
                 }
                 .buttonStyle(.borderedProminent)
@@ -136,13 +140,12 @@ private struct FullSystemScanCard: View {
             }
 
             if coordinator.isScanning {
-                VStack(alignment: .leading, spacing: 6) {
-                    ProgressView()
-                    Text("Scanning cleanable data, apps, duplicate files, large files, and system settings.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ScanProgressBar(
+                    coordinator.phase?.label ?? "Starting…",
+                    detail: coordinator.progressDetail,
+                    fraction: coordinator.progress,
+                    onCancel: coordinator.cancelScan
+                )
             } else if coordinator.hasResults {
                 Text("\(coordinator.combinedItemCount) items · \(ByteSizeFormatter.format(coordinator.combinedReclaimableBytes)) reclaimable")
                     .font(.title3.bold())
@@ -224,6 +227,15 @@ private struct FullSystemScanCard: View {
                             action: { onNavigate(.optimize) }
                         )
                     }
+                    if let artifacts = coordinator.purgeArtifacts {
+                        SummaryPill(
+                            icon: "hammer",
+                            title: "Build Artifacts",
+                            value: "\(artifacts.count) · \(ByteSizeFormatter.format(artifacts.reduce(Int64(0)) { $0 + $1.sizeBytes }))",
+                            tint: ContentView.SidebarItem.purge.tint,
+                            action: { onNavigate(.purge) }
+                        )
+                    }
                 }
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
@@ -247,7 +259,9 @@ private struct ScanCategory: Identifiable {
     let title: String
     let subtitle: String
     let tint: Color
-    var id: String { title }
+    var id: String {
+        title
+    }
 }
 
 private struct ScanCategoryChip: View {
@@ -304,6 +318,8 @@ private struct SummaryPill: View {
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(tint.opacity(0.25), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(title): \(value)")
+        .accessibilityHint("Opens \(title)")
     }
 }
 
@@ -311,10 +327,12 @@ private struct SummaryPill: View {
 private struct FullDiskAccessBanner: View {
     var body: some View {
         HStack {
-            Label("Full Disk Access isn't granted — some cleanup and analysis features will under-report or fail.",
-                  systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(.orange)
+            Label(
+                "Full Disk Access isn't granted — some cleanup and analysis features will under-report or fail.",
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.caption)
+            .foregroundStyle(.orange)
             Spacer()
             Button("Open Settings…") {
                 if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
@@ -337,6 +355,7 @@ private struct FullDiskAccessBanner: View {
 /// deliberately the one branded, designed moment at the top of the page.
 private struct HeroHealthCard: View {
     let snapshot: MetricsSnapshot
+    let history: [MetricsService.Sample]
     let onNavigate: (ContentView.SidebarItem) -> Void
     let freeingMemory: Bool
     let memoryActionMessage: String?
@@ -349,11 +368,21 @@ private struct HeroHealthCard: View {
     /// in `HealthScore` — also used by the menu bar HUD, so the two can't
     /// drift out of sync the way they used to (each had its own hand-rolled
     /// bands, and neither one's word/color bands actually lined up).
-    private var healthBand: HealthScore.Band { HealthScore.band(for: snapshot.healthScore) }
+    private var healthBand: HealthScore.Band {
+        HealthScore.band(for: snapshot.healthScore)
+    }
 
-    private var statusWord: String { healthBand.word }
-    private var statusExplanation: String { healthBand.explanation }
-    private var statusColor: Color { healthBand.color }
+    private var statusWord: String {
+        healthBand.word
+    }
+
+    private var statusExplanation: String {
+        healthBand.explanation
+    }
+
+    private var statusColor: Color {
+        healthBand.color
+    }
 
     /// Everything after the first ":" in e.g. "Fair: High CPU, Heavy Disk IO" —
     /// empty when the score has no active issues (message is just "Excellent").
@@ -390,16 +419,24 @@ private struct HeroHealthCard: View {
 
     private var temperatureValue: String {
         let t = snapshot.thermal
-        if t.cpuTemp > 0 { return String(format: "%.0f°C", t.cpuTemp) }
-        if t.batteryTemp > 0 { return String(format: "%.0f°C", t.batteryTemp) }
+        if t.cpuTemp > 0 {
+            return String(format: "%.0f°C", t.cpuTemp)
+        }
+        if t.batteryTemp > 0 {
+            return String(format: "%.0f°C", t.batteryTemp)
+        }
         return "N/A"
     }
 
     private var temperatureCaption: String? {
         let t = snapshot.thermal
         var parts: [String] = []
-        if t.fanSpeed > 0 { parts.append("Fan \(t.fanSpeed) rpm") }
-        if t.systemPower > 0 { parts.append(String(format: "%.0fW draw", t.systemPower)) }
+        if t.fanSpeed > 0 {
+            parts.append("Fan \(t.fanSpeed) rpm")
+        }
+        if t.systemPower > 0 {
+            parts.append(String(format: "%.0fW draw", t.systemPower))
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -411,7 +448,7 @@ private struct HeroHealthCard: View {
         let temp = t.cpuTemp > 0 ? t.cpuTemp : t.batteryTemp
         switch temp {
         case ..<85: return .white
-        case 85..<100: return .yellow
+        case 85 ..< 100: return .yellow
         default: return .red
         }
     }
@@ -435,42 +472,37 @@ private struct HeroHealthCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Mac Health")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.65))
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "laptopcomputer")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .frame(width: 38, height: 38)
+                    .background(.white.opacity(0.08), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Mac Health")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.65))
                         Text(statusWord)
-                            .font(.system(size: 26, weight: .bold))
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(statusColor)
                     }
-                    Text("\(snapshot.host) · up \(HealthScore.formatUptime(snapshot.uptimeSeconds))")
+                    .accessibilityElement(children: .combine)
+                    Text(issuesDetail ?? statusExplanation)
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.55))
-                    if let issuesDetail {
-                        Text(issuesDetail)
-                            .font(.caption2)
-                            .foregroundStyle(statusColor.opacity(0.9))
-                    } else {
-                        Text(statusExplanation)
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.55))
-                    }
-                    Text("Based on CPU, memory pressure, disk space, temperature, disk activity, battery, and uptime.")
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(issuesDetail == nil ? Color.white.opacity(0.6) : statusColor.opacity(0.9))
                 }
                 Spacer()
-                Image(systemName: "laptopcomputer")
-                    .font(.system(size: 26))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .frame(width: 52, height: 52)
-                    .background(.white.opacity(0.08), in: Circle())
+                Text("\(snapshot.host) · up \(HealthScore.formatUptime(snapshot.uptimeSeconds))")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.55))
             }
+            .help("Based on CPU, memory pressure, disk space, temperature, disk activity, battery, and uptime.")
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            // As many columns as fit: three on a normal window, two when narrow.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 10)], spacing: 10) {
                 if let disk = snapshot.disks.first {
                     GlassTile(
                         icon: "internaldrive.fill",
@@ -484,6 +516,7 @@ private struct HeroHealthCard: View {
                     icon: "memorychip.fill",
                     title: "Memory",
                     value: "\(Int(snapshot.memory.usedPercent))% used · \(snapshot.memory.pressure)",
+                    trend: history.map(\.memoryPercent),
                     actionLabel: memoryActionLabel,
                     action: canPurgeMemory ? onFreeMemory : onShowMemory,
                     secondaryActionLabel: canPurgeMemory ? "View" : nil,
@@ -492,15 +525,17 @@ private struct HeroHealthCard: View {
                 )
                 if let battery = snapshot.batteries.first {
                     GlassTile(
-                        icon: battery.status == "Charging" ? "battery.100.bolt" : "battery.100",
+                        icon: battery.status == "Discharging" ? "battery.75" : "battery.100.bolt",
                         title: "Battery",
-                        value: "\(Int(battery.percent))% · \(battery.status)"
+                        value: "\(Int(battery.percent))% · \(battery.status)",
+                        caption: batteryCaption(battery)
                     )
                 }
                 GlassTile(
                     icon: "cpu.fill",
                     title: "CPU",
                     value: cpuValue,
+                    trend: history.map(\.cpuPercent),
                     actionLabel: "View",
                     action: onShowCPU
                 )
@@ -532,22 +567,36 @@ private struct HeroHealthCard: View {
 
             if let memoryActionMessage {
                 Text(memoryActionMessage)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.6))
             }
         }
-        .padding(20)
+        .padding(14)
         .background(
             LinearGradient(
                 colors: [Color(red: 0.20, green: 0.11, blue: 0.42), Color(red: 0.08, green: 0.05, blue: 0.20)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 20)
+            in: RoundedRectangle(cornerRadius: 16)
         )
     }
 
+    /// Wear: full-charge capacity against design capacity, and cycle count.
+    private func batteryCaption(_ battery: BatteryStatus) -> String? {
+        var parts: [String] = []
+        if battery.capacity > 0 {
+            parts.append("Health \(battery.capacity)%")
+        }
+        if battery.cycleCount > 0 {
+            parts.append("\(battery.cycleCount) cycles")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     private var memoryActionLabel: String {
-        if freeingMemory { return "Freeing..." }
+        if freeingMemory {
+            return "Freeing..."
+        }
         return canPurgeMemory ? "Free Up" : "View Usage"
     }
 }
@@ -638,7 +687,11 @@ private struct ProcessListSheet: View {
             "Quit \(confirmQuit?.command ?? "process")?",
             isPresented: Binding(
                 get: { confirmQuit != nil },
-                set: { if !$0 { confirmQuit = nil } }
+                set: {
+                    if !$0 {
+                        confirmQuit = nil
+                    }
+                }
             ),
             titleVisibility: .visible
         ) {
@@ -670,7 +723,8 @@ private struct ProcessListSheet: View {
 
     private func canQuit(_ row: ProcessMonitor.ProcessInfo) -> Bool {
         guard row.pid != Int(Foundation.ProcessInfo.processInfo.processIdentifier),
-              let app = NSRunningApplication(processIdentifier: pid_t(row.pid)) else {
+              let app = NSRunningApplication(processIdentifier: pid_t(row.pid))
+        else {
             return false
         }
         return !app.isTerminated
@@ -712,50 +766,80 @@ private struct GlassTile: View {
     let value: String
     var valueColor: Color = .white
     var caption: String?
+    /// Recent readings (0…100), oldest first, drawn as a small trend line.
+    var trend: [Double] = []
     var actionLabel: String?
     var action: (() -> Void)?
     var secondaryActionLabel: String?
     var secondaryAction: (() -> Void)?
     var isBusy = false
 
+    /// Two lines: title with its actions, then the reading with its trend.
+    /// The caption, when there is one, sits under the reading in small type.
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
+                    .font(.caption)
                     .foregroundStyle(.white.opacity(0.85))
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.caption.bold())
                     .foregroundStyle(.white.opacity(0.85))
-                Spacer()
-            }
-            Text(value)
-                .font(.subheadline.bold())
-                .foregroundStyle(valueColor)
-            if let caption {
-                Text(caption)
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.55))
-            }
-            if actionLabel != nil || secondaryActionLabel != nil {
-                HStack(spacing: 10) {
+                    .lineLimit(1)
+                    .accessibilityHidden(true)
+                Spacer(minLength: 4)
+                HStack(spacing: 8) {
                     if let actionLabel, let action {
                         Button(actionLabel, action: action)
                             .disabled(isBusy)
+                            .accessibilityLabel("\(title): \(actionLabel)")
                     }
                     if let secondaryActionLabel, let secondaryAction {
                         Button(secondaryActionLabel, action: secondaryAction)
+                            .accessibilityLabel("\(title): \(secondaryActionLabel)")
                     }
                 }
                 .font(.caption.bold())
                 .buttonStyle(.plain)
                 .foregroundStyle(HealthScore.accentTeal)
             }
+            HStack(alignment: .center, spacing: 8) {
+                Text(value)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(valueColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .accessibilityLabel("\(title): \(value)\(caption.map { ", \($0)" } ?? "")")
+                if trend.count > 2 {
+                    Chart(Array(trend.enumerated()), id: \.offset) { point in
+                        LineMark(x: .value("Sample", point.offset), y: .value("Percent", point.element))
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    .chartXAxis(.hidden)
+                    .chartYAxis(.hidden)
+                    .chartYScale(domain: 0 ... 100)
+                    .frame(maxWidth: .infinity, minHeight: 16, maxHeight: 16)
+                    .accessibilityLabel("\(title) over the last few minutes")
+                    .accessibilityValue("Lowest \(Int(trend.min() ?? 0)) percent, highest \(Int(trend.max() ?? 0)) percent")
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            if let caption {
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+                    .accessibilityHidden(true)
+            }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 92, alignment: .topLeading)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1), lineWidth: 1))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .topLeading)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -773,4 +857,3 @@ private struct StatCard<Content: View>: View {
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
     }
 }
-

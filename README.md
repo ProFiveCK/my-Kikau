@@ -4,28 +4,36 @@ A native Swift macOS app to replace CleanMyMac — cleanup, uninstaller, disk an
 
 Built for macOS 14+ (Sonoma), fully native Swift. One external dependency: [Sparkle](https://github.com/sparkle-project/Sparkle) for self-updating (direct distribution, not the Mac App Store — see `docs/MODERNIZATION_REVIEW.md` §5).
 
-## Origin
-
-Logic reimplemented natively in Swift, informed by [Mole](https://github.com/tw93/Mole) (GPL-3.0, Go + Bash CLI). Mole is credited as the source; this project is independent and released under the same license per GPL-3.0 terms.
-
 ## Features
 
-- **Clean** — caches, logs, trash, leftovers (browser, dev tools, system, user apps)
-- **Uninstall** — app inventory + exact bundle-ID leftover teardown
+- **Clean** — caches, logs, temporary files and Trash, reviewed item by item before anything moves
+- **Uninstall** — app inventory, plus each app's leftovers matched by exact bundle ID, in one review sheet; uninstall several at once, find files left by apps removed earlier, and check for newer versions of installed apps
 - **Analyse** — disk space explorer with a donut chart, squarified treemap, and sorted list views, folder-by-folder drill-down
-- **Duplicates** — content-hash-verified duplicate files, plus a large-files mode, across Downloads/Documents/Desktop/Pictures/Movies
-- **Status** — live CPU / memory / disk / network / battery / thermal dashboard + menu bar HUD, with a one-click "Scan Everything"
-- **Optimise** — 10 bounded, no-sudo maintenance tasks (LaunchServices repair, Finder cache, broken config/plist repair, orphaned Spotlight rules, etc.)
+- **Files** — content-hash-verified duplicates (you choose which copy to keep), a large-files mode, and similar-photo detection using on-device image analysis, across Downloads/Documents/Desktop/Pictures/Movies and any folders you add
+- **Status** — live CPU / memory / disk / network / battery-health / thermal dashboard + menu bar HUD, with a one-click, cancellable "Scan Everything"
+- **Optimise** — 9 bounded, no-sudo maintenance tasks (LaunchServices repair, Finder cache, broken config/plist repair, stale launch agents, etc.), each listing the exact files it will touch
+- **Startup** — launch agents and daemons that start in the background; remove your own, see the system-wide ones
+- **History** — everything myKikau has done, with Put Back for anything it moved to the Trash
+- **Project Purge** — build artifacts (`node_modules`, `target`, `build`, `dist`, `venv`); off by default, enabled with Settings → Advanced → Developer tools
 
-Also in the codebase but not exposed in this release: a dev-project-artifact purge scanner (`node_modules`, `target`, `build`, `dist`, `venv`) — see `docs/IMPLEMENTATION_PLAN.md` for why it's held back.
+Background scans and low-disk notifications are optional (Settings → General).
 
 ## Safety Design
 
-- Single deletion funnel routes through Trash by default (Finder-recoverable)
-- Operation log: `~/Library/Logs/myKikau/operations.log` (JSONL)
-- Dry-run preview before every destructive action
-- Protected paths and bundle IDs never modified (`/System`, `/Library/Apple`, `com.apple.*` system bundles)
+- Single deletion funnel: everything goes to the Trash (Finder-recoverable); only emptying the Trash itself removes for good
+- Every plan is reviewed item by item before it runs, and protection is re-checked at the moment of deletion
+- Operation log: `~/Library/Logs/myKikau/operations.log` (JSONL, hash-chained so tampering is detectable, rotated at 5 MB)
+- Never touched: system paths, keychains, SSH/GPG keys, Mail, Messages, iCloud Drive, security and device-management software, and anything on your exclusion list
+- Only rebuildable data is ever a Clean target — never a browser profile, a database or an archive
 - Exact bundle-ID evidence for leftovers — no vendor-prefix or generic-name wildcards
+
+## Administrator helper (optional)
+
+Apps installed for all users (App Store, most installer packages) are owned by root, which the app can't remove on its own. Settings → Advanced can install a small privileged helper for that. It needs an administrator's approval in System Settings once and a password each time; it only ever moves specific, policy-checked items into your Trash. See `Sources/Helper/main.swift` and `HelperPolicy.swift`.
+
+## Managed deployment
+
+Installer package, MDM profiles (Full Disk Access, managed settings), audit-log collection and the read-only `mykikau-cli` are covered in [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md).
 
 ## Build
 

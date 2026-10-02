@@ -12,9 +12,22 @@ public final class MetricsService: ObservableObject {
     public static let shared = MetricsService()
 
     @Published public private(set) var snapshot: MetricsSnapshot?
+    /// Recent CPU and memory readings, oldest first, for trend lines — about
+    /// the last five minutes while something is subscribed.
+    @Published public private(set) var history: [Sample] = []
+
+    public struct Sample: Identifiable, Sendable {
+        public let id: Int
+        public let cpuPercent: Double
+        public let memoryPercent: Double
+    }
+
+    private static let historyLimit = 150
+    private var sampleCounter = 0
 
     private var timer: Timer?
     private var subscriberCount = 0
+    private var isRefreshing = false
 
     private init() {}
 
@@ -24,9 +37,12 @@ public final class MetricsService: ObservableObject {
         subscriberCount += 1
         guard timer == nil else { return }
         Task { await refresh() }
-        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
+        // Let macOS coalesce the wake-up with other timers.
+        timer.tolerance = 0.4
+        self.timer = timer
     }
 
     /// Pairs with `subscribe()`, call from `.onDisappear`. The timer stops once
@@ -39,7 +55,21 @@ public final class MetricsService: ObservableObject {
         timer = nil
     }
 
+    /// One collection at a time: `MetricsCollector` diffs each sample against
+    /// the previous one, so a slow tick must finish before the next starts.
     private func refresh() async {
-        snapshot = await MetricsCollector.shared.collect()
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        let latest = await MetricsCollector.shared.collect()
+        snapshot = latest
+        sampleCounter += 1
+        // The very first sample has no previous CPU reading to diff against.
+        if sampleCounter > 1 {
+            history.append(Sample(id: sampleCounter, cpuPercent: latest.cpu.usage, memoryPercent: latest.memory.usedPercent))
+            if history.count > Self.historyLimit {
+                history.removeFirst(history.count - Self.historyLimit)
+            }
+        }
     }
 }

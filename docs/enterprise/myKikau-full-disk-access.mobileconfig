@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy Preferences Policy Control (PPPC) profile for myKikau.
+
+  Grants Full Disk Access, and lets myKikau ask System Events to remove an
+  uninstalled app's "Open at Login" entry — so users are never prompted.
+
+  - Deliver through MDM. macOS ignores a PPPC payload installed by hand.
+  - The CodeRequirement must match the build you deploy. Confirm it with:
+        codesign -dr - /Applications/myKikau.app
+    and replace the string below if it differs (for example, a different Team ID).
+-->
+<plist version="1.0">
+<dict>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.apple.TCC.configuration-profile-policy</string>
+            <key>PayloadIdentifier</key>
+            <string>com.profiveck.myKikau.pppc.payload</string>
+            <key>PayloadUUID</key>
+            <string>1FAE9552-4AC3-4523-8BE0-B5698EE27FD5</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>PayloadDisplayName</key>
+            <string>myKikau Privacy Access</string>
+            <key>Services</key>
+            <dict>
+                <key>SystemPolicyAllFiles</key>
+                <array>
+                    <dict>
+                        <key>Identifier</key>
+                        <string>com.profiveck.myKikau</string>
+                        <key>IdentifierType</key>
+                        <string>bundleID</string>
+                        <key>CodeRequirement</key>
+                        <string>identifier "com.profiveck.myKikau" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = "P523Y49P5B"</string>
+                        <key>StaticCode</key>
+                        <false/>
+                        <key>Authorization</key>
+                        <string>Allow</string>
+                    </dict>
+                </array>
+                <key>AppleEvents</key>
+                <array>
+                    <dict>
+                        <key>Identifier</key>
+                        <string>com.profiveck.myKikau</string>
+                        <key>IdentifierType</key>
+                        <string>bundleID</string>
+                        <key>CodeRequirement</key>
+                        <string>identifier "com.profiveck.myKikau" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = "P523Y49P5B"</string>
+                        <key>AEReceiverIdentifier</key>
+                        <string>com.apple.systemevents</string>
+                        <key>AEReceiverIdentifierType</key>
+                        <string>bundleID</string>
+                        <key>AEReceiverCodeRequirement</key>
+                        <string>identifier "com.apple.systemevents" and anchor apple</string>
+                        <key>Authorization</key>
+                        <string>Allow</string>
+                    </dict>
+                </array>
+            </dict>
+        </dict>
+    </array>
+    <key>PayloadDisplayName</key>
+    <string>myKikau — Privacy Access</string>
+    <key>PayloadDescription</key>
+    <string>Pre-approves Full Disk Access and System Events automation for myKikau.</string>
+    <key>PayloadIdentifier</key>
+    <string>com.profiveck.myKikau.pppc</string>
+    <key>PayloadOrganization</key>
+    <string>Your Organisation</string>
+    <key>PayloadScope</key>
+    <string>System</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>D99808BF-97DC-418C-BAFC-C89F764A942B</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+</dict>
+</plist>

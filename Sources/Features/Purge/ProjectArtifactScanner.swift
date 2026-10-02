@@ -2,7 +2,6 @@ import Foundation
 import Core
 
 /// Scans project directories for build artifacts (node_modules, target, build, dist, .build, venv).
-/// Mirrors Mole's `lib/clean/project.sh` purge discovery + `MOLE_PURGE_TARGETS`.
 public enum ProjectArtifactScanner {
     /// Artifact directory names that are safe to purge.
     public static let targetNames: Set<String> = [
@@ -21,7 +20,7 @@ public enum ProjectArtifactScanner {
         ".cache",
     ]
 
-    /// Default project search paths (mirrors Mole's MOLE_PURGE_DEFAULT_SEARCH_PATHS).
+    /// Default project search paths.
     public static let defaultSearchPaths: [String] = [
         "~/Projects",
         "~/GitHub",
@@ -33,17 +32,17 @@ public enum ProjectArtifactScanner {
     ]
 
     /// A discovered artifact to potentially purge.
-    public struct Artifact: Identifiable, Hashable {
+    public struct Artifact: Identifiable, Hashable, Sendable {
         public let id: String
         public let url: URL
         public let projectName: String
-        public let artifactType: String  // e.g. "node_modules"
+        public let artifactType: String // e.g. "node_modules"
         public let sizeBytes: Int64
         public let lastModified: Date?
-        public let isRecent: Bool        // modified within 7 days
+        public let isRecent: Bool // modified within 7 days
 
         public init(url: URL, projectName: String, artifactType: String, sizeBytes: Int64, lastModified: Date?, isRecent: Bool) {
-            self.id = url.path
+            id = url.path
             self.url = url
             self.projectName = projectName
             self.artifactType = artifactType
@@ -75,7 +74,9 @@ public enum ProjectArtifactScanner {
     /// (tests pass a temp home), otherwise against the current user's home.
     public static func searchPaths(home: URL? = nil) -> [URL] {
         let configured = configuredPaths(home: home)
-        if !configured.isEmpty { return configured }
+        if !configured.isEmpty {
+            return configured
+        }
         let resolvedHome = home ?? FileManager.default.homeDirectoryForCurrentUser
         return defaultSearchPaths.map { raw -> URL in
             if raw.hasPrefix("~/") {
@@ -104,10 +105,12 @@ public enum ProjectArtifactScanner {
                 guard isDir else { continue }
                 let projectName = project.lastPathComponent
 
+                // Hidden entries are listed on purpose: several targets
+                // (.build, .venv, .next, .gradle, .turbo, .cache) are dot-named.
                 guard let contents = try? fm.contentsOfDirectory(
                     at: project,
                     includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-                    options: [.skipsHiddenFiles]
+                    options: []
                 ) else { continue }
 
                 for entry in contents where targetNames.contains(entry.lastPathComponent) {
@@ -127,6 +130,6 @@ public enum ProjectArtifactScanner {
 
     /// Builds a deletion plan from selected artifacts.
     public static func plan(for artifacts: [Artifact], deleter: SafeFileDeleter = .shared) -> SafeFileDeleter.Plan {
-        deleter.preview(artifacts.map { $0.url }, category: .artifact)
+        deleter.preview(artifacts.map(\.url), category: .artifact)
     }
 }

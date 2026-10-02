@@ -3,103 +3,164 @@ import Core
 import Features
 import UI
 
+/// Build artifacts in project folders (`node_modules`, `target`, `build`,
+/// `dist`, `.build`, `venv`). A developer feature: shown only when
+/// "Developer tools" is on in Settings.
 struct PurgeView: View {
-    @State private var artifacts: [ProjectArtifactScanner.Artifact] = []
+    @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
+    @ObservedObject private var model = PurgeModel.shared
     @State private var selectedArtifacts: Set<String> = []
-    @State private var scanning = false
-    @State private var purgePlan: SafeFileDeleter.Plan?
+    @State private var review: ReviewRequest?
 
     private let tint = ContentView.SidebarItem.purge.tint
 
+    private var artifacts: [ProjectArtifactScanner.Artifact] {
+        coordinator.purgeArtifacts ?? []
+    }
+
+    private var subtitle: String {
+        if model.isScanning {
+            return "Looking through your project folders…"
+        }
+        guard coordinator.purgeArtifacts != nil else { return "Dependencies and build output that the next build recreates" }
+        let total = artifacts.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        return artifacts.isEmpty ? "No build artifacts found" : "\(artifacts.count) folders · \(ByteSizeFormatter.format(total))"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: ContentView.SidebarItem.purge.icon)
-                    .foregroundStyle(tint)
-                Text("Project Purge").font(.title2).bold()
-                Spacer()
-                Button(scanning ? "Scanning..." : "Scan Projects") {
-                    scanning = true
-                    Task.detached(priority: .userInitiated) {
-                        let result = ProjectArtifactScanner.scan()
-                        await MainActor.run {
-                            artifacts = result
-                            scanning = false
-                        }
-                    }
+            ScreenHeader("Project Purge", subtitle: subtitle, systemImage: ContentView.SidebarItem.purge.icon, tint: tint) {
+                Button(coordinator.purgeArtifacts == nil ? "Scan Projects" : "Rescan") {
+                    selectedArtifacts = []
+                    model.scan()
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
-                .disabled(scanning)
+                .disabled(model.isScanning)
             }
-            .padding()
 
-            if artifacts.isEmpty && !scanning {
+            if model.isScanning {
+                ScanProgressBar("Measuring build artifacts")
+                    .padding([.horizontal, .bottom])
+            }
+
+            if coordinator.purgeArtifacts == nil {
+                if model.isScanning {
+                    Spacer()
+                } else {
+                    ContentUnavailableView {
+                        Label("No Projects Scanned", systemImage: "hammer")
+                    } description: {
+                        Text("Finds node_modules, build, target and similar folders. Projects you've worked on recently are flagged so you can leave them alone.")
+                    } actions: {
+                        Button("Scan Projects") { model.scan() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(tint)
+                    }
+                }
+            } else if artifacts.isEmpty {
                 ContentUnavailableView(
-                    "No Projects Scanned",
-                    systemImage: "hammer",
-                    description: Text("Click Scan Projects to find node_modules, build, target, and other artifacts.")
+                    "Nothing to Purge",
+                    systemImage: "checkmark.circle",
+                    description: Text("No build artifacts were found in your project folders.")
                 )
             } else {
                 List(artifacts) { artifact in
-                    let isSelected = selectedArtifacts.contains(artifact.id)
-                    HStack {
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(isSelected ? tint : .secondary)
-                        Image(systemName: artifact.isRecent ? "clock" : "hammer")
-                            .foregroundStyle(artifact.isRecent ? .orange : .secondary)
-                        VStack(alignment: .leading) {
-                            Text(artifact.projectName)
-                            Text("\(artifact.artifactType) · \(ByteSizeFormatter.format(artifact.sizeBytes))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    ArtifactRow(artifact: artifact, isSelected: Binding(
+                        get: { selectedArtifacts.contains(artifact.id) },
+                        set: { isOn in
+                            if isOn {
+                                selectedArtifacts.insert(artifact.id)
+                            } else {
+                                selectedArtifacts.remove(artifact.id)
+                            }
                         }
-                        Spacer()
-                    }
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 6)
-                    .background(
-                        isSelected ? tint.opacity(0.12) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 6)
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if isSelected {
-                            selectedArtifacts.remove(artifact.id)
-                        } else {
-                            selectedArtifacts.insert(artifact.id)
-                        }
-                    }
+                    ))
                 }
 
-                if !selectedArtifacts.isEmpty {
-                    HStack {
-                        Text("\(selectedArtifacts.count) selected")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Review Plan") {
-                            let selected = artifacts.filter { selectedArtifacts.contains($0.id) }
-                            purgePlan = ProjectArtifactScanner.plan(for: selected)
-                        }
-                        .buttonStyle(.borderedProminent)
+                HStack {
+                    let selected = artifacts.filter { selectedArtifacts.contains($0.id) }
+                    Text(selected.isEmpty
+                        ? "Tick the folders you want to remove."
+                        : "\(selected.count) selected · \(ByteSizeFormatter.format(selected.reduce(0) { $0 + $1.sizeBytes }))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Select Older Projects") {
+                        selectedArtifacts = Set(artifacts.filter { !$0.isRecent }.map(\.id))
                     }
-                    .padding()
+                    Button("Review Selected…") {
+                        review = ReviewRequest(
+                            plan: ProjectArtifactScanner.plan(for: selected),
+                            title: "Purge Build Artifacts",
+                            subtitle: "These are recreated the next time each project is built or installed.",
+                            action: "purge"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+                    .disabled(selected.isEmpty)
                 }
+                .padding()
             }
         }
-        .sheet(item: $purgePlan) { plan in
-            PlanReviewView(plan: plan, title: "Purge", onCancel: { purgePlan = nil }) { dryRun in
-                _ = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: "purge")
-                purgePlan = nil
+        .sheet(item: $review) { request in
+            PlanReviewView(
+                plan: request.plan,
+                title: request.title,
+                subtitle: request.subtitle,
+                action: request.action
+            ) { result in
+                if let result, !result.dryRun {
+                    coordinator.removePurgeArtifacts(ids: result.removedIDs)
+                    selectedArtifacts.subtract(result.removedIDs)
+                    if !result.removedIDs.isEmpty {
+                        AnalyzeScanSession.shared.markStale()
+                    }
+                }
+                review = nil
             }
         }
-        .onAppear {
-            // Adopt a scan already run from the Status dashboard's "Scan
-            // Everything" instead of forcing a redundant rescan.
-            if artifacts.isEmpty, let cached = ScanEverythingCoordinator.shared.purgeArtifacts {
-                artifacts = cached
+    }
+}
+
+private struct ArtifactRow: View {
+    let artifact: ProjectArtifactScanner.Artifact
+    @Binding var isSelected: Bool
+
+    var body: some View {
+        HStack {
+            Toggle(isOn: $isSelected) { EmptyView() }
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+            VStack(alignment: .leading) {
+                Text(artifact.projectName)
+                Text(artifact.artifactType)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            Spacer()
+            if artifact.isRecent {
+                Label("Recently used", systemImage: "clock")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            Text(ByteSizeFormatter.format(artifact.sizeBytes))
+                .font(.subheadline)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .trailing)
         }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture { isSelected.toggle() }
+        .help(artifact.url.path)
+        .contextMenu { PathMenu(url: artifact.url) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(artifact.projectName), \(artifact.artifactType), \(ByteSizeFormatter.format(artifact.sizeBytes))")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { isSelected.toggle() }
     }
 }

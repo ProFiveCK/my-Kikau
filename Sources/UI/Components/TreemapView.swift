@@ -6,7 +6,7 @@ import SwiftUI
 public struct TreemapView<Item: Identifiable>: View {
     public let items: [Item]
     public let value: (Item) -> Double
-    public let color: (Item, Int) -> Color   // (item, rank in `items`) -> fill color
+    public let color: (Item, Int) -> Color // (item, rank in `items`) -> fill color
     public let label: (Item) -> String
     public let sublabel: (Item) -> String
     public let onSelect: (Item) -> Void
@@ -60,8 +60,13 @@ private struct TreemapCell: View {
     // tell what they were short of hovering every single one. Two tiers
     // instead: title-only down to a much smaller size, full title+subtitle
     // only where there's real room.
-    private var showSubtitle: Bool { size.width > 86 && size.height > 46 }
-    private var showTitleOnly: Bool { size.width > 58 && size.height > 26 }
+    private var showSubtitle: Bool {
+        size.width > 86 && size.height > 46
+    }
+
+    private var showTitleOnly: Bool {
+        size.width > 58 && size.height > 26
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {

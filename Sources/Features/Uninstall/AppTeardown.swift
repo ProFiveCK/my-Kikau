@@ -3,9 +3,7 @@ import Core
 
 /// Pre-deletion teardown for a third-party app.
 ///
-/// Mirrors Mole's `stop_launch_services`, `bootout_login_item_helpers`,
-/// `remove_login_item`, and `unregister_app_bundle` (from
-/// `lib/uninstall/batch.sh`). Teardown only stops services so the subsequent
+/// Teardown only stops services so the subsequent
 /// `SafeFileDeleter.execute` is clean; it never deletes files itself.
 ///
 /// Safety rules:
@@ -19,17 +17,20 @@ public final class AppTeardown {
     private let deleter: SafeFileDeleter
     private let opLog: OperationLog
     private let loginItemService: LoginItemManaging
+    private let otherCopies: (AppInventory.AppInfo) -> [URL]
 
     public init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         deleter: SafeFileDeleter = .shared,
         opLog: OperationLog = .shared,
-        loginItemService: LoginItemManaging = SystemEventsLoginItemService()
+        loginItemService: LoginItemManaging = SystemEventsLoginItemService(),
+        otherCopies: @escaping (AppInventory.AppInfo) -> [URL] = { AppInventory.otherCopies(of: $0) }
     ) {
         self.home = home
         self.deleter = deleter
         self.opLog = opLog
         self.loginItemService = loginItemService
+        self.otherCopies = otherCopies
     }
 
     /// Per-step outcome of a teardown run.
@@ -39,6 +40,9 @@ public final class AppTeardown {
         public var loginItemHelpersBootedOut: [String] = []
         public var loginItemsRemoved: [String] = []
         public var unregisteredLaunchServices: Bool = false
+        /// Background services were left alone because another copy of the
+        /// app (same bundle ID) is still installed.
+        public var skippedBecauseOtherCopyInstalled: Bool = false
         public var errors: [String] = []
 
         public init() {}
@@ -47,6 +51,15 @@ public final class AppTeardown {
     /// Runs the full teardown for one app.
     public func teardown(app: AppInventory.AppInfo, dryRun: Bool) async -> TeardownResult {
         var result = TeardownResult()
+        // Agents are matched by bundle ID and the login item by display
+        // name. If another copy of the app is installed, those belong to it
+        // as well — leave them running.
+        if !otherCopies(app).isEmpty {
+            result.skippedBecauseOtherCopyInstalled = true
+            unregisterFromLaunchServices(app: app, dryRun: dryRun, result: &result)
+            logTeardown(app: app, result: result, dryRun: dryRun)
+            return result
+        }
         await unloadLaunchAgents(for: app, dryRun: dryRun, result: &result)
         bootoutLoginItemHelpers(for: app, dryRun: dryRun, result: &result)
         removeLoginItem(for: app, dryRun: dryRun, result: &result)
@@ -136,55 +149,45 @@ public final class AppTeardown {
         }
     }
 
-    /// Matches an agent plist by filename (contains bundle ID) or by
-    /// `Program`/`ProgramArguments` referencing the app path. Mirrors Mole's
-    /// `_uninstall_unload_launch_plists` bundle-id + app-path scan.
+    /// Matches an agent plist by exact filename (`<bundleID>.plist`) or by
+    /// a `Program`/`ProgramArguments` entry that is a path inside the app bundle. A longer
+    /// label that merely starts with the bundle ID belongs to a different
+    /// app and is not matched.
     public func matchesAgent(_ plist: URL, bundleID: String, appPath: String) -> Bool {
         let name = plist.lastPathComponent
-        if !bundleID.isEmpty {
-            // Exact `<bundleID>.plist` or `<bundleID>.<x>.plist`.
-            if name == "\(bundleID).plist" { return true }
-            if name.hasPrefix("\(bundleID).") && name.hasSuffix(".plist") { return true }
+        if !bundleID.isEmpty, name == "\(bundleID).plist" {
+            return true
         }
         // App-path reference inside the plist body.
-        if let data = try? Data(contentsOf: plist),
-           let plist = try? PropertyListSerialization.propertyList(
-               from: data, options: [], format: nil
-           ),
-           let dict = plist as? [String: Any] {
-            if let program = dict["Program"] as? String, program.contains(appPath) {
-                return true
-            }
-            if let args = dict["ProgramArguments"] as? [String] {
-                if args.contains(where: { $0.contains(appPath) }) { return true }
-            }
+        guard !appPath.isEmpty,
+              let data = try? Data(contentsOf: plist),
+              let plist = try? PropertyListSerialization.propertyList(
+                  from: data, options: [], format: nil
+              ),
+              let dict = plist as? [String: Any] else { return false }
+        func isInsideApp(_ path: String) -> Bool {
+            path == appPath || path.hasPrefix(appPath + "/")
+        }
+        if let program = dict["Program"] as? String, isInsideApp(program) {
+            return true
+        }
+        if let args = dict["ProgramArguments"] as? [String], args.contains(where: isInsideApp) {
+            return true
         }
         return false
     }
 
     private func launchctlUnload(_ plist: URL) async -> Bool {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.launchPath = "/bin/launchctl"
-            process.arguments = ["unload", plist.path]
-            process.standardOutput = Pipe()
-            process.standardError = Pipe()
-            do {
-                try process.run()
-                process.waitUntilExit()
-                // Non-zero can mean not loaded — treat as success (idempotent).
-                continuation.resume(returning: true)
-            } catch {
-                continuation.resume(returning: false)
-            }
-        }
+        let output = await ProcessRunner.run("/bin/launchctl", ["bootout", "gui/\(getuid())", plist.path])
+        // Non-zero can mean not loaded — treat as success (idempotent). Only
+        // failing to run launchctl at all is a real failure.
+        return !output.launchFailed && !output.timedOut
     }
 
     // MARK: - 2. Bootout login-item helpers
 
     /// Discovers helper bundle IDs from `<app>/Contents/Library/LoginItems/*.app`.
-    /// Mirrors Mole's `discover_login_item_helper_bundle_ids`. Filters out
-    /// `com.apple.*` IDs and non-reverse-DNS values.
+    /// Filters out `com.apple.*` IDs and non-reverse-DNS values.
     public func discoverLoginItemHelpers(appURL: URL) -> [String] {
         let loginItemsRoot = appURL.appendingPathComponent("Contents/Library/LoginItems")
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -200,7 +203,8 @@ public final class AppTeardown {
             guard let bundle = Bundle(path: entry.path),
                   let id = bundle.bundleIdentifier,
                   isReverseDNSBundleID(id),
-                  !isAppleLabel(id) else {
+                  !isAppleLabel(id)
+            else {
                 continue
             }
             helperIDs.append(id)
@@ -234,7 +238,7 @@ public final class AppTeardown {
         dryRun: Bool,
         result: inout TeardownResult
     ) {
-        // Mole strips the `.app` suffix; login items are registered by name.
+        // Strip the `.app` suffix; login items are registered by name.
         let cleanName = app.name.hasSuffix(".app")
             ? String(app.name.dropLast(4))
             : app.name
@@ -250,8 +254,7 @@ public final class AppTeardown {
 
     // MARK: - 4. Unregister from LaunchServices
 
-    /// Resolves the `lsregister` binary path. Mirrors Mole's
-    /// `get_lsregister_path`.
+    /// Resolves the `lsregister` binary path.
     public func lsregisterPath() -> String? {
         let candidates = [
             "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
@@ -277,24 +280,24 @@ public final class AppTeardown {
             result.unregisteredLaunchServices = true
             return
         }
-        let process = Process()
-        process.launchPath = lsregister
-        process.arguments = ["-u", app.url.path]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            process.waitUntilExit()
+        let output = ProcessRunner.runBlocking(lsregister, ["-u", app.url.path])
+        if output.launchFailed {
+            result.errors.append("LaunchServices unregister failed: \(output.stderr)")
+        } else {
             result.unregisteredLaunchServices = true
-        } catch {
-            result.errors.append("LaunchServices unregister failed: \(error.localizedDescription)")
         }
     }
 
     // MARK: - Logging
 
     private func logTeardown(app: AppInventory.AppInfo, result: TeardownResult, dryRun: Bool) {
-        let summary = "agents=\(result.launchAgentsUnloaded.count) helpers=\(result.loginItemHelpersBootedOut.count) loginItems=\(result.loginItemsRemoved.count) ls=\(result.unregisteredLaunchServices) errors=\(result.errors.count)"
+        let summary = [
+            "agents=\(result.launchAgentsUnloaded.count)",
+            "helpers=\(result.loginItemHelpersBootedOut.count)",
+            "loginItems=\(result.loginItemsRemoved.count)",
+            "ls=\(result.unregisteredLaunchServices)",
+            "errors=\(result.errors.count)",
+        ].joined(separator: " ")
         opLog.append(.init(
             action: "uninstall.teardown",
             path: app.url.path,
@@ -313,7 +316,7 @@ public final class AppTeardown {
         id.hasPrefix("com.apple.")
     }
 
-    /// Reverse-DNS validation mirroring Mole's `mole_is_reverse_dns_bundle_id`.
+    /// Reverse-DNS validation for a bundle identifier.
     public func isReverseDNSBundleID(_ id: String) -> Bool {
         guard id.contains("."), !id.hasPrefix("."), !id.hasSuffix(".") else { return false }
         let labels = id.split(separator: ".")
