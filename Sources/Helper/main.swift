@@ -17,6 +17,45 @@ import Security
 
 private let log = Logger(subsystem: "com.profiveck.myKikau.helper", category: "helper")
 
+/// A plain-text trail as well, readable without `log show`:
+/// /Library/Logs/myKikau/helper.log (root-owned; the helper only appends).
+private func note(_ message: String) {
+    log.notice("\(message, privacy: .public)")
+    let directory = "/Library/Logs/myKikau"
+    try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+    let path = directory + "/helper.log"
+    if let handle = FileHandle(forWritingAtPath: path) {
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: Data(line.utf8))
+    } else {
+        try? Data(line.utf8).write(to: URL(fileURLWithPath: path))
+    }
+}
+
+/// Makes sure our right exists in the authorization database with the rule
+/// "authenticate as an administrator" and our own prompt. Done at every
+/// start; it's a no-op once the right is there.
+private func defineAuthorizationRight() {
+    let name = PrivilegedHelperConstants.authorizationRight
+    if AuthorizationRightGet(name, nil) == errAuthorizationSuccess {
+        return
+    }
+    var reference: AuthorizationRef?
+    guard AuthorizationCreate(nil, nil, [], &reference) == errAuthorizationSuccess, let reference else { return }
+    defer { AuthorizationFree(reference, []) }
+    let status = AuthorizationRightSet(
+        reference,
+        name,
+        kAuthorizationRuleAuthenticateAsAdmin as CFTypeRef,
+        "myKikau wants to remove software that was installed for all users." as CFString,
+        nil,
+        nil
+    )
+    note(status == errAuthorizationSuccess ? "defined authorization right" : "could not define authorization right: \(status)")
+}
+
 /// Exit after a quiet period; launchd starts the helper again on demand.
 private final class IdleMonitor: @unchecked Sendable {
     static let shared = IdleMonitor()
@@ -76,8 +115,9 @@ private final class ConnectionHandler: NSObject, PrivilegedHelperProtocol {
         var removed: [String: String] = [:]
         var failed: [String: String] = [:]
 
+        note("request from uid \(userID) for \(paths.count) item(s)")
         guard isAuthorized(authorization) else {
-            log.error("request from uid \(self.userID) refused: no administrator authorization")
+            note("request from uid \(userID) refused: no administrator authorization")
             for path in paths {
                 failed[path] = "An administrator didn't approve this."
             }
@@ -102,7 +142,7 @@ private final class ConnectionHandler: NSObject, PrivilegedHelperProtocol {
         for path in paths {
             switch HelperPolicy.validateRemoval(path: path) {
             case let .failure(rejection):
-                log.error("refused \(path, privacy: .public): \(rejection.reason, privacy: .public)")
+                note("refused \(path): \(rejection.reason)")
                 failed[path] = rejection.reason
             case let .success(kind):
                 do {
@@ -111,9 +151,9 @@ private final class ConnectionHandler: NSObject, PrivilegedHelperProtocol {
                     }
                     let destination = try moveToTrash(path, trash: trash)
                     removed[path] = destination
-                    log.info("moved \(path, privacy: .public) to the Trash of uid \(self.userID)")
+                    note("moved \(path) to the Trash of uid \(userID)")
                 } catch {
-                    log.error("failed \(path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    note("failed \(path): \(error.localizedDescription)")
                     failed[path] = error.localizedDescription
                 }
             }
@@ -121,24 +161,35 @@ private final class ConnectionHandler: NSObject, PrivilegedHelperProtocol {
         reply(removed, failed)
     }
 
-    /// Verifies the authorization the client obtained (by asking the user for
-    /// an administrator password) grants our right.
+    /// Asks the authorization system for our right using the reference the
+    /// app passed over. This is what shows the administrator password prompt
+    /// (in the user's session, with the wording defined at startup); it
+    /// succeeds only if an administrator authenticates.
     private func isAuthorized(_ data: Data) -> Bool {
-        guard data.count == MemoryLayout<AuthorizationExternalForm>.size else { return false }
+        guard data.count == MemoryLayout<AuthorizationExternalForm>.size else {
+            note("authorization blob has the wrong size: \(data.count)")
+            return false
+        }
         var form = AuthorizationExternalForm()
         withUnsafeMutableBytes(of: &form) { _ = data.copyBytes(to: $0) }
         var reference: AuthorizationRef?
-        guard AuthorizationCreateFromExternalForm(&form, &reference) == errAuthorizationSuccess,
-              let reference else { return false }
+        let created = AuthorizationCreateFromExternalForm(&form, &reference)
+        guard created == errAuthorizationSuccess, let reference else {
+            note("could not read the app's authorization: \(created)")
+            return false
+        }
         defer { AuthorizationFree(reference, []) }
-        return PrivilegedHelperConstants.authorizationRight.withCString { name in
+        let status = PrivilegedHelperConstants.authorizationRight.withCString { name -> OSStatus in
             var item = AuthorizationItem(name: name, valueLength: 0, value: nil, flags: 0)
             return withUnsafeMutablePointer(to: &item) { pointer in
                 var rights = AuthorizationRights(count: 1, items: pointer)
                 return AuthorizationCopyRights(reference, &rights, nil, [.extendRights, .interactionAllowed], nil)
-                    == errAuthorizationSuccess
             }
         }
+        if status != errAuthorizationSuccess {
+            note("authorization not granted: \(status)")
+        }
+        return status == errAuthorizationSuccess
     }
 
     /// The caller's `~/.Trash`, if it is a real folder they own.
@@ -190,5 +241,6 @@ private let listener = NSXPCListener(machServiceName: PrivilegedHelperConstants.
 listener.delegate = delegate
 listener.resume()
 IdleMonitor.shared.start()
-log.info("helper started")
+defineAuthorizationRight()
+note("helper started (protocol \(PrivilegedHelperConstants.protocolVersion))")
 dispatchMain()

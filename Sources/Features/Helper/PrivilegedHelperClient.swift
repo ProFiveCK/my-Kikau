@@ -82,11 +82,15 @@ public enum PrivilegedHelperClient {
         guard !paths.isEmpty else { return result }
         guard isEnabled else { return failAll("The administrator helper isn't installed.") }
 
-        let authorization: Data
+        // The reference behind the external form must outlive the call: the
+        // helper looks it up by that reference, and a freed one is invalid
+        // (errAuthorizationInvalidRef). `token` keeps it alive until the reply.
+        let token: AuthorizationToken
         switch await Task.detached(operation: { authorize() }).value {
-        case let .success(data): authorization = data
+        case let .success(made): token = made
         case let .failure(error): return failAll(error.message)
         }
+        let authorization = token.externalForm
 
         let connection = NSXPCConnection(
             machServiceName: PrivilegedHelperConstants.machServiceName, options: .privileged
@@ -97,7 +101,7 @@ public enum PrivilegedHelperClient {
         connection.resume()
         defer { connection.invalidate() }
 
-        return await withCheckedContinuation { continuation in
+        let outcome: RemovalResult = await withCheckedContinuation { continuation in
             let once = ResumeOnce(continuation)
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
                 once.resume(failAll("Couldn't reach the helper: \(error.localizedDescription)"))
@@ -110,42 +114,45 @@ public enum PrivilegedHelperClient {
                 once.resume(RemovalResult(removed: removed, failed: failed))
             }
         }
+        withExtendedLifetime(token) {}
+        return outcome
+    }
+
+    /// Owns an `AuthorizationRef` for as long as a helper call needs it.
+    private final class AuthorizationToken: @unchecked Sendable {
+        let reference: AuthorizationRef
+        let externalForm: Data
+
+        init(reference: AuthorizationRef, externalForm: Data) {
+            self.reference = reference
+            self.externalForm = externalForm
+        }
+
+        deinit {
+            AuthorizationFree(reference, [])
+        }
     }
 
     private struct AuthorizationError: Error {
         let message: String
     }
 
-    /// Shows the standard administrator password prompt for our right and
-    /// returns the authorization in the form the helper can verify.
-    private static func authorize() -> Result<Data, AuthorizationError> {
+    /// An authorization reference in the form the helper can verify. It
+    /// carries no rights yet: the helper asks for them, which is when macOS
+    /// shows the administrator password prompt (with the helper's own
+    /// wording). That is the pattern Apple's privileged-helper sample uses.
+    private static func authorize() -> Result<AuthorizationToken, AuthorizationError> {
         var reference: AuthorizationRef?
         guard AuthorizationCreate(nil, nil, [], &reference) == errAuthorizationSuccess, let reference else {
             return .failure(AuthorizationError(message: "Couldn't start authorization."))
         }
-        defer { AuthorizationFree(reference, []) }
-
-        let status = PrivilegedHelperConstants.authorizationRight.withCString { name -> OSStatus in
-            var item = AuthorizationItem(name: name, valueLength: 0, value: nil, flags: 0)
-            return withUnsafeMutablePointer(to: &item) { pointer in
-                var rights = AuthorizationRights(count: 1, items: pointer)
-                return AuthorizationCopyRights(
-                    reference, &rights, nil, [.interactionAllowed, .extendRights, .preAuthorize], nil
-                )
-            }
-        }
-        if status == errAuthorizationCanceled {
-            return .failure(AuthorizationError(message: "Cancelled — nothing was changed."))
-        }
-        guard status == errAuthorizationSuccess else {
-            return .failure(AuthorizationError(message: "An administrator didn't approve this."))
-        }
-
         var form = AuthorizationExternalForm()
         guard AuthorizationMakeExternalForm(reference, &form) == errAuthorizationSuccess else {
+            AuthorizationFree(reference, [])
             return .failure(AuthorizationError(message: "Couldn't pass the authorization to the helper."))
         }
-        return .success(withUnsafeBytes(of: &form) { Data($0) })
+        let data = withUnsafeBytes(of: &form) { Data($0) }
+        return .success(AuthorizationToken(reference: reference, externalForm: data))
     }
 }
 

@@ -53,6 +53,7 @@ myKikau's source is public and licensed under GPL-3.0.
 - Settings gains a **Never Remove** list, background scans with a notification when there's enough to reclaim, and a low-disk alert
 - Battery health and cycle count, and CPU / memory trend lines, on the dashboard
 - For managed Macs: MDM-controlled settings, a pre-approval profile for Full Disk Access, and a read-only `mykikau-cli` for fleet reporting
+- Optional **administrator helper** (Settings → Advanced): lets Uninstall remove apps that were installed for all users — App Store apps, installer packages — after an administrator password. It only ever moves specific, checked items to your Trash
 
 **Safer**
 - Clean only ever targets data an app rebuilds by itself. Browser profiles, Xcode Archives and the temp folder itself are no longer targets; caches of apps that are open are skipped

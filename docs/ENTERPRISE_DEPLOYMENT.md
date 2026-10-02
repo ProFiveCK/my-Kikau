@@ -87,7 +87,15 @@ mykikau-cli status --json   # CPU, memory, disk, battery health, health score
 
 It reads the same preference domain as the app, so exclusions and policy apply. It needs Full Disk Access for whatever runs it (the MDM agent usually has it) to see every location.
 
-## 7. Known limits
+## 7. The administrator helper
+
+The helper is a launch daemon inside the app bundle (`Contents/MacOS/myKikauHelper`, registered with `SMAppService`). It is dormant until a user installs it from Settings → Advanced and an administrator approves it under System Settings → General → Login Items & Extensions. Every request then needs an administrator password (right `com.profiveck.myKikau.helper.remove`, rule "authenticate as administrator").
+
+It accepts only: application bundles in `/Applications` (one folder deep at most), third-party plists in `/Library/LaunchDaemons` and `/Library/LaunchAgents`, and files in `/Library/PrivilegedHelperTools`. Never Apple's, never security or device-management software, never through a symbolic link, never myKikau itself. It moves items to the calling user's Trash; it runs no shell commands. Its own log is `/Library/Logs/myKikau/helper.log`.
+
+To forbid it fleet-wide, set `DisablePrivilegedTools` (hides the install control) or build with `MYKIKAU_INCLUDE_HELPER=0`, which leaves it out of the bundle.
+
+## 8. Known limits
 
 - **Privileged helper is opt-in.** By default myKikau runs as the logged-in user and leaves root-owned apps and system-level launch daemons in place. Settings → Advanced can install a launch daemon (approved once by an administrator in System Settings) that removes those after a password prompt; `DisablePrivilegedTools` hides the option. The helper accepts only app bundles in /Applications and third-party launch plists / helper tools in /Library, and only moves them to the user's Trash.
 - **Standard (non-admin) users** can clean their own caches, files and user-installed apps, but cannot remove anything in `/Applications` they do not own.
