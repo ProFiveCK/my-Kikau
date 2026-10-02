@@ -86,6 +86,15 @@ if [[ -x "$bin_dir/mykikau-cli" ]]; then
   cp "$bin_dir/mykikau-cli" "$app_bundle/Contents/Helpers/mykikau-cli"
 fi
 
+# Bundle the privileged helper and its launchd plist. It stays dormant until
+# the user installs it from Settings and an administrator approves it.
+if [[ -x "$bin_dir/myKikauHelper" ]]; then
+  echo "› bundling myKikauHelper"
+  cp "$bin_dir/myKikauHelper" "$app_bundle/Contents/MacOS/myKikauHelper"
+  mkdir -p "$app_bundle/Contents/Library/LaunchDaemons"
+  cp Sources/Helper/com.profiveck.myKikau.helper.plist "$app_bundle/Contents/Library/LaunchDaemons/"
+fi
+
 # Copy the Info.plist.
 cp Sources/App/Info.plist "$app_bundle/Contents/Info.plist"
 

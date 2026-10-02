@@ -99,6 +99,13 @@ if [[ -d "$APP_BUNDLE/Contents/Helpers" ]]; then
   done < <(find "$APP_BUNDLE/Contents/Helpers" -type f -perm +111 -print0)
 fi
 
+# The privileged helper. Its signing identifier is what the app checks before
+# talking to it, so it is set explicitly rather than derived from the file name.
+if [[ -f "$APP_BUNDLE/Contents/MacOS/myKikauHelper" ]]; then
+  echo "› codesign myKikauHelper"
+  sign --identifier com.profiveck.myKikau.helper "$APP_BUNDLE/Contents/MacOS/myKikauHelper"
+fi
+
 echo "› codesign myKikau.app (hardened runtime, entitlements)"
 sign --entitlements "$ENTITLEMENTS" "$APP_BUNDLE"
 

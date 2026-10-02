@@ -139,6 +139,12 @@ public final class SafeFileDeleter: @unchecked Sendable {
         /// The item is owned by another user (usually root) — removing it
         /// needs administrator rights myKikau doesn't have.
         public let needsAdministrator: Bool
+
+        public init(path: String, reason: String, needsAdministrator: Bool) {
+            self.path = path
+            self.reason = reason
+            self.needsAdministrator = needsAdministrator
+        }
     }
 
     /// Result of executing a plan.

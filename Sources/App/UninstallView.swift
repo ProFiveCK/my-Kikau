@@ -38,6 +38,9 @@ struct UninstallView: View {
         /// Apps with another installed copy (same bundle ID): their data
         /// belongs to that copy too, so only the bundle is planned.
         let appsWithOtherCopy: [AppInventory.AppInfo]
+        /// The administrator helper is available, so items owned by root are
+        /// planned too and can be retried through it.
+        let helperEnabled: Bool
     }
 
     private struct Notice: Identifiable {
@@ -209,6 +212,8 @@ struct UninstallView: View {
                 prepare: { simulate, selectedIDs in
                     await prepare(item, simulate: simulate, selectedIDs: selectedIDs)
                 },
+                // Only when the administrator helper is installed and approved.
+                elevate: item.helperEnabled ? { paths in await removeWithHelper(paths) } : nil,
                 onClose: { result in
                     if let result, !result.dryRun {
                         for app in item.apps where result.removedIDs.contains(app.url.path) {
@@ -337,7 +342,9 @@ struct UninstallView: View {
             }
         }
         if item.apps.contains(where: \.requiresAdministrator) {
-            parts.append("Apps installed for all users may be refused; drag those to the Trash in Finder instead.")
+            parts.append(item.helperEnabled
+                ? "Apps installed for all users need an administrator password; you'll be asked after the first pass."
+                : "Apps installed for all users may be refused; drag those to the Trash in Finder instead.")
         }
         return parts.joined(separator: " ")
     }
@@ -383,6 +390,7 @@ struct UninstallView: View {
         preparing = true
         Task {
             let item = await Task.detached(priority: .userInitiated) { () -> PendingUninstall in
+                let helperEnabled = PrivilegedHelperClient.isEnabled
                 let installed = AppInventory.appBundleURLs()
                 var plans: [SafeFileDeleter.Plan] = []
                 var systemItems: [URL] = []
@@ -400,11 +408,19 @@ struct UninstallView: View {
                         )
                     }
                 }
+                // With the helper, system-wide launch plists and helper tools
+                // join the plan (they fail the first pass, then go through
+                // the helper). Without it they're only reported.
+                if helperEnabled, !systemItems.isEmpty {
+                    plans.append(SafeFileDeleter.shared.preview(systemItems, category: .leftover))
+                    systemItems = []
+                }
                 return PendingUninstall(
                     apps: targets,
                     plan: .merged(plans),
                     systemLevelItems: systemItems,
-                    appsWithOtherCopy: withOtherCopy
+                    appsWithOtherCopy: withOtherCopy,
+                    helperEnabled: helperEnabled
                 )
             }.value
             preparing = false
@@ -446,6 +462,26 @@ struct UninstallView: View {
             notes.append("Left in place (needs an administrator): \(names)")
         }
         return notes
+    }
+
+    /// Removes root-owned items through the administrator helper (which asks
+    /// for a password and applies its own rules), and records the outcome.
+    private func removeWithHelper(_ paths: [String]) async -> (removed: Set<String>, failed: [String: String]) {
+        let outcome = await PrivilegedHelperClient.removeItems(paths)
+        for (path, trashed) in outcome.removed {
+            OperationLog.shared.append(.init(
+                action: "uninstall.admin", path: path, sizeBytes: 0, mode: .trash,
+                outcome: .success, dryRun: false,
+                detail: "Removed with administrator rights", trashedPath: trashed
+            ))
+        }
+        for (path, reason) in outcome.failed {
+            OperationLog.shared.append(.init(
+                action: "uninstall.admin", path: path, sizeBytes: 0, mode: .trash,
+                outcome: .failed, dryRun: false, detail: reason
+            ))
+        }
+        return (Set(outcome.removed.keys), outcome.failed)
     }
 
     /// Looks for files left by apps that are no longer installed. Nothing is

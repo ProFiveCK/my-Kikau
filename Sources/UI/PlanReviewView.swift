@@ -38,12 +38,18 @@ public struct PlanReviewView: View {
     /// the IDs the user left ticked; returns notes for the result page.
     public typealias Prepare = (_ simulate: Bool, _ selectedIDs: Set<String>) async -> [String]
 
+    /// Retries items that failed for lack of administrator rights, through
+    /// the privileged helper. Returns the paths it removed and, for the rest,
+    /// why not (path → reason).
+    public typealias Elevate = (_ paths: [String]) async -> (removed: Set<String>, failed: [String: String])
+
     private let plan: SafeFileDeleter.Plan
     private let title: String
     private let subtitle: String?
     private let action: String
     private let deleter: SafeFileDeleter
     private let prepare: Prepare?
+    private let elevate: Elevate?
     private let onClose: (SafeFileDeleter.ExecutionResult?) -> Void
 
     private enum Stage {
@@ -70,6 +76,7 @@ public struct PlanReviewView: View {
         deleter: SafeFileDeleter = .shared,
         preselected: Bool = true,
         prepare: Prepare? = nil,
+        elevate: Elevate? = nil,
         onClose: @escaping (SafeFileDeleter.ExecutionResult?) -> Void
     ) {
         self.plan = plan
@@ -78,6 +85,7 @@ public struct PlanReviewView: View {
         self.action = action
         self.deleter = deleter
         self.prepare = prepare
+        self.elevate = elevate
         self.onClose = onClose
         // Suggestions built on weaker evidence start unticked: the user
         // opts in to each one.
@@ -104,7 +112,13 @@ public struct PlanReviewView: View {
             case let .running(completed, total, path):
                 runningStage(completed: completed, total: total, path: path)
             case let .finished(result, notes):
-                ResultStage(result: result, notes: notes, onDone: { onClose(result) })
+                ResultStage(
+                    result: result,
+                    notes: notes,
+                    sizes: Dictionary(plan.items.map { ($0.id, $0.sizeBytes) }, uniquingKeysWith: { first, _ in first }),
+                    elevate: elevate,
+                    onDone: onClose
+                )
             }
         }
         .frame(minWidth: 560, idealWidth: 640, minHeight: 440, idealHeight: 520)
@@ -466,9 +480,36 @@ public struct PathMenu: View {
 // MARK: - Result
 
 private struct ResultStage: View {
-    let result: SafeFileDeleter.ExecutionResult
+    let initial: SafeFileDeleter.ExecutionResult
     let notes: [String]
-    let onDone: () -> Void
+    let sizes: [String: Int64]
+    let elevate: PlanReviewView.Elevate?
+    let onDone: (SafeFileDeleter.ExecutionResult) -> Void
+
+    /// The result as it stands, including anything the administrator helper
+    /// removed after the first pass.
+    @State private var result: SafeFileDeleter.ExecutionResult
+    @State private var elevating = false
+    @State private var elevatedCount = 0
+
+    init(
+        result: SafeFileDeleter.ExecutionResult,
+        notes: [String],
+        sizes: [String: Int64],
+        elevate: PlanReviewView.Elevate?,
+        onDone: @escaping (SafeFileDeleter.ExecutionResult) -> Void
+    ) {
+        initial = result
+        self.notes = notes
+        self.sizes = sizes
+        self.elevate = elevate
+        self.onDone = onDone
+        _result = State(initialValue: result)
+    }
+
+    private var needingAdministrator: [SafeFileDeleter.Failure] {
+        result.failures.filter(\.needsAdministrator)
+    }
 
     private var headline: String {
         if result.dryRun {
@@ -535,6 +576,11 @@ private struct ResultStage: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if elevatedCount > 0 {
+                    Text("\(elevatedCount) item\(elevatedCount == 1 ? " was" : "s were") removed with administrator rights.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.top, Theme.Spacing.xl)
             .padding(.horizontal)
@@ -572,16 +618,62 @@ private struct ResultStage: View {
 
             Divider()
             HStack {
-                if result.failures.contains(where: \.needsAdministrator) {
-                    Text("Items owned by another user can be dragged to the Trash in Finder, which will ask for an administrator password.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if !needingAdministrator.isEmpty {
+                    if elevate != nil {
+                        if elevating {
+                            ProgressView().controlSize(.small)
+                        }
+                        Button("Remove \(needingAdministrator.count) With Administrator Rights…") { runElevated() }
+                            .disabled(elevating)
+                            .help("Asks for an administrator password, then removes these through the myKikau helper")
+                    } else {
+                        Text("Items owned by another user can be dragged to the Trash in Finder, which will ask for an administrator password.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
-                Button("Done", action: onDone)
+                Button("Done") { onDone(result) }
                     .keyboardShortcut(.defaultAction)
+                    .disabled(elevating)
             }
             .padding()
+        }
+    }
+
+    /// Hands the items that needed an administrator to the helper, then
+    /// folds what it removed into the result.
+    private func runElevated() {
+        guard let elevate else { return }
+        let paths = needingAdministrator.map(\.path)
+        elevating = true
+        Task {
+            let outcome = await elevate(paths)
+            let freed = outcome.removed.reduce(Int64(0)) { $0 + (sizes[$1] ?? 0) }
+            let remaining = result.failures.compactMap { failure -> SafeFileDeleter.Failure? in
+                if outcome.removed.contains(failure.path) {
+                    return nil
+                }
+                if let reason = outcome.failed[failure.path] {
+                    // The helper has spoken; don't offer it the same item again.
+                    return SafeFileDeleter.Failure(path: failure.path, reason: reason, needsAdministrator: false)
+                }
+                return failure
+            }
+            result = SafeFileDeleter.ExecutionResult(
+                freedBytes: result.freedBytes + freed,
+                succeeded: result.succeeded + outcome.removed.count,
+                failed: remaining.count,
+                skipped: result.skipped,
+                errors: remaining.map { "\($0.path): \($0.reason)" },
+                failures: remaining,
+                removedIDs: result.removedIDs.union(outcome.removed),
+                recoverable: result.recoverable + outcome.removed.count,
+                cancelled: result.cancelled,
+                dryRun: result.dryRun
+            )
+            elevatedCount += outcome.removed.count
+            elevating = false
         }
     }
 }

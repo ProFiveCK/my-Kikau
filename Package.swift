@@ -15,6 +15,8 @@ let package = Package(
         .executable(name: "myKikau", targets: ["App"]),
         // Read-only command-line companion for scripts and fleet tooling.
         .executable(name: "mykikau-cli", targets: ["CLI"]),
+        // Root helper, started by launchd on demand. See Sources/Helper/main.swift.
+        .executable(name: "myKikauHelper", targets: ["Helper"]),
     ],
     dependencies: [
         // Auto-update framework for direct (non-App-Store) distribution.
@@ -39,6 +41,13 @@ let package = Package(
             name: "CLI",
             dependencies: ["Core", "Features"],
             path: "Sources/CLI",
+            swiftSettings: strictConcurrency
+        ),
+        .executableTarget(
+            name: "Helper",
+            dependencies: ["Core"],
+            path: "Sources/Helper",
+            exclude: ["com.profiveck.myKikau.helper.plist"],
             swiftSettings: strictConcurrency
         ),
         .target(

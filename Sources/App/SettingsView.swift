@@ -291,6 +291,8 @@ private struct FilesSettings: View {
 private struct AdvancedSettings: View {
     @AppStorage(AppStorageKey.developerToolsEnabled) private var developerTools = false
     @EnvironmentObject private var updaterViewModel: UpdaterViewModel
+    @State private var helperStatus = PrivilegedHelperClient.status
+    @State private var helperError: String?
 
     private var policy: ManagedPolicy {
         ManagedPolicy.shared
@@ -306,6 +308,45 @@ private struct AdvancedSettings: View {
                     .foregroundStyle(.secondary)
                 if policy.isFeatureDisabled("purge") {
                     ManagedNote()
+                }
+            }
+
+            if helperStatus != .notBundled {
+                Section {
+                    LabeledContent("Status", value: helperStatusText)
+                    HStack {
+                        switch helperStatus {
+                        case .notInstalled:
+                            Button("Install Helper…") { installHelper() }
+                                .disabled(policy.disablePrivilegedTools)
+                        case .requiresApproval:
+                            Button("Open Login Items Settings…") { PrivilegedHelperClient.openApprovalSettings() }
+                            Button("Remove Helper") { removeHelper() }
+                        case .enabled:
+                            Button("Remove Helper") { removeHelper() }
+                        case .notBundled:
+                            EmptyView()
+                        }
+                        Spacer()
+                    }
+                    if let helperError {
+                        Text(helperError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    if policy.disablePrivilegedTools {
+                        ManagedNote()
+                    }
+                } header: {
+                    Text("Administrator Helper")
+                } footer: {
+                    Text(
+                        "Optional. Lets Uninstall remove apps that were installed for all users, and their system-wide background "
+                            + "items. It asks for an administrator password each time, only ever moves those items to your Trash, "
+                            + "and does nothing else."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
 
@@ -342,5 +383,43 @@ private struct AdvancedSettings: View {
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // Coming back from System Settings after approving the helper.
+            helperStatus = PrivilegedHelperClient.status
+        }
+    }
+
+    private var helperStatusText: String {
+        switch helperStatus {
+        case .notBundled: "Not included in this build"
+        case .notInstalled: "Not installed"
+        case .requiresApproval: "Waiting for approval in System Settings"
+        case .enabled: "Installed"
+        }
+    }
+
+    private func installHelper() {
+        do {
+            try PrivilegedHelperClient.install()
+            helperError = nil
+        } catch {
+            helperError = error.localizedDescription
+        }
+        helperStatus = PrivilegedHelperClient.status
+        if helperStatus == .requiresApproval {
+            PrivilegedHelperClient.openApprovalSettings()
+        }
+    }
+
+    private func removeHelper() {
+        Task {
+            do {
+                try await PrivilegedHelperClient.uninstall()
+                helperError = nil
+            } catch {
+                helperError = error.localizedDescription
+            }
+            helperStatus = PrivilegedHelperClient.status
+        }
     }
 }

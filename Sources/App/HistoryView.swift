@@ -279,6 +279,7 @@ private struct HistoryRow: View {
         switch action {
         case "clean": return "Clean"
         case "uninstall", "uninstall.app", "uninstall.leftovers": return "Uninstall"
+        case "uninstall.admin": return "Uninstall — administrator helper"
         case "uninstall.orphans": return "Leftovers from removed apps"
         case "startup": return "Startup Items"
         case "uninstall.teardown": return "Uninstall — background services stopped"
