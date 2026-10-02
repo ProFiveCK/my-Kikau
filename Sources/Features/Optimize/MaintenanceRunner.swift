@@ -219,7 +219,7 @@ public final class MaintenanceRunner {
     /// Builds the defaults commands for .DS_Store prevention.
     func preventDSStoreCommands() -> [(domain: String, key: String)] {
         [("com.apple.desktopservices", "DSDontWriteNetworkStores"),
-         ("com.apple.desktopservices", "DSDontWriteUSBStores"),]
+         ("com.apple.desktopservices", "DSDontWriteUSBStores")]
     }
 
     private func runPreventDSStore(dryRun: Bool) async -> MaintenanceOutcome {
@@ -274,7 +274,7 @@ public final class MaintenanceRunner {
         [("-g", "NSAppSleepDisabled", "App Nap disabled globally"),
          ("com.apple.frameworks.diskimages", "skip-verify", "Disk-image verification skipped"),
          ("com.apple.frameworks.diskimages", "skip-verify-locked", "Disk-image verification skipped (locked)"),
-         ("com.apple.frameworks.diskimages", "skip-verify-remote", "Disk-image verification skipped (remote)"),]
+         ("com.apple.frameworks.diskimages", "skip-verify-remote", "Disk-image verification skipped (remote)")]
     }
 
     private func runLegacyOverrides(dryRun: Bool) async -> MaintenanceOutcome {

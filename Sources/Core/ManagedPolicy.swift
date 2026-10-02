@@ -49,7 +49,7 @@ public struct ManagedPolicy {
     /// True when at least one policy key is being enforced on this Mac.
     public var isManaged: Bool {
         [Key.disabledFeatures, Key.protectedPaths, Key.protectedBundlePrefixes, Key.forceOperationLog,
-         Key.disableAutomaticUpdates, Key.disablePrivilegedTools, Key.scheduledScanIntervalHours,]
+         Key.disableAutomaticUpdates, Key.disablePrivilegedTools, Key.scheduledScanIntervalHours]
             .contains { managed($0) != nil }
     }
 

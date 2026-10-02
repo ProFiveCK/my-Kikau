@@ -24,6 +24,8 @@ disabled_rules:
   - file_length
   - function_body_length
   - cyclomatic_complexity
+  # SwiftFormat owns trailing commas; two tools enforcing it fight each other.
+  - trailing_comma
 
 line_length:
   warning: 140
@@ -44,8 +46,6 @@ large_tuple:
   warning: 4
   error: 5
 
-# SwiftFormat owns these two; keep SwiftLint in agreement with it.
-trailing_comma:
-  mandatory_comma: true
+# SwiftFormat decides brace placement for wrapped conditions.
 opening_brace:
   ignore_multiline_statement_conditions: true

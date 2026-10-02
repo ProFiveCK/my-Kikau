@@ -90,7 +90,7 @@ struct MaintenanceRunnerTests {
     func sudoTasksSkipped() async {
         let runner = MaintenanceRunner()
         let sudoTasks = ["dns_spotlight", "network_cache", "network_stack",
-                         "disk_permissions", "spotlight_index", "periodic", "disk_verify",]
+                         "disk_permissions", "spotlight_index", "periodic", "disk_verify"]
         for id in sudoTasks {
             let result = await runner.run(taskID: id, dryRun: false)
             if case .skipped = result.outcome {
