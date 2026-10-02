@@ -65,6 +65,7 @@ struct UninstallView: View {
         case unused = "Unused 3+ Months"
         case large = "Larger Than 500 MB"
         case appStore = "From the App Store"
+        case updates = "Updates Available"
         var id: String {
             rawValue
         }
@@ -89,7 +90,12 @@ struct UninstallView: View {
         }
         guard coordinator.apps != nil else { return "Remove apps together with the files they leave behind" }
         let total = apps.reduce(Int64(0)) { $0 + $1.sizeBytes }
-        return "\(apps.count) apps · \(ByteSizeFormatter.format(total)) total"
+        var text = "\(apps.count) apps · \(ByteSizeFormatter.format(total)) total"
+        if model.lastUpdateCheck != nil {
+            let count = model.updates.count
+            text += count == 0 ? " · all up to date" : " · \(count) update\(count == 1 ? "" : "s") available"
+        }
+        return text
     }
 
     private func visibleApps() -> [AppInventory.AppInfo] {
@@ -99,6 +105,7 @@ struct UninstallView: View {
         case .unused: result = result.filter { $0.staleUseBucket != nil }
         case .large: result = result.filter { $0.sizeBytes >= Self.largeAppBytes }
         case .appStore: result = result.filter(\.isAppStore)
+        case .updates: result = result.filter { model.updates[$0.id] != nil }
         }
         if !searchText.isEmpty {
             result = result.filter {
@@ -125,6 +132,16 @@ struct UninstallView: View {
             ScreenHeader("Applications", subtitle: subtitle, systemImage: ContentView.SidebarItem.uninstall.icon, tint: tint) {
                 if preparing || findingOrphans {
                     ProgressView().controlSize(.small)
+                }
+                if model.isCheckingUpdates {
+                    Button("Stop Checking\(model.updateProgress.map { " (\($0))" } ?? "")") { model.cancelUpdateCheck() }
+                } else if coordinator.apps != nil {
+                    Button("Check for Updates") { model.checkForUpdates(apps) }
+                        .help(
+                            "Asks each app's own update feed, and the App Store, whether a newer version exists. "
+                                + "myKikau doesn't install anything."
+                        )
+                        .disabled(model.isScanning)
                 }
                 Button("Find Leftovers…") { findOrphans() }
                     .help("Looks for files left behind by apps that are no longer installed")
@@ -178,6 +195,7 @@ struct UninstallView: View {
                                 }
                             }
                         ),
+                        update: model.updates[app.id],
                         busy: preparing,
                         onUninstall: { beginUninstall([app]) }
                     )
@@ -514,6 +532,7 @@ struct UninstallView: View {
 private struct AppRow: View {
     let app: AppInventory.AppInfo
     @Binding var isSelected: Bool
+    let update: AppUpdateChecker.Update?
     let busy: Bool
     let onUninstall: () -> Void
 
@@ -553,6 +572,18 @@ private struct AppRow: View {
                     } else if let lastUsed = app.lastUsed {
                         Label("Used \(lastUsed.formatted(date: .abbreviated, time: .omitted))", systemImage: "clock")
                             .foregroundStyle(.secondary)
+                    }
+                    if let update {
+                        Button {
+                            // The app updates itself; an App Store app updates
+                            // from its store page.
+                            NSWorkspace.shared.open(update.storeURL ?? app.url)
+                        } label: {
+                            Label("Update to \(update.latestVersion)", systemImage: "arrow.down.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                        .help(update.storeURL == nil ? "Opens the app so it can update itself" : "Opens its App Store page")
                     }
                     if app.isAppStore {
                         Text("App Store").foregroundStyle(.secondary)

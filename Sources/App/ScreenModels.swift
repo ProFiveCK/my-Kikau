@@ -51,6 +51,12 @@ final class AppsModel: ObservableObject {
     static let shared = AppsModel()
 
     @Published private(set) var isScanning = false
+    /// Newer versions found by the last update check, keyed by `AppInfo.id`.
+    @Published private(set) var updates: [String: AppUpdateChecker.Update] = [:]
+    @Published private(set) var isCheckingUpdates = false
+    @Published private(set) var updateProgress: String?
+    @Published private(set) var lastUpdateCheck: Date?
+    private var updateTask: Task<Void, Never>?
 
     private init() {}
 
@@ -60,8 +66,35 @@ final class AppsModel: ObservableObject {
         Task {
             let apps = await Task.detached(priority: .userInitiated) { AppInventory.scan() }.value
             ScanEverythingCoordinator.shared.setApps(apps)
+            // Versions may have changed; drop results for apps that are gone.
+            let ids = Set(apps.map(\.id))
+            updates = updates.filter { ids.contains($0.key) }
             isScanning = false
         }
+    }
+
+    /// Asks each app's own update feed, and the App Store, whether a newer
+    /// version exists. Only runs when the user asks for it.
+    func checkForUpdates(_ apps: [AppInventory.AppInfo]) {
+        guard !isCheckingUpdates else { return }
+        isCheckingUpdates = true
+        updateProgress = nil
+        updateTask = Task {
+            let found = await AppUpdateChecker.check(apps) { done, total in
+                Task { @MainActor in AppsModel.shared.updateProgress = "\(done) of \(total)" }
+            }
+            if !Task.isCancelled {
+                updates = found
+                lastUpdateCheck = Date()
+            }
+            isCheckingUpdates = false
+            updateProgress = nil
+            updateTask = nil
+        }
+    }
+
+    func cancelUpdateCheck() {
+        updateTask?.cancel()
     }
 }
 
@@ -125,6 +158,62 @@ final class FilesModel: ObservableObject {
         }
     }
 
+    /// Pictures that look alike. Separate from the main Files scan because
+    /// it reads every image and takes longer.
+    @Published private(set) var similar: SimilarImageFinder.Report?
+
+    func findSimilar() {
+        guard !isScanning else { return }
+        isScanning = true
+        progressTitle = "Reading your folders"
+        progressDetail = nil
+        progressFraction = nil
+
+        let work = Task.detached(priority: .userInitiated) { () -> SimilarImageFinder.Report? in
+            let files = DuplicateFinder.walkReport { count in
+                Task { @MainActor in FilesModel.shared.progressDetail = "\(count.formatted()) files" }
+            }.files
+            if Task.isCancelled {
+                return nil
+            }
+            await MainActor.run {
+                FilesModel.shared.progressTitle = "Looking at your pictures"
+                FilesModel.shared.progressDetail = nil
+            }
+            let report = SimilarImageFinder.find(in: files) { done, total in
+                Task { @MainActor in
+                    FilesModel.shared.progressFraction = total > 0 ? Double(done) / Double(total) : nil
+                    FilesModel.shared.progressDetail = "\(done.formatted()) of \(total.formatted()) pictures"
+                }
+            }
+            return Task.isCancelled ? nil : report
+        }
+        task = Task {
+            let report = await withTaskCancellationHandler {
+                await work.value
+            } onCancel: {
+                work.cancel()
+            }
+            if let report {
+                similar = report
+            }
+            isScanning = false
+            progressDetail = nil
+            progressFraction = nil
+            task = nil
+        }
+    }
+
+    /// Drops removed pictures; a group with one picture left is no longer a group.
+    func removeSimilarFiles(ids: Set<String>) {
+        guard !ids.isEmpty, var report = similar else { return }
+        report.groups = report.groups.compactMap { group in
+            let remaining = group.files.filter { !ids.contains($0.id) }
+            return remaining.count > 1 ? SimilarImageFinder.Group(id: group.id, files: remaining) : nil
+        }
+        similar = report
+    }
+
     func cancel() {
         task?.cancel()
     }
@@ -174,5 +263,29 @@ enum AppIconCache {
         let icon = NSWorkspace.shared.icon(forFile: url.path)
         cache.setObject(icon, forKey: key)
         return icon
+    }
+}
+
+/// Small previews for picture rows, decoded off the main thread and cached.
+@MainActor
+enum ThumbnailCache {
+    private static let cache = NSCache<NSString, NSImage>()
+
+    static func cached(_ url: URL) -> NSImage? {
+        cache.object(forKey: url.path as NSString)
+    }
+
+    static func load(_ url: URL, pixelSize: Int = 144) async -> NSImage? {
+        if let hit = cached(url) {
+            return hit
+        }
+        let image = await Task.detached(priority: .utility) { () -> NSImage? in
+            guard let cgImage = SimilarImageFinder.thumbnail(of: url, maxPixelSize: pixelSize) else { return nil }
+            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        }.value
+        if let image {
+            cache.setObject(image, forKey: url.path as NSString)
+        }
+        return image
     }
 }

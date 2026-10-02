@@ -12,6 +12,7 @@ struct DuplicatesView: View {
     private enum Mode: String, CaseIterable, Identifiable {
         case duplicates = "Duplicates"
         case largeFiles = "Large Files"
+        case similar = "Similar Photos"
         var id: String {
             rawValue
         }
@@ -23,6 +24,7 @@ struct DuplicatesView: View {
     @State private var selectedLargeFiles: Set<String> = []
     @State private var review: ReviewRequest?
     @State private var staleNotice = false
+    @State private var selectedSimilar: Set<String> = []
     /// Non-empty means macOS hasn't granted access to one of the folders this
     /// feature scans — the most likely explanation for "Duplicates always
     /// finds nothing" on a Mac that obviously has files there (see
@@ -60,6 +62,11 @@ struct DuplicatesView: View {
         case .largeFiles:
             let threshold = ByteSizeFormatter.formatRounded(DuplicateFinder.largeFileThreshold)
             return largeFiles.isEmpty ? "Nothing over \(threshold)" : "\(largeFiles.count) files over \(threshold)"
+        case .similar:
+            guard let report = model.similar else { return "Pictures that look alike without being exact copies" }
+            return report.groups.isEmpty
+                ? "No similar pictures among \(report.imagesExamined.formatted()) examined"
+                : "\(report.groups.count) set\(report.groups.count == 1 ? "" : "s") of similar pictures"
         }
     }
 
@@ -73,11 +80,16 @@ struct DuplicatesView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 220)
+                .frame(width: 330)
                 Button(hasScanned ? "Rescan" : "Scan") {
                     deniedFolders = ProtectedFolderAccessCheck.deniedFolders()
                     selectedLargeFiles = []
-                    model.scan()
+                    if mode == .similar {
+                        selectedSimilar = []
+                        model.findSimilar()
+                    } else {
+                        model.scan()
+                    }
                 }
                 .keyboardShortcut("r", modifiers: .command)
                 .buttonStyle(.borderedProminent)
@@ -101,7 +113,9 @@ struct DuplicatesView: View {
                 .padding([.horizontal, .bottom])
             }
 
-            if !hasScanned {
+            if mode == .similar {
+                similarList
+            } else if !hasScanned {
                 if model.isScanning {
                     Spacer()
                 } else {
@@ -117,7 +131,7 @@ struct DuplicatesView: View {
                 }
             } else if mode == .duplicates {
                 duplicatesList
-            } else {
+            } else if mode == .largeFiles {
                 largeFilesList
             }
 
@@ -142,6 +156,8 @@ struct DuplicatesView: View {
             ) { result in
                 if let result, !result.dryRun {
                     coordinator.removeDuplicateFiles(ids: result.removedIDs)
+                    model.removeSimilarFiles(ids: result.removedIDs)
+                    selectedSimilar.subtract(result.removedIDs)
                     selectedLargeFiles.subtract(result.removedIDs)
                     if !result.removedIDs.isEmpty {
                         AnalyzeScanSession.shared.markStale()
@@ -231,6 +247,91 @@ struct DuplicatesView: View {
             note += " \(stale.count) set\(stale.count == 1 ? " has" : "s have") changed since the scan and \(stale.count == 1 ? "was" : "were") left out."
         }
         review = ReviewRequest(plan: plan, title: "Remove Duplicates", subtitle: note, action: "duplicates")
+    }
+
+    /// Sets of pictures that look alike. Nothing is ticked for you: which
+    /// one is "the good one" is your call.
+    @ViewBuilder
+    private var similarList: some View {
+        if let report = model.similar {
+            if report.groups.isEmpty {
+                ContentUnavailableView(
+                    "No Similar Pictures",
+                    systemImage: "photo.on.rectangle.angled",
+                    description: Text("None of the pictures in your scanned folders look alike.")
+                )
+            } else {
+                List {
+                    ForEach(report.groups) { group in
+                        Section {
+                            ForEach(group.files) { file in
+                                SimilarPhotoRow(file: file, isLargest: file.id == group.files.first?.id, isSelected: Binding(
+                                    get: { selectedSimilar.contains(file.id) },
+                                    set: { isOn in
+                                        if isOn {
+                                            selectedSimilar.insert(file.id)
+                                        } else {
+                                            selectedSimilar.remove(file.id)
+                                        }
+                                    }
+                                ))
+                            }
+                        } header: {
+                            HStack {
+                                Text("\(group.files.count) similar pictures")
+                                Spacer()
+                                Button("Select All but the Largest") {
+                                    selectedSimilar.formUnion(group.files.dropFirst().map(\.id))
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                    if report.skippedOverLimit > 0 {
+                        Text("\(report.skippedOverLimit.formatted()) smaller pictures weren't compared — only the \(SimilarImageFinder.maximumImages.formatted()) largest are.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack {
+                    let selected = report.groups.flatMap(\.files).filter { selectedSimilar.contains($0.id) }
+                    Text(selected.isEmpty
+                        ? "Tick the pictures you want to remove. Look before you choose — similar isn't identical."
+                        : "\(selected.count) selected · \(ByteSizeFormatter.format(selected.reduce(0) { $0 + $1.sizeBytes }))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Review Selected…") {
+                        review = ReviewRequest(
+                            plan: DuplicateFinder.largeFilePlan(for: selected),
+                            title: "Remove Similar Pictures",
+                            subtitle: "These go to the Trash. They are similar to pictures you're keeping, not identical.",
+                            action: "similarPhotos"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+                    .disabled(selected.isEmpty)
+                }
+                .padding()
+            }
+        } else if model.isScanning {
+            Spacer()
+        } else {
+            ContentUnavailableView {
+                Label("Find Similar Pictures", systemImage: "photo.on.rectangle.angled")
+            } description: {
+                Text(
+                    "Compares the pictures in your scanned folders and groups the ones that look alike — resized copies, "
+                        + "re-saved exports, burst shots. Everything is analysed on this Mac. Your Photos library is not touched."
+                )
+            } actions: {
+                Button("Find Similar Pictures") { model.findSimilar() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+            }
+        }
     }
 
     @ViewBuilder
@@ -360,5 +461,60 @@ private struct LargeFileRow: View {
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { isSelected.toggle() }
+    }
+}
+
+private struct SimilarPhotoRow: View {
+    let file: DuplicateFinder.FileEntry
+    let isLargest: Bool
+    @Binding var isSelected: Bool
+    @State private var thumbnail: NSImage?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Toggle(isOn: $isSelected) { EmptyView() }
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .accessibilityLabel("Select \(file.url.lastPathComponent)")
+            Group {
+                if let thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Rectangle().fill(.quaternary)
+                }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(file.url.lastPathComponent).lineLimit(1)
+                Text(file.url.deletingLastPathComponent().path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if isLargest {
+                    Text("Largest in this set")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if let modified = file.modified {
+                Text(modified.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(ByteSizeFormatter.format(file.sizeBytes))
+                .font(.subheadline)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .trailing)
+        }
+        .help(file.url.path)
+        .contextMenu { PathMenu(url: file.url) }
+        .task(id: file.id) { thumbnail = await ThumbnailCache.load(file.url) }
     }
 }

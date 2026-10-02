@@ -285,6 +285,7 @@ private struct HistoryRow: View {
         case "uninstall.teardown": return String(localized: "Uninstall — background services stopped")
         case "duplicates": return String(localized: "Duplicates")
         case "largeFiles": return String(localized: "Large Files")
+        case "similarPhotos": return String(localized: "Similar Photos")
         case "purge": return String(localized: "Project Purge")
         case "analyze": return String(localized: "Disk Analyser")
         case "menubar.emptyTrash": return String(localized: "Empty Trash")

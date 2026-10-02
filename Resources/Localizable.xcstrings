@@ -30,6 +30,16 @@
     "%@ over the last few minutes" : {
 
     },
+    "%@ smaller pictures weren't compared — only the %@ largest are." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ smaller pictures weren't compared — only the %2$@ largest are."
+          }
+        }
+      }
+    },
     "%@ · up %@" : {
       "localizations" : {
         "en" : {
@@ -229,6 +239,9 @@
         }
       }
     },
+    "%lld similar pictures" : {
+
+    },
     "%lld system setting issue%@ need review" : {
       "localizations" : {
         "en" : {
@@ -383,6 +396,9 @@
     "Check Public IP" : {
 
     },
+    "Check for Updates" : {
+
+    },
     "Check for Updates…" : {
 
     },
@@ -411,6 +427,9 @@
 
     },
     "Collecting processes..." : {
+
+    },
+    "Compares the pictures in your scanned folders and groups the ones that look alike — resized copies, re-saved exports, burst shots. Everything is analysed on this Mac. Your Photos library is not touched." : {
 
     },
     "Comparing files" : {
@@ -495,6 +514,9 @@
 
     },
     "Find Leftovers…" : {
+
+    },
+    "Find Similar Pictures" : {
 
     },
     "Find caches, logs, temporary files and Trash contents that are safe to remove. Nothing is removed until you review it." : {
@@ -602,6 +624,9 @@
 
     },
     "Large Files" : {
+
+    },
+    "Largest in this set" : {
 
     },
     "Last run %@%@" : {
@@ -729,6 +754,9 @@
     "No Scan Yet" : {
 
     },
+    "No Similar Pictures" : {
+
+    },
     "No build artifacts were found in your project folders." : {
 
     },
@@ -742,6 +770,9 @@
 
     },
     "No removable caches, logs or Trash contents were found." : {
+
+    },
+    "None of the pictures in your scanned folders look alike." : {
 
     },
     "Not Scanned Yet" : {
@@ -802,6 +833,12 @@
 
     },
     "Opens %@" : {
+
+    },
+    "Opens its App Store page" : {
+
+    },
+    "Opens the app so it can update itself" : {
 
     },
     "Opens the list of items to review" : {
@@ -1007,6 +1044,9 @@
     "Select All" : {
 
     },
+    "Select All but the Largest" : {
+
+    },
     "Select Broken" : {
 
     },
@@ -1043,6 +1083,9 @@
     "Signal" : {
 
     },
+    "Similar Photos" : {
+
+    },
     "Simulate — Change Nothing" : {
 
     },
@@ -1074,6 +1117,9 @@
 
     },
     "Status" : {
+
+    },
+    "Stop Checking%@" : {
 
     },
     "Support" : {
@@ -1118,6 +1164,9 @@
     "Tick the folders you want to remove." : {
 
     },
+    "Tick the pictures you want to remove. Look before you choose — similar isn't identical." : {
+
+    },
     "Trash" : {
 
     },
@@ -1147,6 +1196,9 @@
 
     },
     "Up" : {
+
+    },
+    "Update to %@" : {
 
     },
     "Updates" : {
