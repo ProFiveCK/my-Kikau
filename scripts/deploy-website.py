@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Deploy myKikau release artifacts to projectfive.co.ck via Plesk API.
 
-Uploads the DMG, appcast.xml, and updates the WordPress product page — all
-through the Plesk REST API + a temporary self-deleting PHP script for the
-WordPress DB update. No manual FTP or WordPress admin needed.
+Uploads the DMG, appcast.xml, and updates the /apps/ page app facts in the
+WordPress theme's functions.php — all through the Plesk REST fs API. No
+manual FTP, WordPress admin, or temporary PHP scripts needed.
+
+The /apps/ page is rendered by the theme template page-apps.php, which reads
+app data from pf_apps() in functions.php. Deploying edits that function in
+place on the server so version, download URL, and copy stay in sync with the
+release artifacts.
 
 Usage:
   python3 scripts/deploy-website.py                    # deploys website-upload/<version>/
@@ -16,21 +21,19 @@ Environment file (~/.hermes/secrets/plesk-hostme.env):
   PLESK_HOSTME_USERNAME=admin
   PLESK_HOSTME_PASSWORD=...
   PROJECTFIVE_WP_URL=https://www.projectfive.co.ck
-  PROJECTFIVE_WP_USERNAME=admin
-  PROJECTFIVE_WP_PASSWORD=...
 
 Requirements:
   - A signed/notarized DMG in website-upload/<version>/myKikau-<version>.dmg
   - appcast.xml in website-upload/<version>/appcast.xml
-  - wordpress-page.html in website-upload/<version>/wordpress-page.html
+  - pf-apps.php in website-upload/<version>/pf-apps.php
   - The Plesk env file with credentials
 
 The script:
   1. Validates all artifacts exist and match expected markers
-  2. Backs up the current remote appcast + WordPress page
+  2. Backs up the current remote appcast + theme functions.php
   3. Uploads DMG to /downloads/myKikau-<version>.dmg via Plesk fs API
   4. Uploads appcast.xml to /downloads/appcast.xml via Plesk fs API
-  5. Updates WordPress page (ID 61) via a temporary PHP script (auto-deleted)
+  5. Updates pf_apps() in functions.php via Plesk fs API (in-place edit)
   6. Verifies all public URLs serve the correct content
   7. Reports pass/fail summary
 
@@ -43,7 +46,6 @@ import datetime as dt
 import hashlib
 import json
 import re
-import secrets
 import ssl
 import sys
 import urllib.error
@@ -56,10 +58,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENV_PATH = Path.home() / ".hermes" / "secrets" / "plesk-hostme.env"
 DOMAIN = "projectfive.co.ck"
-WORDPRESS_PAGE_ID = 61
 DOWNLOAD_URL_PREFIX = "https://www.projectfive.co.ck/downloads/"
-PRODUCT_PAGE_URL = "https://www.projectfive.co.ck/apps/mykikau/"
 APPS_LANDING_URL = "https://www.projectfive.co.ck/apps/"
+THEME_PATH = "wp-content/themes/project-five"
+THEME_FUNCTIONS_PATH = f"{THEME_PATH}/functions.php"
 BACKUP_BASE = Path.home() / ".hermes" / "cache" / "projectfive_mykikau_backups"
 
 
@@ -144,19 +146,26 @@ def plesk_fs_delete(base, domain_id, path, auth):
         print(f"  WARN: delete failed: {e}")
 
 
-def call_temp_php(url, token, action, content=None):
-    """Call the temporary PHP script for WordPress page backup/update."""
-    data = {"token": token, "action": action, "page_id": str(WORDPRESS_PAGE_ID)}
-    if content is not None:
-        data["content_b64"] = base64.b64encode(content.encode()).decode()
-    status, headers, body = http_req(url, method="POST",
-                                     data=urllib.parse.urlencode(data).encode(),
-                                     headers={"Content-Type": "application/x-www-form-urlencoded"},
-                                     timeout=120)
-    obj = json.loads(body.decode("utf-8", "replace"))
-    if not obj.get("ok"):
-        raise RuntimeError(f"PHP error: {obj}")
-    return obj
+def replace_pf_apps(server_php: str, local_pf_apps: str) -> str:
+    """Replace the pf_apps() function in server functions.php with local content."""
+    start = server_php.index("function pf_apps")
+    depth = 0
+    i = start
+    while i < len(server_php):
+        if server_php[i] == "{":
+            depth += 1
+        elif server_php[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+        i += 1
+    else:
+        raise RuntimeError("could not find end of pf_apps() function")
+    local_pf_apps = local_pf_apps.rstrip()
+    if not local_pf_apps.endswith("}"):
+        local_pf_apps += "}"
+    return server_php[:start] + local_pf_apps + server_php[end:]
 
 
 def find_domain_id(base, domain_name, auth):
@@ -180,7 +189,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Validate artifacts only, no uploads or page updates")
     parser.add_argument("--skip-dmg", action="store_true", help="Skip DMG upload (e.g. already uploaded)")
     parser.add_argument("--skip-appcast", action="store_true", help="Skip appcast upload")
-    parser.add_argument("--skip-page", action="store_true", help="Skip WordPress page update")
+    parser.add_argument("--skip-page", action="store_true", help="Skip theme functions.php update")
     parser.add_argument("--upload-dir", help="Override the upload directory (default: website-upload/<version>/)")
     args = parser.parse_args()
 
@@ -203,12 +212,12 @@ def main():
     upload_dir = Path(args.upload_dir) if args.upload_dir else REPO_ROOT / "website-upload" / version
     dmg_path = upload_dir / f"myKikau-{version}.dmg"
     appcast_path = upload_dir / "appcast.xml"
-    page_path = upload_dir / "wordpress-page.html"
+    pf_apps_path = upload_dir / "pf-apps.php"
 
     # --- Validate artifacts ---
     print(f"\n=== Validating artifacts for v{version} ===")
     missing = []
-    for p in [dmg_path, appcast_path, page_path]:
+    for p in [dmg_path, appcast_path, pf_apps_path]:
         if not p.exists():
             missing.append(str(p))
     if missing:
@@ -218,15 +227,15 @@ def main():
 
     dmg_bytes = dmg_path.read_bytes()
     appcast_text = appcast_path.read_text()
-    page_html = page_path.read_text()
+    pf_apps_text = pf_apps_path.read_text()
 
     dmg_name = f"myKikau-{version}.dmg"
     dmg_size = len(dmg_bytes)
     dmg_sha = hashlib.sha256(dmg_bytes).hexdigest()
 
-    print(f"  DMG:     {dmg_name} ({dmg_size} bytes, sha256={dmg_sha[:16]}...)")
-    print(f"  Appcast: {appcast_path.name} ({len(appcast_text)} chars)")
-    print(f"  Page:    {page_path.name} ({len(page_html)} chars)")
+    print(f"  DMG:        {dmg_name} ({dmg_size} bytes, sha256={dmg_sha[:16]}...)")
+    print(f"  Appcast:    {appcast_path.name} ({len(appcast_text)} chars)")
+    print(f"  pf-apps:    {pf_apps_path.name} ({len(pf_apps_text)} chars)")
 
     # Validate appcast markers
     appcast_markers = [
@@ -238,38 +247,31 @@ def main():
             print(f"ERROR: appcast missing marker: {marker}", file=sys.stderr)
             sys.exit(1)
 
-    # Validate page markers
-    page_markers = [f"myKikau-{version}", f"myKikau-{version}.dmg"]
-    for marker in page_markers:
-        if marker not in page_html:
-            print(f"ERROR: wordpress page missing marker: {marker}", file=sys.stderr)
+    # Validate pf-apps.php markers
+    if "function pf_apps" not in pf_apps_text:
+        print(f"ERROR: pf-apps.php missing 'function pf_apps' declaration", file=sys.stderr)
+        sys.exit(1)
+    pf_apps_markers = [f"myKikau-{version}", f"myKikau-{version}.dmg", f"'version'  => '{version}'"]
+    for marker in pf_apps_markers:
+        if marker not in pf_apps_text:
+            print(f"ERROR: pf-apps.php missing marker: {marker}", file=sys.stderr)
             sys.exit(1)
 
-    # The production WordPress page is a content fragment using the established
-    # .mk-* design system. Reject standalone design mockups so a release-text
-    # update cannot accidentally replace the live page layout again.
-    if 'class="mk-page"' not in page_html or "<!DOCTYPE html>" in page_html:
-        print(
-            "ERROR: wordpress page must be the production .mk-page fragment, "
-            "not a standalone design mockup",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Check page doesn't reference old versions
+    # Check pf-apps.php doesn't reference old DMG versions
     old_version_pattern = re.compile(r"myKikau-\d+\.\d+\.\d+\.dmg")
-    all_versions_in_page = set(old_version_pattern.findall(page_html))
-    if all_versions_in_page - {dmg_name}:
-        print(f"  WARN: page references other DMG versions: {all_versions_in_page - {dmg_name}}")
+    all_versions_in_pf_apps = set(old_version_pattern.findall(pf_apps_text))
+    if all_versions_in_pf_apps - {dmg_name}:
+        print(f"  WARN: pf-apps.php references other DMG versions: {all_versions_in_pf_apps - {dmg_name}}")
 
     print(f"  All artifact markers validated.")
 
     if args.dry_run:
         print(f"\n=== DRY RUN: validation complete. No uploads performed. ===")
         print(f"  Ready to deploy v{version}:")
-        print(f"    DMG      -> {DOWNLOAD_URL_PREFIX}{dmg_name}")
-        print(f"    Appcast  -> {DOWNLOAD_URL_PREFIX}appcast.xml")
-        print(f"    WP page  -> {PRODUCT_PAGE_URL} (page ID {WORDPRESS_PAGE_ID})")
+        print(f"    DMG       -> {DOWNLOAD_URL_PREFIX}{dmg_name}")
+        print(f"    Appcast   -> {DOWNLOAD_URL_PREFIX}appcast.xml")
+        print(f"    Theme     -> {THEME_FUNCTIONS_PATH} (pf_apps function)")
+        print(f"    Apps page -> {APPS_LANDING_URL}")
         sys.exit(0)
 
     # --- Load credentials ---
@@ -300,98 +302,49 @@ def main():
     except Exception as e:
         print(f"  WARN: appcast backup failed: {e}")
 
-    # --- Deploy temporary PHP script for WordPress page backup/update ---
-    token = secrets.token_urlsafe(32)
-    php_name = f".pf_mykikau_update_{secrets.token_hex(8)}.php"
-    php_code = f"""<?php
-header('Content-Type: application/json');
-$expected = {token!r};
-$page_id = {WORDPRESS_PAGE_ID};
-if (!isset($_POST['token']) || !hash_equals($expected, $_POST['token'])) {{
-    http_response_code(403);
-    echo json_encode(['ok'=>false,'error'=>'forbidden']);
-    exit;
-}}
-require_once __DIR__ . '/wp-load.php';
-global $wpdb;
-$action = $_POST['action'] ?? '';
-if ($action === 'backup') {{
-    $row = $wpdb->get_row($wpdb->prepare(
-        "SELECT post_title, post_content FROM {{$wpdb->posts}} WHERE ID=%d", $page_id
-    ), ARRAY_A);
-    echo json_encode(['ok'=>true,'title'=>$row['post_title'],
-        'content_b64'=>base64_encode($row['post_content']),
-        'length'=>strlen($row['post_content'])]);
-    exit;
-}}
-if ($action === 'update') {{
-    $content = base64_decode($_POST['content_b64'] ?? '', true);
-    if ($content === false) {{
-        echo json_encode(['ok'=>false,'error'=>'bad_base64']); exit;
-    }}
-    $now = current_time('mysql');
-    $now_gmt = current_time('mysql', 1);
-    $res = $wpdb->update($wpdb->posts,
-        ['post_content'=>$content, 'post_modified'=>$now, 'post_modified_gmt'=>$now_gmt],
-        ['ID'=>$page_id], ['%s','%s','%s'], ['%d']);
-    if ($res === false) {{
-        echo json_encode(['ok'=>false,'error'=>'db_update_failed']); exit;
-    }}
-    clean_post_cache($page_id);
-    echo json_encode(['ok'=>true,'updated_rows'=>$res,'length'=>strlen($content)]);
-    exit;
-}}
-echo json_encode(['ok'=>false,'error'=>'unknown_action']);
-"""
-    temp_url = f"{wp_url}/{php_name}"
+    # --- Backup remote theme functions.php ---
+    server_functions_before = None
+    if not args.skip_page:
+        try:
+            server_functions_before = plesk_fs_content(base, domain_id, THEME_FUNCTIONS_PATH, auth)
+            (backup_dir / "functions-before.php").write_bytes(server_functions_before)
+            print(f"  Backed up {THEME_FUNCTIONS_PATH}: {len(server_functions_before)} bytes")
+        except Exception as e:
+            print(f"  WARN: functions.php backup failed: {e}")
 
-    # Upload the temp PHP script
-    plesk_fs_put(base, domain_id, php_name, php_code.encode(), auth)
-    plesk_fs_chmod(base, domain_id, php_name, "0644", auth)
-    print(f"  Temp PHP script deployed: {php_name}")
+    # --- Upload DMG ---
+    if not args.skip_dmg:
+        print(f"\n=== Uploading DMG: {dmg_name} ({dmg_size} bytes) ===")
+        plesk_fs_put(base, domain_id, f"downloads/{dmg_name}", dmg_bytes, auth)
+        plesk_fs_chmod(base, domain_id, f"downloads/{dmg_name}", "0644", auth)
+        print(f"  Uploaded: sha256={dmg_sha}")
+    else:
+        print(f"\n=== Skipping DMG upload (--skip-dmg) ===")
 
-    try:
-        # --- Backup WordPress page ---
-        if not args.skip_page:
-            try:
-                b = call_temp_php(temp_url, token, "backup")
-                old_page = base64.b64decode(b["content_b64"])
-                (backup_dir / "wordpress-page-before.html").write_bytes(old_page)
-                print(f"  Backed up WordPress page {WORDPRESS_PAGE_ID}: {len(old_page)} bytes")
-            except Exception as e:
-                print(f"  WARN: WordPress page backup failed: {e}")
+    # --- Upload appcast.xml ---
+    if not args.skip_appcast:
+        print(f"\n=== Uploading appcast.xml ===")
+        appcast_bytes = appcast_path.read_bytes()
+        plesk_fs_put(base, domain_id, "downloads/appcast.xml", appcast_bytes, auth)
+        plesk_fs_chmod(base, domain_id, "downloads/appcast.xml", "0644", auth)
+        print(f"  Uploaded: {len(appcast_bytes)} bytes sha256={hashlib.sha256(appcast_bytes).hexdigest()}")
+    else:
+        print(f"\n=== Skipping appcast upload (--skip-appcast) ===")
 
-        # --- Upload DMG ---
-        if not args.skip_dmg:
-            print(f"\n=== Uploading DMG: {dmg_name} ({dmg_size} bytes) ===")
-            plesk_fs_put(base, domain_id, f"downloads/{dmg_name}", dmg_bytes, auth)
-            plesk_fs_chmod(base, domain_id, f"downloads/{dmg_name}", "0644", auth)
-            print(f"  Uploaded: sha256={dmg_sha}")
+    # --- Update pf_apps() in theme functions.php ---
+    if not args.skip_page:
+        print(f"\n=== Updating pf_apps() in {THEME_FUNCTIONS_PATH} ===")
+        # Re-read current server file (in case it changed since backup) and patch it
+        current_server = plesk_fs_content(base, domain_id, THEME_FUNCTIONS_PATH, auth)
+        current_text = current_server.decode("utf-8")
+        patched = replace_pf_apps(current_text, pf_apps_text)
+        if patched == current_text:
+            print(f"  WARN: no changes applied (pf_apps function not found or identical)")
         else:
-            print(f"\n=== Skipping DMG upload (--skip-dmg) ===")
-
-        # --- Upload appcast.xml ---
-        if not args.skip_appcast:
-            print(f"\n=== Uploading appcast.xml ===")
-            appcast_bytes = appcast_path.read_bytes()
-            plesk_fs_put(base, domain_id, "downloads/appcast.xml", appcast_bytes, auth)
-            plesk_fs_chmod(base, domain_id, "downloads/appcast.xml", "0644", auth)
-            print(f"  Uploaded: {len(appcast_bytes)} bytes sha256={hashlib.sha256(appcast_bytes).hexdigest()}")
-        else:
-            print(f"\n=== Skipping appcast upload (--skip-appcast) ===")
-
-        # --- Update WordPress page ---
-        if not args.skip_page:
-            print(f"\n=== Updating WordPress page {WORDPRESS_PAGE_ID} ===")
-            u = call_temp_php(temp_url, token, "update", page_html)
-            print(f"  Updated: length={u.get('length')} rows={u.get('updated_rows')}")
-        else:
-            print(f"\n=== Skipping WordPress page update (--skip-page) ===")
-
-    finally:
-        # Always clean up the temp PHP script
-        plesk_fs_delete(base, domain_id, php_name, auth)
-        print(f"  Temp PHP script deleted.")
+            plesk_fs_put(base, domain_id, THEME_FUNCTIONS_PATH, patched.encode("utf-8"), auth)
+            print(f"  Updated: {len(patched)} bytes (was {len(current_text)} bytes)")
+    else:
+        print(f"\n=== Skipping theme functions.php update (--skip-page) ===")
 
     # --- Verify ---
     print(f"\n=== Verifying public URLs ===")
@@ -421,29 +374,19 @@ echo json_encode(['ok'=>false,'error'=>'unknown_action']);
         errors.append(f"appcast fetch failed: {e}")
         print(f"  Appcast:  FAIL - {e}")
 
-    # Verify WordPress page
+    # Verify apps landing page
     try:
-        status, _, pub_page = http_req(PRODUCT_PAGE_URL)
+        status, _, pub_page = http_req(APPS_LANDING_URL)
         page_text = pub_page.decode("utf-8", "replace")
         if f"myKikau-{version}.dmg" not in page_text:
-            errors.append(f"product page missing myKikau-{version}.dmg")
-        elif f"myKikau {version}" not in page_text:
-            errors.append(f"product page missing visible myKikau {version} text")
+            errors.append(f"apps page missing myKikau-{version}.dmg")
+        elif f"Download myKikau {version}" not in page_text:
+            errors.append(f"apps page missing visible 'Download myKikau {version}' text")
         else:
-            print(f"  WP page:  OK (version {version} confirmed)")
+            print(f"  Apps page: OK (version {version} confirmed)")
     except Exception as e:
-        errors.append(f"product page fetch failed: {e}")
-        print(f"  WP page:  FAIL - {e}")
-
-    # Verify temp script is gone
-    try:
-        http_req(temp_url, method="POST",
-                data=urllib.parse.urlencode({"token": token, "action": "backup"}).encode(),
-                headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=20)
-        errors.append("temp PHP script still reachable")
-        print(f"  Temp PHP: FAIL - still reachable!")
-    except Exception:
-        print(f"  Temp PHP: OK (removed)")
+        errors.append(f"apps page fetch failed: {e}")
+        print(f"  Apps page: FAIL - {e}")
 
     # --- Summary ---
     print(f"\n{'='*50}")
@@ -455,10 +398,11 @@ echo json_encode(['ok'=>false,'error'=>'unknown_action']);
         sys.exit(3)
     else:
         print(f"DEPLOY SUCCESSFUL - v{version}")
-        print(f"  DMG:      {wp_url}/downloads/{dmg_name}")
-        print(f"  Appcast:  {wp_url}/downloads/appcast.xml")
-        print(f"  Page:     {PRODUCT_PAGE_URL}")
-        print(f"  Backups:  {backup_dir}")
+        print(f"  DMG:       {wp_url}/downloads/{dmg_name}")
+        print(f"  Appcast:   {wp_url}/downloads/appcast.xml")
+        print(f"  Theme:     {THEME_FUNCTIONS_PATH}")
+        print(f"  Apps page: {APPS_LANDING_URL}")
+        print(f"  Backups:   {backup_dir}")
         sys.exit(0)
 
 

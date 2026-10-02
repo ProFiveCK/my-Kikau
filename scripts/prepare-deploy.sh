@@ -20,7 +20,8 @@ DOWNLOAD_URL_PREFIX="${2:-https://www.projectfive.co.ck/downloads/}"
 RELEASE_DIR="build/release"
 NOTES_FILE="${RELEASE_DIR}/release-notes-${VERSION}.md"
 UPLOAD_DIR="website-upload/${VERSION}"
-WORDPRESS_PAGE="${UPLOAD_DIR}/wordpress-page.html"
+PF_APPS_SOURCE="docs/pf-apps.php"
+PF_APPS_STAGED="${UPLOAD_DIR}/pf-apps.php"
 
 if [[ ! -f "$DMG" ]]; then
   echo "✘ DMG not found: $DMG"
@@ -94,7 +95,21 @@ rm -rf "$UPLOAD_DIR"
 mkdir -p "$UPLOAD_DIR"
 cp "$DMG" "$UPLOAD_DIR/"
 cp "${RELEASE_DIR}/appcast.xml" "$UPLOAD_DIR/"
-cp "docs/wordpress-page.html" "$WORDPRESS_PAGE"
+
+# Stage pf-apps.php with the release version and download URL substituted in,
+# so the deploy script uploads a version-correct copy without manual edits.
+python3 - "$VERSION" "$PF_APPS_SOURCE" "$PF_APPS_STAGED" <<'PY'
+import re, sys
+from pathlib import Path
+
+version, src, dst = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
+text = src.read_text()
+# Replace the version field and any myKikau-<version>.dmg references.
+text = re.sub(r"'version'\s+=>\s+'[^']*'", f"'version'  => '{version}'", text)
+text = re.sub(r"myKikau-\d+\.\d+\.\d+\.dmg", f"myKikau-{version}.dmg", text)
+dst.write_text(text)
+print(f"  staged {dst.name} with version {version}")
+PY
 
 cat <<EOF
 
@@ -102,22 +117,18 @@ cat <<EOF
 
 Files to publish:
   $DMG -> ${DOWNLOAD_URL_PREFIX}${DMG_NAME}
-  ${RELEASE_DIR}/appcast.xml -> https://www.projectfive.co.ck/apps/appcast.xml
+  ${RELEASE_DIR}/appcast.xml -> https://www.projectfive.co.ck/downloads/appcast.xml
   GitHub release notes: ${NOTES_FILE}
 
 Website upload folder:
   ${UPLOAD_DIR}/
   - ${DMG_NAME}
   - appcast.xml
-  - wordpress-page.html
+  - pf-apps.php (version ${VERSION}, download URL updated)
 
-Website update checklist:
-  - Update /apps/mykikau/ download button to version ${VERSION}
-  - Show DMG size: ${DMG_SIZE}
-  - Use ${WORDPRESS_PAGE} as the WordPress page reference
+Website deploy:
+  python3 scripts/deploy-website.py
 
-Manual steps remaining:
-  - Upload ${UPLOAD_DIR}/${DMG_NAME}
-  - Upload ${UPLOAD_DIR}/appcast.xml
-  - Update WordPress page from ${WORDPRESS_PAGE}
+  The deploy script edits pf_apps() in the theme functions.php on the server,
+  so the /apps/ page shows version ${VERSION} and the correct DMG download link.
 EOF

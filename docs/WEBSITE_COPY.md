@@ -1,34 +1,69 @@
-# Website copy — myKikau download page
+# Website copy — /apps/ page (myKikau section)
 
-*Draft content for whoever builds the download page. Content only — adapt to your site's actual layout/CMS. Replace bracketed placeholders.*
+*Canonical copy for the myKikau section of the /apps/ page. The live page renders from `pf_apps()` in the theme `functions.php`; this document mirrors that copy for editing and review. The deploy script edits `functions.php` from `docs/pf-apps.php`, not from this file — keep both in sync when you change wording.*
 
-## Hero
+## Page hero (apps landing)
 
-**Headline:** Clean, uninstall, and understand your Mac — without giving up control.
+**Eyebrow:** Project Five Apps
+**Headline:** Native Tools, Built in the Pacific.
+**Subhead:** Software we design and maintain in Rarotonga — direct downloads, open source, and supported by the team that builds it.
 
-**Subhead:** myKikau is a native, from-scratch Mac maintenance app: safe cleanup, leftover-aware uninstalling, duplicate/large-file cleanup, and a live system dashboard. Every deletion goes to the Trash and shows you exactly what it's about to touch before it touches it.
+## App section — myKikau
 
-**Primary button:** Download for Mac (Apple Silicon & Intel) — v0.7.0 · 3.1 MB
-**Secondary link:** Requires macOS 14 Sonoma or later
+**Section number:** 01
+**Eyebrow:** macOS utility
+**Title:** myKikau — Clean your Mac with confidence
+**Summary:** A native macOS maintenance app for safe cleanup, complete uninstalls, duplicate and large-file review, and a live system dashboard. It previews everything first and moves deletions to the Trash rather than destroying them.
 
-## Why myKikau (feature highlights)
+**Spec pills:**
+- macOS 14 Sonoma or later
+- Apple Silicon
+- 3.1 MB DMG
+- Signed & notarized by Apple
+- Open source (GPL-3.0)
 
-- **See it before you delete it.** Every cleanup and uninstall shows a full preview — file paths, sizes, what's protected — before anything moves to the Trash.
-- **Uninstall actually means uninstall.** Removes the app, its LaunchAgents, login items, and leftover files across your whole `~/Library` — not just the `.app` bundle.
-- **Bounded, safe maintenance.** 12 vetted upkeep tasks — LaunchServices repair, cache refresh, font cache reset, orphaned Spotlight rules, and more — no admin password needed, with an optional preview mode.
-- **A real system dashboard.** Live CPU, memory, disk, network, GPU, thermal, and battery — not a marketing gauge, actual native metrics, refreshed every 2 seconds, plus a menu bar HUD.
-- **Duplicates & large files.** Content-hash-verified duplicate detection plus a large-files view across Downloads, Documents, Desktop, Pictures, and Movies.
-- **Nothing hidden.** Every action is logged locally (`~/Library/Logs/myKikau/operations.log`) so you can see exactly what ran and when.
+**Primary button:** Download myKikau 0.7.0
+**Secondary button:** Release notes
+**Download note:** Automatic updates are delivered through Sparkle. Full Disk Access is requested and explained on first launch.
 
-## Trust / safety section
+### Feature cards
 
-myKikau never touches macOS system files, and protects ~90 critical Apple bundle IDs (Finder, Dock, System Settings, and more) from accidental removal — including apps you didn't even know were protected. It also recognises and skips endpoint-security agents (CrowdStrike, SentinelOne, Jamf, and others) so it won't trip tamper detection on managed Macs.
+- **Preview before delete.** Review file paths, sizes, and protected items before anything moves to the Trash.
+- **Leftover-aware uninstall.** Removes the app bundle plus LaunchAgents, login items, and related files in your Library.
+- **Live system dashboard.** CPU, memory, disk, network, GPU, thermals, and battery metrics refreshed every two seconds.
+- **Duplicate finder.** Content-hash verification identifies real duplicates before you decide what to remove.
+- **Large-file review.** Find big items across Downloads, Documents, Desktop, Pictures, and Movies.
+- **Local activity log.** Every action is written to ~/Library/Logs/myKikau/operations.log on your own machine.
 
-Full Disk Access is requested on first launch and explained plainly — myKikau needs it to see other apps' caches and leftovers, the same as any Mac cleaner. You can grant it later from Settings if you skip it initially.
+### Trust / safety split
+
+**Safety guardrails:** myKikau avoids macOS system files and protects over 90 critical Apple bundle IDs including Finder, Dock, and System Settings. It also recognises endpoint-security agents such as CrowdStrike, SentinelOne, and Jamf so managed Macs stay protected.
+
+**What to expect:**
+- Full Disk Access is requested and explained on first launch
+- Cleanup and uninstall actions are previewed before execution
+- Files are moved to the Trash, never silently destroyed
+- Signed and notarized by Apple
+- Source code is public and inspectable on GitHub
+
+**Source line:** myKikau is open source under GPL-3.0. View source on GitHub.
+
+## Coming next (roadmap)
+
+**Heading:** A growing catalog
+**Subhead:** This page is the home for every Project Five app — desktop today, mobile as releases land.
+
+- **Direct Mac releases.** DMG downloads with release notes, source links, Sparkle update feeds, and clear system requirements.
+- **App Store installs.** iPhone and iPad apps will link straight to their official App Store listings.
+- **Support and updates.** Each app carries its own support contact, changelog, and version-specific notes.
+
+## Footer
+
+**Footer note:** myKikau is signed and notarized by Apple. © 2026 Project Five. Licensed under GPL-3.0.
 
 ## System requirements
 
-- macOS 14 (Sonoma) or later — Apple Silicon or Intel
+- macOS 14 (Sonoma) or later — Apple Silicon
 - ~3 MB disk space (installer download)
 - Full Disk Access permission (requested on first launch; some features are limited without it)
 
@@ -37,7 +72,7 @@ Full Disk Access is requested on first launch and explained plainly — myKikau 
 myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
-## Release notes (template — duplicate per version)
+## Release notes
 
 ### Version 0.7.0 — August 2026
 
