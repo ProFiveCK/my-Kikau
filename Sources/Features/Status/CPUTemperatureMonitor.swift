@@ -8,8 +8,8 @@ import IOKit
 /// `ThermalMonitor`'s original comment refers to) never worked here.
 ///
 /// This is a real sensor read, not a synthesized estimate — it doesn't
-/// reintroduce the "false overheating readings" problem the original Mole
-/// port avoided by leaving `cpuTemp` at 0. It only reports a temperature when
+/// reintroduce the "false overheating readings" problem the original
+/// implementation avoided by leaving `cpuTemp` at 0. It only reports a temperature when
 /// the SoC die sensors are actually present and readable; Intel Macs (and any
 /// future HID sensor naming change) fall back to the same 0 = "unavailable"
 /// sentinel `ThermalStatus.cpuTemp` already used.

@@ -269,10 +269,14 @@ struct NetworkView: View {
 
     private var toolsCard: some View {
         Card(title: "Tools", systemImage: "wrench.and.screwdriver", tint: tint) {
-            toolRow(.flushDNS)
-            Divider()
-            toolRow(.renewDHCP(interface: safeInterface))
-            Divider()
+            // Both need an administrator password; an organisation can turn
+            // those actions off.
+            if !ManagedPolicy.shared.disablePrivilegedTools {
+                toolRow(.flushDNS)
+                Divider()
+                toolRow(.renewDHCP(interface: safeInterface))
+                Divider()
+            }
             ToolRow(
                 title: "Wireless Diagnostics",
                 detail: "Apple's built-in tool for capturing and analysing Wi-Fi problems.",

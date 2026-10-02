@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-import Features
+@testable import Features
 
 @Suite("StatusMetrics")
 struct StatusMetricsTests {
@@ -15,33 +15,13 @@ struct StatusMetricsTests {
 
     // MARK: - Network parsing
 
-    @Test("parseNetstatIB sums duplicate interface rows and skips header")
-    func parseNetstatIBSumsDuplicates() {
-        // Real `netstat -ib` column layout (verified against actual macOS output):
-        // Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll
-        // Each interface gets one row per assigned address (link layer, IPv4,
-        // IPv6...) and every row repeats the same cumulative Ibytes/Obytes —
-        // this fixture mirrors that shape rather than a simplified 6-column guess.
-        let output = """
-        Name  Mtu   Network    Address            Ipkts  Ierrs  Ibytes   Opkts  Oerrs  Obytes   Coll
-        en0   1500  <Link#4>   ab:cd:ef:12:34:56   5000   0      1048576  6000   0      2097152  0
-        en0   1500  10.0.0     10.0.0.5            5000   -      1048576  6000   -      2097152  -
-        lo0   16384 <Link#1>                       100    0      512      100    0      512      0
-        """
-        let result = NetworkMonitor.parseNetstatIB(output)
-        #expect(result != nil)
-        let rx = result?.rxByName["en0"]
-        let tx = result?.txByName["en0"]
-        #expect(rx == 2_097_152)            // 1048576 + 1048576 (two rows for en0)
-        #expect(tx == 4_194_304)            // 2097152 + 2097152
-        #expect(result?.rxByName["lo0"] == 512)
-        #expect(result?.txByName["lo0"] == 512)
-    }
-
-    @Test("parseNetstatIB returns nil when no header present")
-    func parseNetstatIBNoHeader() {
-        let output = "just some random text\nwithout a header"
-        #expect(NetworkMonitor.parseNetstatIB(output) == nil)
+    @Test("readInterfaceCounters reads kernel counters without a subprocess")
+    func readsInterfaceCounters() {
+        let counters = NetworkMonitor.readInterfaceCounters()
+        #expect(counters != nil)
+        // Every Mac has a loopback interface.
+        #expect(counters?.rxByName["lo0"] != nil)
+        #expect(counters?.rxByName.count == counters?.txByName.count)
     }
 
     @Test("isNoiseInterface filters known noise prefixes")
@@ -211,28 +191,6 @@ struct StatusMetricsTests {
         #expect(GPUMonitor.parseDisplaysJSON(data) == nil)
     }
 
-    @Test("parseGPUUsage extracts active residency")
-    func parseGPUUsageActive() {
-        let output = """
-        GPU HW active residency: 12.34%
-        GPU idle residency: 87.66%
-        """
-        #expect(abs(GPUMonitor.parseGPUUsage(output) - 12.34) < 0.001)
-    }
-
-    @Test("parseGPUUsage falls back to idle residency")
-    func parseGPUUsageIdleFallback() {
-        let output = """
-        GPU idle residency: 75.00%
-        """
-        #expect(abs(GPUMonitor.parseGPUUsage(output) - 25.0) < 0.001)
-    }
-
-    @Test("parseGPUUsage returns -1 when unavailable")
-    func parseGPUUsageUnavailable() {
-        #expect(GPUMonitor.parseGPUUsage("nothing useful") == -1)
-    }
-
     // MARK: - Disk IO rates
 
     @Test("diskIORates diffs counters into MB/s")
@@ -323,5 +281,90 @@ struct StatusMetricsTests {
         #expect(decoded.gpu == original.gpu)
         #expect(decoded.thermal == original.thermal)
         #expect(decoded.diskIO == original.diskIO)
+    }
+
+    // MARK: - Memory
+
+    @Test("Memory used counts app, wired and compressed pages — not cache or free")
+    func memoryUsedDefinition() {
+        var stats = vm_statistics64()
+        stats.internal_page_count = 500
+        stats.purgeable_count = 100
+        stats.wire_count = 200
+        stats.compressor_page_count = 50
+        // A nearly empty free list with a big file cache is a healthy Mac.
+        stats.free_count = 5
+        stats.external_page_count = 345
+
+        let status = MetricsCollector.memoryStatus(from: stats, pageSize: 1000, total: 1_000_000, pressureLevel: 1)
+
+        #expect(status.used == 650_000)          // (500 − 100) + 200 + 50 pages
+        #expect(status.available == 350_000)
+        #expect(abs(status.usedPercent - 65) < 0.001)
+        #expect(status.pressure == "normal")
+    }
+
+    @Test("Memory pressure comes from the kernel's level, not from page counts")
+    func memoryPressureLevels() {
+        #expect(MetricsCollector.pressureName(level: 1) == "normal")
+        #expect(MetricsCollector.pressureName(level: 2) == "warn")
+        #expect(MetricsCollector.pressureName(level: 4) == "critical")
+        #expect(MetricsCollector.pressureName(level: nil) == "normal")
+        #expect(MetricsCollector.kernelPressureLevel() != nil)
+    }
+
+    // MARK: - Battery
+
+    @Test("Battery status distinguishes charging, charged, holding on power and discharging")
+    func batteryStatusText() {
+        #expect(MetricsCollector.batteryStatusText(isCharging: true, isCharged: false, onACPower: true) == "Charging")
+        #expect(MetricsCollector.batteryStatusText(isCharging: false, isCharged: true, onACPower: true) == "Charged")
+        #expect(MetricsCollector.batteryStatusText(isCharging: false, isCharged: false, onACPower: true) == "On Power")
+        #expect(MetricsCollector.batteryStatusText(isCharging: false, isCharged: false, onACPower: false) == "Discharging")
+    }
+
+    @Test("Battery health is full-charge capacity against design capacity")
+    func batteryHealth() {
+        // Apple Silicon shape: MaxCapacity is a percentage, raw key is mAh.
+        let appleSilicon: [String: Any] = [
+            "CycleCount": 312, "DesignCapacity": 6000, "AppleRawMaxCapacity": 5280, "MaxCapacity": 100,
+        ]
+        #expect(SmartBattery.health(from: appleSilicon) == SmartBattery.Health(cycleCount: 312, capacityPercent: 88))
+
+        // Intel shape: MaxCapacity itself is mAh.
+        let intel: [String: Any] = ["CycleCount": 900, "DesignCapacity": 5000, "MaxCapacity": 3900]
+        #expect(SmartBattery.health(from: intel) == SmartBattery.Health(cycleCount: 900, capacityPercent: 78))
+
+        // Recent macOS: capacities live in a nested BatteryData dictionary,
+        // and a new battery can exceed its design capacity (clamped to 100).
+        let nested: [String: Any] = [
+            "CycleCount": 84, "MaxCapacity": 100,
+            "BatteryData": ["DesignCapacity": 8579, "NominalChargeCapacity": 8984],
+        ]
+        #expect(SmartBattery.health(from: nested) == SmartBattery.Health(cycleCount: 84, capacityPercent: 100))
+
+        // Unknown capacity reads as 0, which HealthScore treats as "no data".
+        #expect(SmartBattery.health(from: ["CycleCount": 10]).capacityPercent == 0)
+    }
+
+    @Test("Registry properties map to the same thermal fields as the text parser")
+    func thermalFromRegistryProperties() {
+        let properties: [String: Any] = [
+            "Temperature": 3055,
+            "AdapterDetails": ["Watts": 96],
+            "PowerTelemetryData": ["SystemPowerIn": 24_500, "BatteryPower": -12_000],
+            "Voltage": 12_600,
+            "InstantAmperage": -1500,
+        ]
+        let thermal = ThermalMonitor.status(fromBatteryProperties: properties)
+        #expect(abs(thermal.batteryTemp - 30.55) < 0.001)
+        #expect(thermal.adapterPower == 96)
+        #expect(abs(thermal.systemPower - 24.5) < 0.001)
+        #expect(abs(thermal.batteryPower + 12.0) < 0.001)
+        #expect(thermal.cpuTemp == 0)
+
+        // No telemetry: battery power falls back to voltage × amperage.
+        let fallback = ThermalMonitor.status(fromBatteryProperties: ["Voltage": 12_000, "InstantAmperage": -2000])
+        #expect(abs(fallback.batteryPower - 24.0) < 0.001)
     }
 }

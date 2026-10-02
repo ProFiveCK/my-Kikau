@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      # Package.resolved is committed, so a dependency can only change through
+      # a reviewed diff. Fail if resolving would alter it.
+      - name: Resolve dependencies (locked)
+        run: swift package resolve --force-resolved-versions
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Assemble app bundle
+        run: ./scripts/build-app.sh
+
+      - name: CLI smoke test
+        run: |
+          build/myKikau.app/Contents/Helpers/mykikau-cli version
+          build/myKikau.app/Contents/Helpers/mykikau-cli policy --json
+
+  lint:
+    name: Lint
+    runs-on: macos-15
+    # Advisory until the existing code has been run through the formatter once;
+    # then remove this line to make lint a required check.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install linters
+        run: brew install swiftlint swiftformat
+      - name: Lint
+        run: ./scripts/lint.sh

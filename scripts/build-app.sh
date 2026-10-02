@@ -78,6 +78,14 @@ if ! otool -l "$app_bundle/Contents/MacOS/myKikau" | grep -F -q "@executable_pat
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$app_bundle/Contents/MacOS/myKikau"
 fi
 
+# Bundle the read-only command-line tool, so a managed Mac has it at a known
+# path: myKikau.app/Contents/Helpers/mykikau-cli
+if [[ -x "$bin_dir/mykikau-cli" ]]; then
+  echo "› bundling mykikau-cli"
+  mkdir -p "$app_bundle/Contents/Helpers"
+  cp "$bin_dir/mykikau-cli" "$app_bundle/Contents/Helpers/mykikau-cli"
+fi
+
 # Copy the Info.plist.
 cp Sources/App/Info.plist "$app_bundle/Contents/Info.plist"
 

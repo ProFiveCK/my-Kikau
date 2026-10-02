@@ -4,7 +4,6 @@ import SwiftUI
 #endif
 
 /// Canonical outcome for a maintenance task run.
-/// Mirrors Mole's `lib/optimize/outcomes.sh` six outcomes.
 public enum MaintenanceOutcome: Codable, Hashable, Sendable {
     /// A change completed, or would complete in dry-run mode.
     case applied(String? = nil)

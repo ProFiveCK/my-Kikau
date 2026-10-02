@@ -14,5 +14,14 @@
       Add one here only when a specific feature genuinely requires it, and note why —
       each exception weakens a protection notarization is meant to guarantee.
     -->
+
+    <!--
+      Uninstall removes the app's legacy "Open at Login" entry by asking System
+      Events. Under the Hardened Runtime that Apple Event is blocked without this
+      entitlement (and NSAppleEventsUsageDescription in Info.plist); the user still
+      has to approve the automation prompt the first time.
+    -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
 </dict>
 </plist>

@@ -1,4 +1,5 @@
 import Combine
+import Core
 import Sparkle
 import SwiftUI
 
@@ -17,9 +18,23 @@ final class UpdaterViewModel: ObservableObject {
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
+        // An administrator can turn off background update checks (the app is
+        // then updated by the organisation's own deployment tooling). Manual
+        // "Check for Updates…" still works.
+        if ManagedPolicy.shared.disableAutomaticUpdates {
+            updaterController.updater.automaticallyChecksForUpdates = false
+        }
         updaterController.updater.publisher(for: \.canCheckForUpdates)
             .receive(on: DispatchQueue.main)
             .assign(to: &$canCheckForUpdates)
+    }
+
+    var automaticallyChecksForUpdates: Bool {
+        get { updaterController.updater.automaticallyChecksForUpdates }
+        set {
+            objectWillChange.send()
+            updaterController.updater.automaticallyChecksForUpdates = newValue
+        }
     }
 
     func checkForUpdates() {

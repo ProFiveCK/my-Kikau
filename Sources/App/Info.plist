@@ -26,6 +26,8 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<false/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>myKikau asks System Events to remove an app's "Open at Login" entry when you uninstall that app.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocationUsageDescription</key>

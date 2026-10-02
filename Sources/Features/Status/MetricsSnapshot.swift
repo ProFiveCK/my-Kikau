@@ -1,7 +1,6 @@
 import Foundation
 
 /// A snapshot of system metrics at a point in time.
-/// Mirrors Mole's `MetricsSnapshot` struct in `cmd/status/metrics.go`.
 public struct MetricsSnapshot: Codable, Hashable {
     public let collectedAt: Date
     public let host: String
@@ -162,7 +161,7 @@ public struct ThermalStatus: Codable, Hashable {
     }
 }
 
-/// Per-interface network throughput. Mirrors Mole's `NetworkStatus`.
+/// Per-interface network throughput.
 public struct NetworkStatus: Codable, Hashable {
     public var name: String
     public var rxRateMBs: Double
@@ -177,7 +176,7 @@ public struct NetworkStatus: Codable, Hashable {
     }
 }
 
-/// GPU status. Mirrors Mole's `GPUStatus`.
+/// GPU status.
 public struct GPUStatus: Codable, Hashable {
     public var name: String
     public var usage: Double        // Percent; -1 means unavailable

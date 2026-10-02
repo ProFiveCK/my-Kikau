@@ -4,74 +4,82 @@ import Features
 import UI
 
 struct CleanView: View {
-    @State private var plans: [CleanScanner.Section: SafeFileDeleter.Plan] = [:]
-    @State private var scanning = false
-    @State private var selectedPlan: SafeFileDeleter.Plan?
-    // Which sections `selectedPlan` covers, so the sheet's completion handler
-    // knows what to clear afterward — a single section for a per-card review,
-    // or every non-empty section for "Review All".
-    @State private var selectedSections: [CleanScanner.Section] = []
+    @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
+    @ObservedObject private var model = CleanModel.shared
+    @State private var review: ReviewRequest?
 
     private let tint = ContentView.SidebarItem.clean.tint
+
+    private var plans: [CleanScanner.Section: SafeFileDeleter.Plan] {
+        coordinator.cleanPlans ?? [:]
+    }
 
     private var totalReclaimable: Int64 {
         plans.values.reduce(0) { $0 + $1.totalReclaimable }
     }
 
+    private var subtitle: String {
+        if model.isScanning { return "Measuring…" }
+        guard coordinator.cleanPlans != nil else { return "Caches, logs, temporary files and the Trash" }
+        return totalReclaimable > 0
+            ? "\(ByteSizeFormatter.format(totalReclaimable)) can be reclaimed"
+            : "Nothing to clean right now"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: ContentView.SidebarItem.clean.icon)
-                    .foregroundStyle(tint)
-                Text("System Cleanup").font(.title2).bold()
-                Spacer()
-                if totalReclaimable > 0 {
-                    Button("Review All (\(ByteSizeFormatter.format(totalReclaimable)))") {
-                        reviewAll()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(tint)
+            ScreenHeader("System Cleanup", subtitle: subtitle, systemImage: ContentView.SidebarItem.clean.icon, tint: tint) {
+                if totalReclaimable > 0, !model.isScanning {
+                    Button("Review All (\(ByteSizeFormatter.format(totalReclaimable)))") { reviewAll() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(tint)
                 }
-                let scanButton = Button(scanning ? "Scanning..." : "Scan") {
-                    scanning = true
-                    Task.detached {
-                        let result = CleanScanner.scanAll()
-                        await MainActor.run {
-                            plans = result
-                            scanning = false
-                        }
-                    }
-                }
-                .tint(tint)
-                .disabled(scanning)
-                if totalReclaimable > 0 {
-                    scanButton.buttonStyle(.bordered)
-                } else {
-                    scanButton.buttonStyle(.borderedProminent)
-                }
+                scanButton
             }
-            .padding()
 
-            if plans.isEmpty && !scanning {
+            if model.isScanning {
+                ScanProgressBar(
+                    "Measuring cleanable data",
+                    detail: "\(model.sectionsDone) of \(model.sectionCount) categories",
+                    fraction: Double(model.sectionsDone) / Double(model.sectionCount),
+                    onCancel: model.cancel
+                )
+                .padding([.horizontal, .bottom])
+            }
+
+            if coordinator.cleanPlans == nil {
+                if !model.isScanning {
+                    ContentUnavailableView {
+                        Label("No Scan Yet", systemImage: "internaldrive")
+                    } description: {
+                        Text("Find caches, logs, temporary files and Trash contents that are safe to remove. Nothing is removed until you review it.")
+                    } actions: {
+                        Button("Scan") { model.scan() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(tint)
+                    }
+                } else {
+                    Spacer()
+                }
+            } else if totalReclaimable == 0 {
                 ContentUnavailableView(
-                    "No Scan Yet",
-                    systemImage: "internaldrive",
-                    description: Text("Click Scan to find caches, logs, and trash to reclaim disk space.")
+                    "Nothing to Clean",
+                    systemImage: "checkmark.circle",
+                    description: Text("No removable caches, logs or Trash contents were found.")
                 )
             } else {
                 let maxReclaimable = plans.values.map(\.totalReclaimable).max() ?? 1
                 ScrollView {
                     VStack(spacing: 10) {
                         ForEach(CleanScanner.Section.allCases) { section in
-                            if let plan = plans[section], !plan.isEmpty {
+                            if let plan = plans[section], !plan.items.isEmpty {
                                 CleanSectionCard(
                                     section: section,
                                     plan: plan,
                                     tint: tint,
                                     maxReclaimable: maxReclaimable
                                 ) {
-                                    selectedSections = [section]
-                                    selectedPlan = plan
+                                    openReview(plan, title: section.displayName, subtitle: section.explanation)
                                 }
                             }
                         }
@@ -80,43 +88,65 @@ struct CleanView: View {
                 }
             }
         }
-        .sheet(item: $selectedPlan) { plan in
-            PlanReviewView(plan: plan, title: "Clean", onCancel: { selectedPlan = nil }) { dryRun in
-                let result = SafeFileDeleter.shared.execute(plan, mode: .trash, dryRun: dryRun, action: "clean")
-                if !dryRun, result.failed == 0 {
-                    for section in selectedSections {
-                        plans[section] = SafeFileDeleter.Plan(items: [], protectedItems: [], missingItems: [])
-                        ScanEverythingCoordinator.shared.clearCleanPlan(for: section)
-                    }
+        .sheet(item: $review) { request in
+            PlanReviewView(
+                plan: request.plan,
+                title: request.title,
+                subtitle: request.subtitle,
+                action: request.action
+            ) { result in
+                if let result, !result.dryRun {
+                    coordinator.removeCleanItems(ids: result.removedIDs)
+                    if !result.removedIDs.isEmpty { AnalyzeScanSession.shared.markStale() }
                 }
-                selectedPlan = nil
-                selectedSections = []
-            }
-        }
-        .onAppear {
-            // Adopt a scan already run from the Status dashboard's "Scan
-            // Everything" instead of forcing a redundant rescan.
-            if plans.isEmpty, let cached = ScanEverythingCoordinator.shared.cleanPlans {
-                plans = cached
+                review = nil
             }
         }
     }
 
-    /// Merges every non-empty section's plan into one, so all of Clean can be
-    /// reviewed and confirmed in a single sheet instead of one card at a time.
+    @ViewBuilder
+    private var scanButton: some View {
+        let button = Button(coordinator.cleanPlans == nil ? "Scan" : "Rescan") { model.scan() }
+            .keyboardShortcut("r", modifiers: .command)
+            .tint(tint)
+            .disabled(model.isScanning)
+        if totalReclaimable > 0 {
+            button.buttonStyle(.bordered)
+        } else {
+            button.buttonStyle(.borderedProminent)
+        }
+    }
+
+    /// Merges every section's plan into one, so all of Clean can be reviewed
+    /// and confirmed in a single sheet instead of one card at a time.
     private func reviewAll() {
-        let sections = CleanScanner.Section.allCases.filter { plans[$0]?.isEmpty == false }
-        let items = sections.flatMap { plans[$0]?.items ?? [] }
-        let protectedItems = sections.flatMap { plans[$0]?.protectedItems ?? [] }
-        let missingItems = sections.flatMap { plans[$0]?.missingItems ?? [] }
-        selectedSections = sections
-        selectedPlan = SafeFileDeleter.Plan(items: items, protectedItems: protectedItems, missingItems: missingItems)
+        let merged = SafeFileDeleter.Plan.merged(CleanScanner.Section.allCases.compactMap { plans[$0] })
+        openReview(merged, title: "Clean", subtitle: nil)
+    }
+
+    /// The scan may be hours old (a background scan, or one left on screen).
+    /// Before asking for confirmation, drop anything that has stopped being a
+    /// target since — the cache of an app that's now open, a temp file that's
+    /// been touched.
+    private func openReview(_ plan: SafeFileDeleter.Plan, title: String, subtitle: String?) {
+        let current = CleanScanner.revalidated(plan)
+        let dropped = plan.items.count - current.items.count
+        if dropped > 0 {
+            coordinator.removeCleanItems(ids: Set(plan.items.map(\.id)).subtracting(current.items.map(\.id)))
+        }
+        guard !current.items.isEmpty else { return }
+        var note = subtitle
+        if dropped > 0 {
+            let left = "\(dropped) item\(dropped == 1 ? " is" : "s are") now in use and \(dropped == 1 ? "was" : "were") left out."
+            note = [subtitle, left].compactMap { $0 }.joined(separator: " ")
+        }
+        review = ReviewRequest(plan: current, title: title, subtitle: note, action: "clean")
     }
 }
 
-/// Card-style row: icon badge, name, item count, a size bar scaled relative to
-/// the biggest category in this scan (so you can tell at a glance which
-/// categories are actually worth reviewing), and the reclaimable size.
+/// Card-style row: icon badge, name, what the category is, a size bar scaled
+/// relative to the biggest category in this scan (so you can tell at a glance
+/// which categories are actually worth reviewing), and the reclaimable size.
 private struct CleanSectionCard: View {
     let section: CleanScanner.Section
     let plan: SafeFileDeleter.Plan
@@ -128,17 +158,21 @@ private struct CleanSectionCard: View {
         maxReclaimable > 0 ? Double(plan.totalReclaimable) / Double(maxReclaimable) * 100 : 0
     }
 
+    private var countText: String {
+        var text = "\(plan.items.count) item\(plan.items.count == 1 ? "" : "s")"
+        if !plan.protectedItems.isEmpty {
+            text += " · \(plan.protectedItems.count) protected"
+        }
+        return text
+    }
+
     var body: some View {
         Button(action: onReview) {
             HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(tint.opacity(0.15))
-                        .frame(width: 36, height: 36)
-                    Image(systemName: section.icon)
-                        .foregroundStyle(tint)
-                        .font(.system(size: 15, weight: .semibold))
-                }
+                Image(systemName: section.icon)
+                    .foregroundStyle(tint)
+                    .font(.system(size: 15, weight: .semibold))
+                    .iconBadge(tint: tint)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(section.displayName)
@@ -151,9 +185,14 @@ private struct CleanSectionCard: View {
                             .foregroundStyle(tint)
                     }
                     SizeBar(percent: relativeSize, color: tint)
-                    Text("\(plan.items.count) items")
+                    Text(section.explanation)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(countText)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption)
@@ -161,8 +200,12 @@ private struct CleanSectionCard: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            .cardSurface()
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(section.displayName), \(ByteSizeFormatter.format(plan.totalReclaimable)), \(countText)")
+        .accessibilityHint("Opens the list of items to review")
+        .accessibilityAddTraits(.isButton)
     }
 }

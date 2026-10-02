@@ -57,8 +57,10 @@ struct StatusView: View {
         }
         .onAppear {
             metricsService.subscribe()
-            totalFreed = OperationLog.shared.totalFreed()
             hasFullDiskAccess = FullDiskAccessCheck.probe()
+            Task {
+                totalFreed = await Task.detached { OperationLog.shared.totalFreed() }.value
+            }
         }
         .onDisappear { metricsService.unsubscribe() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -128,7 +130,7 @@ private struct FullSystemScanCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(coordinator.isScanning ? "Scanning…" : (coordinator.hasResults ? "Rescan" : "Scan")) {
+                Button(coordinator.hasResults ? "Rescan" : "Scan") {
                     Task { await coordinator.scanEverything() }
                 }
                 .buttonStyle(.borderedProminent)
@@ -136,13 +138,12 @@ private struct FullSystemScanCard: View {
             }
 
             if coordinator.isScanning {
-                VStack(alignment: .leading, spacing: 6) {
-                    ProgressView()
-                    Text("Scanning cleanable data, apps, duplicate files, large files, and system settings.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ScanProgressBar(
+                    coordinator.phase?.label ?? "Starting…",
+                    detail: coordinator.progressDetail,
+                    fraction: coordinator.progress,
+                    onCancel: coordinator.cancelScan
+                )
             } else if coordinator.hasResults {
                 Text("\(coordinator.combinedItemCount) items · \(ByteSizeFormatter.format(coordinator.combinedReclaimableBytes)) reclaimable")
                     .font(.title3.bold())
@@ -222,6 +223,15 @@ private struct FullSystemScanCard: View {
                             value: "Check unavailable",
                             tint: .secondary,
                             action: { onNavigate(.optimize) }
+                        )
+                    }
+                    if let artifacts = coordinator.purgeArtifacts {
+                        SummaryPill(
+                            icon: "hammer",
+                            title: "Build Artifacts",
+                            value: "\(artifacts.count) · \(ByteSizeFormatter.format(artifacts.reduce(Int64(0)) { $0 + $1.sizeBytes }))",
+                            tint: ContentView.SidebarItem.purge.tint,
+                            action: { onNavigate(.purge) }
                         )
                     }
                 }
@@ -304,6 +314,10 @@ private struct SummaryPill: View {
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(tint.opacity(0.25), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title): \(value)")
+        .accessibilityHint("Opens \(title)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -492,9 +506,10 @@ private struct HeroHealthCard: View {
                 )
                 if let battery = snapshot.batteries.first {
                     GlassTile(
-                        icon: battery.status == "Charging" ? "battery.100.bolt" : "battery.100",
+                        icon: battery.status == "Discharging" ? "battery.75" : "battery.100.bolt",
                         title: "Battery",
-                        value: "\(Int(battery.percent))% · \(battery.status)"
+                        value: "\(Int(battery.percent))% · \(battery.status)",
+                        caption: batteryCaption(battery)
                     )
                 }
                 GlassTile(
@@ -544,6 +559,14 @@ private struct HeroHealthCard: View {
             ),
             in: RoundedRectangle(cornerRadius: 20)
         )
+    }
+
+    /// Wear: full-charge capacity against design capacity, and cycle count.
+    private func batteryCaption(_ battery: BatteryStatus) -> String? {
+        var parts: [String] = []
+        if battery.capacity > 0 { parts.append("Health \(battery.capacity)%") }
+        if battery.cycleCount > 0 { parts.append("\(battery.cycleCount) cycles") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var memoryActionLabel: String {
@@ -728,22 +751,27 @@ private struct GlassTile: View {
                     .foregroundStyle(.white.opacity(0.85))
                 Spacer()
             }
+            .accessibilityHidden(true)
             Text(value)
                 .font(.subheadline.bold())
                 .foregroundStyle(valueColor)
+                .accessibilityLabel("\(title): \(value)\(caption.map { ", \($0)" } ?? "")")
             if let caption {
                 Text(caption)
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .accessibilityHidden(true)
             }
             if actionLabel != nil || secondaryActionLabel != nil {
                 HStack(spacing: 10) {
                     if let actionLabel, let action {
                         Button(actionLabel, action: action)
                             .disabled(isBusy)
+                            .accessibilityLabel("\(title): \(actionLabel)")
                     }
                     if let secondaryActionLabel, let secondaryAction {
                         Button(secondaryActionLabel, action: secondaryAction)
+                            .accessibilityLabel("\(title): \(secondaryActionLabel)")
                     }
                 }
                 .font(.caption.bold())

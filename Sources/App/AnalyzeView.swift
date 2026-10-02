@@ -45,6 +45,7 @@ struct AnalyzeView: View {
                         Toggle("Show hidden items", isOn: $session.showHidden)
                     } label: {
                         Image(systemName: session.showHidden ? "eye" : "eye.slash")
+                            .accessibilityLabel("Hidden items")
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
@@ -65,11 +66,21 @@ struct AnalyzeView: View {
                         session.scanVolumeOverview()
                     }
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
                 .disabled(session.isScanning)
             }
             .padding()
+
+            if session.isScanning {
+                ScanProgressBar(
+                    "Measuring disk usage",
+                    detail: session.progressPath,
+                    onCancel: session.cancelScan
+                )
+                .padding([.horizontal, .bottom])
+            }
 
             if !deniedFolders.isEmpty {
                 ProtectedFolderAccessBanner(deniedFolders: deniedFolders)
@@ -106,14 +117,10 @@ struct AnalyzeView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(tint)
                 }
-            } else if session.isScanning && session.entries.isEmpty {
-                VStack(spacing: 10) {
-                    ProgressView()
-                    Text("Measuring disk usage…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if session.entries.isEmpty {
+                // Scanning with nothing to show yet — the progress bar above
+                // says what's happening.
+                Spacer()
             } else if mode == .chart {
                 PieChartSection(
                     entries: session.entries,
@@ -145,6 +152,7 @@ struct AnalyzeView: View {
                             .onTapGesture {
                                 if entry.isNavigable { session.scan(entry.url) }
                             }
+                            .contextMenu { if entry.isNavigable { PathMenu(url: entry.url) } }
                     }
                     .frame(minWidth: 260, idealWidth: 320)
                 }
@@ -156,6 +164,11 @@ struct AnalyzeView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             if entry.isNavigable { session.scan(entry.url) }
+                        }
+                        .contextMenu {
+                            if entry.url.path.hasPrefix("/"), !entry.id.hasPrefix("synthetic://") {
+                                PathMenu(url: entry.url)
+                            }
                         }
                 }
             }
@@ -368,6 +381,8 @@ private struct PieChartSection: View {
                     .cornerRadius(4)
                 }
                 .chartLegend(.hidden)
+                .accessibilityLabel("Disk usage chart")
+                .accessibilityValue(slices.prefix(5).map { "\($0.name) \(percentString($0.sizeBytes))" }.joined(separator: ", "))
                 .frame(minWidth: 240, idealWidth: 280, maxWidth: 320, minHeight: 240, idealHeight: 280, maxHeight: 320)
 
                 VStack(spacing: 2) {
@@ -410,6 +425,12 @@ private struct PieChartSection: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(!slice.isNavigable)
+                        .contextMenu {
+                            if let entry = slice.entry, entry.isNavigable { PathMenu(url: entry.url) }
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(slice.name), \(ByteSizeFormatter.format(slice.sizeBytes)), \(percentString(slice.sizeBytes))")
+                        .accessibilityAddTraits(slice.isNavigable ? .isButton : [])
                     }
                 }
             }
@@ -468,5 +489,9 @@ private struct AnalyzeRow: View {
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(entry.name), \(ByteSizeFormatter.format(entry.sizeBytes))")
+        .accessibilityHint(entry.isNavigable ? "Opens this folder" : "")
+        .accessibilityAddTraits(entry.isNavigable ? .isButton : [])
     }
 }

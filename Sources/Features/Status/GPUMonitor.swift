@@ -1,18 +1,18 @@
 import Foundation
 import IOKit
+import Core
 
-/// GPU collector. Ports Mole's `metrics_gpu.go` to native Swift.
+/// GPU collector.
 ///
-/// Static GPU info comes from `system_profiler -json SPDisplaysDataType` (cached 10 min).
+/// Static GPU info comes from `system_profiler -json SPDisplaysDataType` (cached for hours — the hardware doesn't change).
 /// Real-time GPU usage is read directly from IORegistry (`IOAccelerator`'s
-/// `PerformanceStatistics`) — this works for any unprivileged process, unlike
-/// `powermetrics` which needs root. `powermetrics` is kept as a fallback in case
-/// the IORegistry key isn't present on a given macOS/GPU combination.
+/// `PerformanceStatistics`) — this works for any unprivileged process. When the
+/// key isn't present on a given macOS/GPU combination, usage reads as -1.
 /// `memoryUsed`/`memoryTotal` are not exposed by `system_profiler` on macOS and stay 0.
 public enum GPUMonitor {
 
     /// Static GPU info cache TTL (seconds).
-    public static let infoTTL: Double = 600
+    public static let infoTTL: Double = 6 * 3600
 
     /// Real-time GPU usage cache TTL (seconds).
     public static let usageTTL: Double = 5
@@ -23,7 +23,7 @@ public enum GPUMonitor {
     public static func collect(from box: GPUSampleBox, now: Date = Date()) -> [GPUStatus] {
         let nowTs = now.timeIntervalSince1970
 
-        // Static GPU info (cached 10 min).
+        // Static GPU info (cached for hours — the hardware doesn't change).
         if box.cachedGPU.isEmpty || box.lastInfoAt == nil || nowTs - box.lastInfoAt! >= infoTTL {
             if let data = captureDisplaysJSON(),
                let gpus = parseDisplaysJSON(data), !gpus.isEmpty {
@@ -85,56 +85,19 @@ public enum GPUMonitor {
         return gpus
     }
 
-    // MARK: - GPU usage parsing (pure, tested)
-
-    /// Parses `powermetrics --samplers gpu_power` output for GPU active residency.
-    /// Returns the active residency percentage, or 100 - idle when only idle is present,
-    /// or -1 when unavailable.
-    public static func parseGPUUsage(_ output: String) -> Double {
-        // "GPU HW active residency: X.XX%"
-        if let pct = matchResidency(output, pattern: "GPU HW active residency:\\s+([\\d.]+)%") {
-            return pct
-        }
-        // Fallback: "GPU idle residency: X.XX%" -> active = 100 - idle.
-        if let idle = matchResidency(output, pattern: "GPU idle residency:\\s+([\\d.]+)%") {
-            return 100.0 - idle
-        }
-        return -1
-    }
-
-    static func matchResidency(_ output: String, pattern: String) -> Double? {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(output.startIndex..<output.endIndex, in: output)
-        guard let match = regex.firstMatch(in: output, range: range), match.numberOfRanges >= 2 else {
-            return nil
-        }
-        let captureRange = match.range(at: 1)
-        guard let substringRange = Range(captureRange, in: output) else { return nil }
-        return Double(output[substringRange])
-    }
-
     // MARK: - subprocess
 
     /// Captures `system_profiler -json SPDisplaysDataType` output as Data.
     static func captureDisplaysJSON() -> Data? {
-        guard let output = NetworkMonitor.runSync("/usr/sbin/system_profiler", ["-json", "SPDisplaysDataType"]) else {
-            return nil
-        }
-        return output.data(using: .utf8)
+        let output = ProcessRunner.runBlocking("/usr/sbin/system_profiler", ["-json", "SPDisplaysDataType"], timeout: 20)
+        return output.succeeded ? output.stdout.data(using: .utf8) : nil
     }
 
-    /// Captures live GPU usage. Tries IORegistry first (works unprivileged),
-    /// falls back to `powermetrics` (requires root — only ever succeeds if
-    /// myKikau is somehow already running elevated, which it normally isn't).
+    /// Captures live GPU usage from IORegistry, or -1 when this GPU/macOS
+    /// combination doesn't publish it. (The only other source, `powermetrics`,
+    /// needs root — which myKikau never has — so there is no fallback.)
     static func captureGPUUsage() -> Double {
-        let viaIOKit = captureGPUUsageViaIOKit()
-        if viaIOKit >= 0 { return viaIOKit }
-
-        guard let output = NetworkMonitor.runSync("/usr/bin/powermetrics",
-                                                   ["--samplers", "gpu_power", "-i", "500", "-n", "1"]) else {
-            return -1
-        }
-        return parseGPUUsage(output)
+        captureGPUUsageViaIOKit()
     }
 
     /// Reads live GPU utilization from IORegistry's `IOAccelerator` service —

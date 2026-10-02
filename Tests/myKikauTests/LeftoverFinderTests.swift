@@ -25,7 +25,44 @@ struct LeftoverFinderTests {
     func groupContainerMatches() {
         let bundleID = "com.example.myapp"
         #expect(LeftoverFinder.matchesBundleID("group.\(bundleID)", bundleID: bundleID) == true)
-        #expect(LeftoverFinder.matchesBundleID("group.\(bundleID).shared", bundleID: bundleID) == true)
+        #expect(LeftoverFinder.matchesBundleID("ABCDE12345.\(bundleID)", bundleID: bundleID) == true)
+        #expect(LeftoverFinder.matchesBundleID("ABCDE12345.group.\(bundleID)", bundleID: bundleID) == true)
+        // A longer group name is some other group's container.
+        #expect(LeftoverFinder.matchesBundleID("group.\(bundleID).shared", bundleID: bundleID) == false)
+        #expect(LeftoverFinder.matchesBundleID("group.\(bundleID)lication", bundleID: bundleID) == false)
+    }
+
+    @Test("A sibling app whose ID extends this one does NOT match")
+    func siblingAppDoesNotMatch() {
+        // Uninstalling Chrome must not sweep Chrome Canary; same for the
+        // IntelliJ editions.
+        #expect(LeftoverFinder.matchesBundleID("com.google.Chrome.canary", bundleID: "com.google.Chrome") == false)
+        #expect(LeftoverFinder.matchesBundleID("com.google.Chrome.canary.plist", bundleID: "com.google.Chrome") == false)
+        #expect(LeftoverFinder.matchesBundleID("com.jetbrains.intellij.ce", bundleID: "com.jetbrains.intellij") == false)
+        #expect(LeftoverFinder.matchesBundleID("com.google.Chrome.plist", bundleID: "com.google.Chrome") == true)
+        #expect(LeftoverFinder.matchesBundleID("com.google.Chrome.savedState", bundleID: "com.google.Chrome") == true)
+    }
+
+    @Test("ByHost matches <bundleID>.<host id>.plist only")
+    func byHostMatching() {
+        let bundleID = "com.example.myapp"
+        #expect(LeftoverFinder.matchesByHost("\(bundleID).A1B2C3D4-0000-1111-2222-333344445555.plist", bundleID: bundleID) == true)
+        #expect(LeftoverFinder.matchesByHost("\(bundleID).001122334455.plist", bundleID: bundleID) == true)
+        // Another app's ByHost file that merely contains this ID.
+        #expect(LeftoverFinder.matchesByHost("\(bundleID).helper.A1B2C3D4-0000-1111-2222-333344445555.plist", bundleID: bundleID) == false)
+        #expect(LeftoverFinder.matchesByHost("x.\(bundleID).A1B2C3D4-0000-1111-2222-333344445555.plist", bundleID: bundleID) == false)
+        #expect(LeftoverFinder.matchesByHost("\(bundleID).plist", bundleID: bundleID) == false)
+    }
+
+    @Test("Bundle IDs that can't serve as evidence are rejected")
+    func unusableBundleIDs() {
+        #expect(LeftoverFinder.isUsableBundleID("com") == false)
+        #expect(LeftoverFinder.isUsableBundleID("") == false)
+        #expect(LeftoverFinder.isUsableBundleID("com..app") == false)
+        #expect(LeftoverFinder.isUsableBundleID("com.apple.finder") == false)
+        #expect(LeftoverFinder.isUsableBundleID("com.crowdstrike.falcon.Agent") == false)
+        #expect(LeftoverFinder.isUsableBundleID("com.example.myapp") == true)
+        #expect(LeftoverFinder.isUsableBundleID("com.apple.dt.Xcode") == true)
     }
 
     @Test("Different bundle ID does NOT match (safety regression)")

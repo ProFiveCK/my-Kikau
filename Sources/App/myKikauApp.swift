@@ -16,6 +16,18 @@ struct myKikauApp: App {
     // subscribes this Scene to its existing @Published changes so the menu
     // bar icon can react to the last Scan Everything result.
     @ObservedObject private var scanCoordinator = ScanEverythingCoordinator.shared
+    @AppStorage(AppStorageKey.developerToolsEnabled) private var developerTools = false
+
+    init() {
+        BackgroundScanScheduler.shared.start()
+        // Log entries are written asynchronously; make sure the last ones
+        // reach the disk before the process exits.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: nil
+        ) { _ in
+            OperationLog.shared.flush()
+        }
+    }
 
     /// Whether the menu bar icon's accent dot should show. Deliberately a
     /// high bar (500MB, matching the "worth flagging" threshold already used
@@ -51,6 +63,18 @@ struct myKikauApp: App {
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesCommand(updaterViewModel: updaterViewModel)
+            }
+            // ⌘1…⌘9 jump straight to a screen, in sidebar order.
+            CommandMenu("Go") {
+                let items = ContentView.SidebarItem.visibleCases(developerTools: developerTools)
+                ForEach(Array(items.enumerated()), id: \.element) { index, item in
+                    if index < 9 {
+                        Button(item.label) { AppNavigation.shared.pendingSelection = item }
+                            .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                    } else {
+                        Button(item.label) { AppNavigation.shared.pendingSelection = item }
+                    }
+                }
             }
         }
 
@@ -91,6 +115,7 @@ struct myKikauApp: App {
         // was no Launch at Login option anywhere.
         Settings {
             SettingsView()
+                .environmentObject(updaterViewModel)
         }
     }
 
@@ -216,14 +241,36 @@ struct ContentView: View {
             }
         }
 
-        /// Sidebar items shown to the user. Purge is pulled from this release
-        /// (see docs/IMPLEMENTATION_PLAN.md) but the case, its view, and its
-        /// scanner are left intact to bring back later — just excluded here.
-        /// History is replaced by About (a raw operation log wasn't useful as
-        /// its own sidebar destination) — the operation log itself still
-        /// exists and is reachable from About via "Reveal Log File".
-        static var visibleCases: [SidebarItem] {
-            allCases.filter { $0 != .purge && $0 != .history }
+        /// Sidebar items shown to the user, in order. Purge is a developer
+        /// feature, shown only when "Developer tools" is on in Settings; any
+        /// feature an administrator has disabled by policy is left out.
+        static func visibleCases(developerTools: Bool) -> [SidebarItem] {
+            let policy = ManagedPolicy.shared
+            return allCases.filter { item in
+                if item == .purge, !developerTools { return false }
+                if item == .status || item == .about || item == .history { return true }
+                return !policy.isFeatureDisabled(item.rawValue)
+            }
+        }
+
+        /// Sidebar grouping.
+        enum Group: String, CaseIterable, Identifiable {
+            case overview = "Overview"
+            case cleanUp = "Clean Up"
+            case inspect = "Inspect"
+            case maintain = "Maintain"
+            case app = "myKikau"
+            var id: String { rawValue }
+        }
+
+        var group: Group {
+            switch self {
+            case .status: .overview
+            case .clean, .uninstall, .duplicates, .purge: .cleanUp
+            case .analyze, .network: .inspect
+            case .optimize: .maintain
+            case .history, .about: .app
+            }
         }
 
         var icon: String {
@@ -254,27 +301,48 @@ struct ContentView: View {
             case .network: .indigo
             case .optimize: .orange
             case .purge: .brown
-            case .history: .secondary
+            case .history: .mint
             case .about: .secondary
             }
         }
     }
 
     // Status is the landing screen — it acts as the dashboard/hub that
-    // launches every other feature.
-    @State private var selection: SidebarItem? = .status
+    // launches every other feature. The last screen used is restored on launch.
+    @State private var selection: SidebarItem?
+    @AppStorage(AppStorageKey.lastSidebarSelection) private var storedSelection = SidebarItem.status.rawValue
+    @AppStorage(AppStorageKey.developerToolsEnabled) private var developerTools = false
     @ObservedObject private var navigation = AppNavigation.shared
+    @ObservedObject private var deletionActivity = DeletionActivity.shared
+
+    private var visibleItems: [SidebarItem] {
+        SidebarItem.visibleCases(developerTools: developerTools)
+    }
 
     var body: some View {
+        let items = visibleItems
         NavigationSplitView {
-            List(SidebarItem.visibleCases, selection: $selection) { item in
-                SidebarRow(item: item, selected: selection == item)
-                    .tag(item)
+            List(selection: $selection) {
+                ForEach(SidebarItem.Group.allCases) { group in
+                    let groupItems = items.filter { $0.group == group }
+                    if !groupItems.isEmpty {
+                        Section(group.rawValue) {
+                            ForEach(groupItems) { item in
+                                SidebarRow(item: item, selected: selection == item)
+                                    .tag(item)
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle("myKikau")
-            .frame(minWidth: 180)
+            .frame(minWidth: 190)
+            // No switching screens while files are being removed.
+            .disabled(deletionActivity.isRunning)
         } detail: {
-            switch selection {
+            // A screen that's hidden (developer tools off, or disabled by
+            // policy) falls back to Status — e.g. a stale stored selection.
+            switch selection.flatMap({ items.contains($0) ? $0 : nil }) ?? .status {
             case .status: StatusView(onNavigate: { selection = $0 })
             case .clean: CleanView()
             case .uninstall: UninstallView()
@@ -282,18 +350,24 @@ struct ContentView: View {
             case .duplicates: DuplicatesView()
             case .network: NetworkView()
             case .optimize: OptimizeView()
+            case .purge: PurgeView()
+            case .history: HistoryView()
             case .about: AboutView()
-            // .purge and .history intentionally omitted — both pulled from the
-            // sidebar (see SidebarItem.visibleCases); fall through to `default`
-            // below if ever reached (e.g. stale @AppStorage selection from a
-            // previous build). Their views/data still exist, just unrouted.
-            default: StatusView(onNavigate: { selection = $0 })
             }
         }
-        // Picked up when the menu bar HUD requests a specific screen (e.g. "Open Clean…").
+        .onAppear {
+            if selection == nil {
+                selection = SidebarItem(rawValue: storedSelection) ?? .status
+            }
+        }
+        .onChange(of: selection) { _, value in
+            if let value { storedSelection = value.rawValue }
+        }
+        // Picked up when the menu bar HUD or a ⌘-number shortcut requests a
+        // specific screen.
         .onReceive(navigation.$pendingSelection) { pending in
             guard let pending else { return }
-            selection = pending
+            if items.contains(pending), !deletionActivity.isRunning { selection = pending }
             navigation.pendingSelection = nil
         }
     }
@@ -318,5 +392,6 @@ private struct SidebarRow: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
     }
 }

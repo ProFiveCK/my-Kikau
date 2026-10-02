@@ -2,7 +2,6 @@ import Foundation
 import Core
 
 /// Scans project directories for build artifacts (node_modules, target, build, dist, .build, venv).
-/// Mirrors Mole's `lib/clean/project.sh` purge discovery + `MOLE_PURGE_TARGETS`.
 public enum ProjectArtifactScanner {
     /// Artifact directory names that are safe to purge.
     public static let targetNames: Set<String> = [
@@ -21,7 +20,7 @@ public enum ProjectArtifactScanner {
         ".cache",
     ]
 
-    /// Default project search paths (mirrors Mole's MOLE_PURGE_DEFAULT_SEARCH_PATHS).
+    /// Default project search paths.
     public static let defaultSearchPaths: [String] = [
         "~/Projects",
         "~/GitHub",
@@ -33,7 +32,7 @@ public enum ProjectArtifactScanner {
     ]
 
     /// A discovered artifact to potentially purge.
-    public struct Artifact: Identifiable, Hashable {
+    public struct Artifact: Identifiable, Hashable, Sendable {
         public let id: String
         public let url: URL
         public let projectName: String
@@ -104,10 +103,12 @@ public enum ProjectArtifactScanner {
                 guard isDir else { continue }
                 let projectName = project.lastPathComponent
 
+                // Hidden entries are listed on purpose: several targets
+                // (.build, .venv, .next, .gradle, .turbo, .cache) are dot-named.
                 guard let contents = try? fm.contentsOfDirectory(
                     at: project,
                     includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-                    options: [.skipsHiddenFiles]
+                    options: []
                 ) else { continue }
 
                 for entry in contents where targetNames.contains(entry.lastPathComponent) {

@@ -2,10 +2,10 @@ import Foundation
 import Core
 
 /// Executes maintenance tasks by ID and reports structured results.
-/// Mirrors Mole's `lib/optimize/tasks.sh` dispatch + `outcomes.sh` result model.
 ///
 /// Safety rules enforced (per AGENTS.md):
-/// - Every file removal routes through `SafeFileDeleter`, never raw `Process` rm.
+/// - Every file removal routes through `SafeFileDeleter`, never raw `Process` rm,
+///   and reports the exact paths in `Result.output` before anything is removed.
 /// - `PathProtection.shared.shouldProtect` is checked before any path operation.
 /// - Dry-run mode returns synthetic results without spawning processes.
 /// - Sudo tasks skip rather than prompt in this phase.
@@ -28,7 +28,15 @@ public final class MaintenanceRunner {
     private let deleter: SafeFileDeleter
     private let opLog: OperationLog
 
-    /// 30 days, matching Mole's `MOLE_SAVED_STATE_AGE_DAYS`.
+    /// Paths the task in hand would remove (dry run) or did remove, surfaced
+    /// in `Result.output` so the user sees exactly which files a task touches
+    /// before confirming it. Reset at the start of every `run`.
+    private var details: [String] = []
+    /// Most recent successful real run per action, read from the operation
+    /// log once per scan instead of once per task.
+    private var lastSuccessCache: [String: Date]?
+
+    /// Saved states untouched for this long are considered stale.
     private let savedStateAgeDays: Double = 30
 
     /// Minimum days between recommending a task that has no real "is this
@@ -50,10 +58,12 @@ public final class MaintenanceRunner {
     /// Runs a single task by ID.
     public func run(taskID: String, dryRun: Bool) async -> Result {
         let start = Date()
+        details = []
         let outcome = await dispatch(taskID: taskID, dryRun: dryRun)
         let duration = Date().timeIntervalSince(start)
-        let result = Result(outcome: outcome, durationSeconds: duration)
+        let result = Result(outcome: outcome, output: details, durationSeconds: duration)
         logResult(taskID: taskID, result: result, dryRun: dryRun)
+        if !dryRun { lastSuccessCache = nil }
         return result
     }
 
@@ -72,7 +82,6 @@ public final class MaintenanceRunner {
         switch taskID {
         // Non-sudo, fully implemented tasks.
         case "launch_services": return await runLaunchServices(dryRun: dryRun)
-        case "quarantine": return await runQuarantineCleanup(dryRun: dryRun)
         case "prevent_dsstore": return await runPreventDSStore(dryRun: dryRun)
         case "legacy_overrides": return await runLegacyOverrides(dryRun: dryRun)
         case "finder_cache": return await runFinderCache(dryRun: dryRun)
@@ -81,13 +90,19 @@ public final class MaintenanceRunner {
         case "shared_file_lists": return await runSharedFileLists(dryRun: dryRun)
         case "broken_configs": return await runBrokenConfigs(dryRun: dryRun)
         case "launch_agents": return await runLaunchAgentsCleanup(dryRun: dryRun)
-        case "spotlight_orphans": return await runSpotlightOrphans(dryRun: dryRun)
         case "network_privacy": return runNetworkPrivacyAudit()
 
         // Sudo tasks — deferred pending sudo-prompting UX.
         case "dns_spotlight", "network_cache", "network_stack",
              "disk_permissions", "spotlight_index", "periodic", "disk_verify":
             return .skipped("Requires sudo — not implemented in this phase")
+
+        // Retired: both edited live system databases/preferences in place,
+        // outside the deletion funnel and with no way to undo.
+        case "quarantine":
+            return .unavailable("Removed — the quarantine history is a live system database and a security record")
+        case "spotlight_orphans":
+            return .unavailable("Removed — Spotlight preferences are system-managed")
 
         // Active-database / complex tasks — deferred for safety.
         case "sqlite_vacuum":
@@ -125,47 +140,24 @@ public final class MaintenanceRunner {
             return (1, "sudo credentials not available")
         }
 
-        let process = Process()
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
+        let output: ProcessRunner.Output
         if requiresSudo {
-            process.launchPath = "/usr/bin/sudo"
-            process.arguments = ["-n"] + [executable] + arguments
+            output = await ProcessRunner.run("/usr/bin/sudo", ["-n", executable] + arguments, timeout: 120)
         } else {
-            process.launchPath = executable
-            process.arguments = arguments
+            output = await ProcessRunner.run(executable, arguments, timeout: 120)
         }
-
-        do {
-            try process.run()
-        } catch {
-            return (1, "Failed to launch \(executable): \(error.localizedDescription)")
+        if output.launchFailed {
+            return (1, "Failed to launch \(executable): \(output.stderr)")
         }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return (Int(process.terminationStatus), output)
+        if output.timedOut {
+            return (1, "\(executable) timed out")
+        }
+        return (Int(output.exitCode), output.stdout + output.stderr)
     }
 
     /// Checks whether sudo credentials are cached (non-interactive).
     func sudoAvailable() async -> Bool {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.launchPath = "/usr/bin/sudo"
-            process.arguments = ["-n", "true"]
-            process.standardOutput = Pipe()
-            process.standardError = Pipe()
-            do {
-                try process.run()
-                process.waitUntilExit()
-                continuation.resume(returning: process.terminationStatus == 0)
-            } catch {
-                continuation.resume(returning: false)
-            }
-        }
+        await ProcessRunner.run("/usr/bin/sudo", ["-n", "true"], timeout: 10).succeeded
     }
 
     // MARK: - Task: launch_services
@@ -215,50 +207,6 @@ public final class MaintenanceRunner {
             return path
         }
         return nil
-    }
-
-    // MARK: - Task: quarantine
-
-    /// Quarantine DB path under the (injectable) home.
-    func quarantineDBPath() -> URL {
-        home.appendingPathComponent("Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2")
-    }
-
-    private func runQuarantineCleanup(dryRun: Bool) async -> MaintenanceOutcome {
-        let dbPath = quarantineDBPath()
-        guard FileManager.default.fileExists(atPath: dbPath.path) else {
-            return .unchanged("Quarantine database not present")
-        }
-        if PathProtection.shared.shouldProtect(dbPath) {
-            return .unchanged("Quarantine database is protected")
-        }
-
-        // Count rows first.
-        let count = await runProcess(
-            "/usr/bin/sqlite3",
-            arguments: [dbPath.path, "SELECT COUNT(*) FROM LSQuarantineEvent;"],
-            dryRun: false
-        )
-        guard count.exitCode == 0, let rows = Int(count.output.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            return .failed("Failed to inspect quarantine database")
-        }
-        if rows == 0 {
-            return .unchanged("Quarantine database already clean")
-        }
-
-        if dryRun {
-            return .applied("Would clear \(rows) quarantine entr\(rows == 1 ? "y" : "ies")")
-        }
-
-        let delete = await runProcess(
-            "/usr/bin/sqlite3",
-            arguments: [dbPath.path, "DELETE FROM LSQuarantineEvent; VACUUM;"],
-            dryRun: false
-        )
-        if delete.exitCode == 0 {
-            return .applied("Quarantine history cleared (\(rows) entries)")
-        }
-        return .failed("Failed to clean quarantine database")
     }
 
     // MARK: - Task: prevent_dsstore
@@ -424,10 +372,13 @@ public final class MaintenanceRunner {
 
         // Route through SafeFileDeleter — never raw rm.
         let plan = deleter.preview(targets, category: .leftover)
-        let filtered = plan.items.map { $0.url }
+        guard !plan.items.isEmpty else {
+            return .unchanged("No removable saved states older than \(Int(savedStateAgeDays)) days")
+        }
+        details = plan.items.map(\.url.path)
 
         if dryRun {
-            return .applied("Would remove \(filtered.count) old saved state(s)")
+            return .applied("Would remove \(plan.items.count) old saved state(s)")
         }
 
         let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.saved_state")
@@ -454,16 +405,15 @@ public final class MaintenanceRunner {
             for entry in entries where ["sfl2", "sfl3"].contains(entry.pathExtension) {
                 // Skip recent-documents list (user data, not a cache).
                 if entry.lastPathComponent.contains("ApplicationRecentDocuments") { continue }
-                let lint = await runProcess(
-                    "/usr/bin/plutil", arguments: ["-lint", entry.path], dryRun: false
-                )
-                if lint.exitCode != 0 { corrupt.append(entry) }
+                if !isValidPropertyList(entry) { corrupt.append(entry) }
             }
         }
 
         if corrupt.isEmpty { return .unchanged("Shared file lists all healthy") }
 
         let plan = deleter.preview(corrupt, category: .leftover)
+        guard !plan.items.isEmpty else { return .unchanged("Shared file lists all healthy") }
+        details = plan.items.map(\.url.path)
         if dryRun {
             return .applied("Would repair \(plan.items.count) corrupted shared file list(s)")
         }
@@ -488,19 +438,24 @@ public final class MaintenanceRunner {
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         ) {
+            let recentlyWritten = Date().addingTimeInterval(-60)
             for entry in entries where entry.pathExtension == "plist" {
-                // Skip protected/system plists.
+                // Skip protected plists and anything macOS itself owns.
                 if PathProtection.shared.shouldProtect(entry) { continue }
-                let lint = await runProcess(
-                    "/usr/bin/plutil", arguments: ["-lint", entry.path], dryRun: false
-                )
-                if lint.exitCode != 0 { corrupt.append(entry) }
+                if entry.lastPathComponent.hasPrefix("com.apple.") || entry.lastPathComponent.hasPrefix(".") { continue }
+                // cfprefsd rewrites preference files in place; one that's
+                // mid-write can look corrupt for a moment.
+                if let modified = try? entry.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                   modified > recentlyWritten { continue }
+                if !isValidPropertyList(entry) { corrupt.append(entry) }
             }
         }
 
         if corrupt.isEmpty { return .unchanged("All preference files valid") }
 
         let plan = deleter.preview(corrupt, category: .leftover)
+        guard !plan.items.isEmpty else { return .unchanged("All preference files valid") }
+        details = plan.items.map(\.url.path)
         if dryRun {
             return .applied("Would repair \(plan.items.count) corrupted preference file(s)")
         }
@@ -509,6 +464,16 @@ public final class MaintenanceRunner {
             return .failed("Repaired \(result.succeeded), failed \(result.failed) preference file(s)")
         }
         return .applied("Repaired \(result.succeeded) corrupted preference file(s)")
+    }
+
+    /// True if the file parses as a property list (any format). Done
+    /// in-process — no `plutil` subprocess per file.
+    private func isValidPropertyList(_ url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+            // Unreadable isn't the same as corrupt — leave it alone.
+            return true
+        }
+        return (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) != nil
     }
 
     // MARK: - Task: launch_agents
@@ -535,15 +500,18 @@ public final class MaintenanceRunner {
 
         if broken.isEmpty { return .unchanged("Launch Agents all healthy") }
 
-        // Unload before removing.
-        for plist in broken {
-            _ = await runProcess("/bin/launchctl", arguments: ["unload", plist.path], dryRun: dryRun)
+        let plan = deleter.preview(broken, category: .leftover)
+        guard !plan.items.isEmpty else { return .unchanged("Launch Agents all healthy") }
+        details = plan.items.map(\.url.path)
+        if dryRun {
+            return .applied("Would remove \(plan.items.count) broken Launch Agent(s)")
         }
 
-        let plan = deleter.preview(broken, category: .leftover)
-        if dryRun {
-            return .applied("Would remove \(broken.count) broken Launch Agent(s)")
+        // Unload before removing.
+        for item in plan.items {
+            _ = await runProcess("/bin/launchctl", arguments: ["bootout", "gui/\(getuid())", item.url.path], dryRun: false)
         }
+
         let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.launch_agents")
         if result.failed > 0 {
             return .failed("Removed \(result.succeeded), failed \(result.failed) Launch Agent(s)")
@@ -552,92 +520,18 @@ public final class MaintenanceRunner {
     }
 
     /// Checks whether a launch agent plist points at a missing binary.
-    private func isLaunchAgentBroken(_ plist: URL) -> Bool {
+    ///
+    /// Only an *absolute* path that doesn't exist counts. launchd resolves a
+    /// bare name ("sh", "open") through PATH, and a binary on an external or
+    /// network volume is merely unavailable right now, not broken — neither
+    /// is evidence the agent is dead. `com.apple.*` agents are never judged.
+    func isLaunchAgentBroken(_ plist: URL) -> Bool {
+        if plist.lastPathComponent.hasPrefix("com.apple.") { return false }
         guard let dict = NSDictionary(contentsOf: plist) as? [String: Any] else { return false }
-        if let program = dict["Program"] as? String,
-           !FileManager.default.fileExists(atPath: program) {
-            return true
-        }
-        if let args = dict["ProgramArguments"] as? [String], let first = args.first,
-           !FileManager.default.fileExists(atPath: first) {
-            return true
-        }
-        return false
-    }
-
-    // MARK: - Task: spotlight_orphans
-
-    private func runSpotlightOrphans(dryRun: Bool) async -> MaintenanceOutcome {
-        let domain = "com.apple.Spotlight"
-        let read = await runProcess(
-            "/usr/bin/defaults",
-            arguments: ["read", domain, "OrderedItems"],
-            dryRun: false
-        )
-        guard read.exitCode == 0, !read.output.isEmpty else {
-            return .unchanged("No Spotlight search rules found")
-        }
-
-        // Parse the OrderedItems output for bundle IDs whose apps are no longer installed.
-        // This is a best-effort text parse; Mole uses a more robust approach with mdfind.
-        let lines = read.output.split(separator: "\n")
-        var orphans: [String] = []
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            // Look for bundle-id-like entries.
-            if trimmed.contains("\"") {
-                let parts = trimmed.components(separatedBy: "\"")
-                if parts.count >= 2, parts[1].contains(".") {
-                    let bundleID = parts[1]
-                    if !appIsInstalled(bundleID: bundleID) {
-                        orphans.append(bundleID)
-                    }
-                }
-            }
-        }
-
-        if orphans.isEmpty { return .unchanged("Spotlight search rules already clean") }
-
-        if dryRun {
-            return .applied("Would remove \(orphans.count) orphan Spotlight rule(s)")
-        }
-
-        // Rewrite via defaults — remove orphan entries.
-        var removed = 0
-        var failed = 0
-        for bundleID in orphans {
-            let del = await runProcess(
-                "/usr/bin/defaults",
-                arguments: ["delete", domain, bundleID],
-                dryRun: false
-            )
-            if del.exitCode == 0 { removed += 1 } else { failed += 1 }
-        }
-
-        if failed > 0 { return .failed("Removed \(removed), failed \(failed) orphan rule(s)") }
-        return .applied("Removed \(removed) orphan Spotlight rule(s)")
-    }
-
-    /// Best-effort check whether an app with the given bundle ID is installed.
-    private func appIsInstalled(bundleID: String) -> Bool {
-        // Check /Applications and ~/Applications for a matching bundle.
-        let appDirs = [
-            URL(fileURLWithPath: "/Applications"),
-            home.appendingPathComponent("Applications"),
-        ]
-        for dir in appDirs {
-            if let entries = try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-            ) {
-                for entry in entries where entry.pathExtension == "app" {
-                    if let bundle = Bundle(path: entry.path),
-                       bundle.bundleIdentifier == bundleID {
-                        return true
-                    }
-                }
-            }
-        }
-        return false
+        if let label = dict["Label"] as? String, label.hasPrefix("com.apple.") { return false }
+        let executable = (dict["Program"] as? String) ?? (dict["ProgramArguments"] as? [String])?.first
+        guard let executable, executable.hasPrefix("/"), !executable.hasPrefix("/Volumes/") else { return false }
+        return !FileManager.default.fileExists(atPath: executable)
     }
 
     // MARK: - Diagnostic: network_privacy
@@ -669,13 +563,17 @@ public final class MaintenanceRunner {
     /// or `nil` if it has never succeeded. Reads the same operation log every
     /// other task's "last run" UI already relies on, so no new state.
     private func daysSinceLastSuccess(taskID: String) -> Double? {
-        let action = "optimize.\(taskID)"
-        guard let entry = opLog.recent(limit: 10_000).first(where: {
-            $0.action == action && $0.outcome == .success && !$0.dryRun
-        }) else {
-            return nil
+        if lastSuccessCache == nil {
+            var cache: [String: Date] = [:]
+            // Newest first, so the first hit per action is the latest run.
+            for entry in opLog.recent(limit: 10_000)
+            where entry.outcome == .success && !entry.dryRun && cache[entry.action] == nil {
+                cache[entry.action] = entry.timestamp
+            }
+            lastSuccessCache = cache
         }
-        return max(0, Date().timeIntervalSince(entry.timestamp) / 86400)
+        guard let timestamp = lastSuccessCache?["optimize.\(taskID)"] else { return nil }
+        return max(0, Date().timeIntervalSince(timestamp) / 86400)
     }
 
     private func daysDescription(_ days: Double) -> String {
@@ -688,16 +586,15 @@ public final class MaintenanceRunner {
 
     private func logResult(taskID: String, result: Result, dryRun: Bool) {
         let action = "optimize.\(taskID)"
-        let detail = result.output.joined(separator: "; ")
         let (outcome, sizeBytes) = mapOutcome(result.outcome, dryRun: dryRun)
         opLog.append(.init(
             action: action,
             path: "",
             sizeBytes: sizeBytes,
-            mode: .permanent,
+            mode: .trash,
             outcome: outcome,
             dryRun: dryRun,
-            detail: result.outcome.detail ?? (detail.isEmpty ? nil : detail)
+            detail: result.outcome.detail
         ))
     }
 

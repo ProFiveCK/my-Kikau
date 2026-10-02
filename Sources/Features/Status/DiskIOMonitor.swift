@@ -1,7 +1,7 @@
 import Foundation
 import IOKit
 
-/// Disk IO rate collector. Ports Mole's `collectDiskIO` (`metrics_disk.go:475`) to native Swift.
+/// Disk IO rate collector.
 ///
 /// Reads cumulative read/write byte counters via IOKit (`IOBlockStorageDriver` statistics),
 /// diffs them against the previous sample to produce MB/s rates. The first sample primes

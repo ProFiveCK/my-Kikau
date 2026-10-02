@@ -1,6 +1,6 @@
 # myKikau Agent Guide
 
-This file is the shared source of truth for any AI agent working on this repo. Logic is reimplemented natively in Swift, informed by Mole (Go + Bash, GPL-3.0) at `../Mole`.
+This file is the shared source of truth for any AI agent working on this repo.
 
 ## Project
 
@@ -8,34 +8,30 @@ myKikau is a native Swift macOS 14+ system cleanup and optimisation app. It perf
 
 ## Architecture
 
-SwiftPM package with four modules:
-- `App` — `@main` entry, scene composition (window + MenuBarExtra), menu bar HUD
-- `Core` — `SafeFileDeleter`, `PathProtection`, `OperationLog`, `Permissions`, `ByteSizeFormatter`
-- `Features` — Clean, Uninstall, Analyze, Status, Optimize, Purge, Network modules
-- `UI` — shared `PlanReviewView`, reusable components
+SwiftPM package with five modules:
+- `App` — `@main` entry, scene composition (window + MenuBarExtra), menu bar HUD, per-screen models (`ScreenModels.swift`)
+- `Core` — `SafeFileDeleter`, `PathProtection`, `OperationLog`, `ProcessRunner`, `ManagedPolicy`, `ExclusionStore`, `Log`, `ByteSizeFormatter`
+- `Features` — Clean, Uninstall, Analyze, Duplicates, Status, Optimize, Purge, Network, Diagnostics
+- `UI` — shared `PlanReviewView`, `Theme`, reusable components
+- `CLI` — `mykikau-cli`, read-only reporting (never deletes)
+
+Scan results live in `ScanEverythingCoordinator`; screens read and update them there rather than holding their own copies.
 
 ## Critical Safety Rules
 
-- Route every deletion through `SafeFileDeleter`. It routes to Trash by default, logs to the operation log, honors dry-run, and checks `PathProtection`.
-- Never modify protected paths: `/System`, `/Library/Apple`, or `com.apple.*` system bundles (see `PathProtection.swift` for the full list).
-- Exact bundle-ID / exact-path evidence for leftovers. Never vendor-prefix, generic-name, or fallback-wildcard matching.
-- Preview (dry-run) before every destructive action. The user confirms the plan.
+- Route every deletion through `SafeFileDeleter`. It routes to Trash by default, logs to the operation log, honors dry-run, and checks `PathProtection` — at preview and again at execution. Never trust a plan.
+- Permanent removal exists only for items physically inside a Trash folder. Nothing else may bypass the Trash.
+- Never modify protected paths: `/System`, `/Library/Apple`, `com.apple.*` system bundles, user credential/data stores, security and device-management software, the app's own log, and user/administrator exclusions (see `PathProtection.swift` for the full list).
+- A Clean target must be data an app rebuilds by itself. Never a profile, database, archive, or anything a user created. Never target a shared container (`~/Library/Caches`, `~/Library/Logs`, the temp folder) itself — target its children.
+- Exact bundle-ID / exact-path evidence for leftovers. Never vendor-prefix, generic-name, substring, or fallback-wildcard matching. `com.vendor.app` must not match `com.vendor.app.other`.
+- Never edit a live system database or system-owned preference in place.
+- Preview before every destructive action: the user sees the exact items and confirms. A count is not a preview.
+- Spawn subprocesses only through `ProcessRunner`, and never from code that runs on every metrics tick.
+- Scans must be cancellable and must not run on the main thread.
+- Any new safety rule gets a regression test in `Tests/myKikauTests/SafetyRegressionTests.swift`.
 - Reversible (Trash) over permanent delete wherever the surface expects recoverability.
 - Never auto-delete Software Update staging trees, active databases, or active dev-tool state.
 - Operation log appends to `~/Library/Logs/myKikau/operations.log` as JSONL. Respect the user toggle.
-
-## Reference Files (Mole)
-
-When porting logic, consult:
-- `../Mole/lib/core/app_protection_data.sh` — protected bundle IDs
-- `../Mole/lib/core/app_protection.sh` — protection matching logic
-- `../Mole/lib/core/file_ops.sh` — `mole_delete` deletion funnel
-- `../Mole/lib/clean/*.sh` — per-category cleanup target paths
-- `../Mole/lib/uninstall/*.sh` — app inventory + leftover teardown
-- `../Mole/lib/optimize/catalog.sh` — maintenance task catalog
-- `../Mole/cmd/status/metrics.go` + `metrics_health.go` — metrics + health score
-- `../Mole/lib/clean/project.sh` — purge targets (node_modules, target, build, dist, .build, venv)
-- `../Mole/AGENTS.md` — safety rules and product direction
 
 ## Build
 

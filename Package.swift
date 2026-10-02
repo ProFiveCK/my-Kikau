@@ -7,7 +7,9 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "myKikau", targets: ["App"])
+        .executable(name: "myKikau", targets: ["App"]),
+        // Read-only command-line companion for scripts and fleet tooling.
+        .executable(name: "mykikau-cli", targets: ["CLI"]),
     ],
     dependencies: [
         // Auto-update framework for direct (non-App-Store) distribution.
@@ -26,6 +28,11 @@ let package = Package(
             ],
             path: "Sources/App",
             exclude: ["Info.plist"]
+        ),
+        .executableTarget(
+            name: "CLI",
+            dependencies: ["Core", "Features"],
+            path: "Sources/CLI"
         ),
         .target(
             name: "Core",

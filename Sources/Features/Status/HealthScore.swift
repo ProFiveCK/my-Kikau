@@ -4,7 +4,6 @@ import SwiftUI
 #endif
 
 /// Calculates a 0-100 system health score from metrics.
-/// Ported directly from Mole's `cmd/status/metrics_health.go` formula.
 public enum HealthScore {
     // Weights
     private static let cpuWeight = 30.0

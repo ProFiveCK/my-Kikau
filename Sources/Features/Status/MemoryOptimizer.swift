@@ -1,4 +1,5 @@
 import Foundation
+import Core
 
 /// Performs a conservative memory pressure relief action.
 ///
@@ -30,32 +31,20 @@ public enum MemoryOptimizer {
             )
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: purgePath)
-        process.standardOutput = Pipe()
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-        } catch {
+        let output = await ProcessRunner.run(purgePath, timeout: 60)
+        if output.launchFailed {
             return Result(
                 succeeded: false,
                 message: "Memory purge could not start. Use View Memory Users to find heavy apps."
             )
         }
-
-        process.waitUntilExit()
-        if process.terminationStatus == 0 {
+        if output.succeeded {
             return Result(succeeded: true, message: "Inactive file cache purged.")
         }
-
-        let data = (try? errorPipe.fileHandleForReading.readToEnd()) ?? Data()
-        let detail = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = output.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         return Result(
             succeeded: false,
-            message: (detail?.isEmpty == false) ? detail! : "Memory purge could not complete."
+            message: detail.isEmpty ? "Memory purge could not complete." : detail
         )
     }
 }

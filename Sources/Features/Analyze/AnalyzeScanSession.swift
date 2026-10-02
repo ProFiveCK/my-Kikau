@@ -13,6 +13,8 @@ public final class AnalyzeScanSession: ObservableObject {
     /// a real directory URL once the user has drilled in.
     @Published public private(set) var currentDir: URL?
     @Published public private(set) var isScanning = false
+    /// Folder the running scan is measuring right now, for the progress line.
+    @Published public private(set) var progressPath: String?
     @Published public private(set) var lastScanAt: Date?
     @Published public private(set) var isOverview = false
     /// Startup volume name, filled in once an overview scan has run — used for
@@ -38,6 +40,9 @@ public final class AnalyzeScanSession: ObservableObject {
     /// slow walk finishing after the user has already navigated somewhere else
     /// and leaving `isScanning` stuck on.
     private var scanToken = 0
+    /// The walk currently in flight. Cancelled when a newer scan starts or
+    /// the user presses Cancel, so a superseded walk stops reading the disk.
+    private var activeWalk: DiskScanner.Token?
 
     private init() {
         let defaults = UserDefaults.standard
@@ -59,17 +64,33 @@ public final class AnalyzeScanSession: ObservableObject {
         let token = scanToken
         let key = cacheKey(for: directory)
         if useCache, let cached = cachedEntries[key] {
+            activeWalk?.cancel()
             entries = cached
             lastScanAt = cachedScanDates[key]
-            isScanning = false
+            finishWalk()
             return
         }
         isScanning = true
+        if !useCache {
+            // Re-measure this folder and everything beneath it.
+            DiskScanner.SizeCache.shared.invalidate(directory.path)
+            let prefix = directory.path.hasSuffix("/") ? directory.path : directory.path + "/"
+            // Listings beneath this folder, and listings of the folders that
+            // contain it (their totals included it), are all out of date.
+            cachedEntries = cachedEntries.filter { key, _ in
+                if key.hasPrefix(prefix) { return false }
+                if key == Self.overviewCacheKey { return false }
+                let listed = key.components(separatedBy: "|hidden=").first ?? key
+                return !(directory.path == listed || directory.path.hasPrefix(listed.hasSuffix("/") ? listed : listed + "/"))
+            }
+        }
         let includeHidden = showHidden
+        let walk = beginWalk(token: token)
         Task.detached(priority: .userInitiated) {
-            let result = DiskScanner.scan(directory, includeHidden: includeHidden)
+            let result = DiskScanner.scan(directory, includeHidden: includeHidden, token: walk)
             let scannedAt = Date()
             await MainActor.run {
+                guard !walk.isCancelled else { return }
                 self.cachedEntries[key] = result
                 self.cachedScanDates[key] = scannedAt
                 // A newer scan may have started while this walk ran — if so,
@@ -77,9 +98,47 @@ public final class AnalyzeScanSession: ObservableObject {
                 guard token == self.scanToken else { return }
                 self.entries = result
                 self.lastScanAt = scannedAt
-                self.isScanning = false
+                self.finishWalk()
             }
         }
+    }
+
+    /// Cancels whatever walk is running and starts a fresh token whose
+    /// progress reports land on `progressPath`.
+    private func beginWalk(token: Int) -> DiskScanner.Token {
+        activeWalk?.cancel()
+        let walk = DiskScanner.Token { [weak self] path in
+            Task { @MainActor in
+                guard let self, self.scanToken == token, self.isScanning else { return }
+                self.progressPath = path
+            }
+        }
+        activeWalk = walk
+        progressPath = nil
+        return walk
+    }
+
+    private func finishWalk() {
+        isScanning = false
+        progressPath = nil
+        activeWalk = nil
+    }
+
+    /// Something was removed elsewhere in the app, so every remembered size
+    /// may be wrong. The listing on screen stays (with its original scan
+    /// time); the next navigation or rescan measures again.
+    public func markStale() {
+        DiskScanner.SizeCache.shared.removeAll()
+        cachedEntries.removeAll()
+        cachedScanDates.removeAll()
+    }
+
+    /// Stops the scan in progress. Whatever was on screen before stays.
+    public func cancelScan() {
+        guard isScanning else { return }
+        activeWalk?.cancel()
+        scanToken += 1
+        finishWalk()
     }
 
     /// Scans the whole-disk overview — the root of the hierarchy: measured
@@ -90,25 +149,35 @@ public final class AnalyzeScanSession: ObservableObject {
         scanToken += 1
         let token = scanToken
         if useCache, let cached = cachedEntries[Self.overviewCacheKey] {
+            activeWalk?.cancel()
             entries = cached
             lastScanAt = cachedScanDates[Self.overviewCacheKey]
-            isScanning = false
+            finishWalk()
             if let info = DiskScanner.startupVolumeInfo() { volumeName = info.name }
             return
         }
         isScanning = true
+        if !useCache {
+            // A fresh overview re-measures everything, so every remembered
+            // folder total and every cached listing is stale.
+            DiskScanner.SizeCache.shared.removeAll()
+            cachedEntries.removeAll()
+            cachedScanDates.removeAll()
+        }
+        let walk = beginWalk(token: token)
         Task.detached(priority: .userInitiated) {
             let info = DiskScanner.startupVolumeInfo()
-            let result = DiskScanner.volumeOverview()
+            let result = DiskScanner.volumeOverview(token: walk)
             let scannedAt = Date()
             await MainActor.run {
+                guard !walk.isCancelled else { return }
                 self.cachedEntries[Self.overviewCacheKey] = result
                 self.cachedScanDates[Self.overviewCacheKey] = scannedAt
                 guard token == self.scanToken else { return }
                 if let info { self.volumeName = info.name }
                 self.entries = result
                 self.lastScanAt = scannedAt
-                self.isScanning = false
+                self.finishWalk()
             }
         }
     }
@@ -184,6 +253,7 @@ public final class AnalyzeScanSession: ObservableObject {
             let result = DiskScanner.volumeOverview()
             let scannedAt = Date()
             await MainActor.run {
+                guard !result.isEmpty else { return }
                 self.cachedEntries[Self.overviewCacheKey] = result
                 self.cachedScanDates[Self.overviewCacheKey] = scannedAt
             }

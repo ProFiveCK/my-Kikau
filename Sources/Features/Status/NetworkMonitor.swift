@@ -2,11 +2,9 @@ import Foundation
 import Darwin
 
 /// Per-interface network throughput collector.
-/// Ports Mole's `metrics_network.go` to native Swift.
 public enum NetworkMonitor {
 
     /// Interface name prefixes that are not real network traffic and should be ignored.
-    /// Matches Mole's noise interface list.
     static let noisePrefixes = ["lo", "awdl", "utun", "llw", "bridge", "gif", "stf", "xhc", "anpi", "ap"]
 
     /// Minimum interval between rate samples (seconds). Shorter calls return the previous rate.
@@ -28,7 +26,7 @@ public enum NetworkMonitor {
             return box.lastResults
         }
 
-        guard let (rxByName, txByName) = readNetstatIB() else {
+        guard let (rxByName, txByName) = readInterfaceCounters() else {
             return box.lastResults
         }
 
@@ -93,52 +91,39 @@ public enum NetworkMonitor {
         return Double(delta) / 1024 / 1024 / elapsed
     }
 
-    // MARK: - netstat -ib parsing
+    // MARK: - Interface counters
 
-    /// Parses `netstat -ib` output into per-interface (rx bytes by name, tx bytes by name).
-    /// The `-b` flag adds Ibytes/Obytes columns. Returns nil when parsing fails entirely.
-    public static func parseNetstatIB(_ output: String) -> (rxByName: [String: UInt64], txByName: [String: UInt64])? {
+    /// Cumulative bytes in/out per interface, read straight from the kernel's
+    /// routing table (`NET_RT_IFLIST2`) — the same source `netstat -ib` prints,
+    /// with 64-bit counters and no subprocess.
+    public static func readInterfaceCounters() -> (rxByName: [String: UInt64], txByName: [String: UInt64])? {
+        var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
+        var length = 0
+        guard sysctl(&mib, UInt32(mib.count), nil, &length, nil, 0) == 0, length > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: length)
+        guard sysctl(&mib, UInt32(mib.count), &buffer, &length, nil, 0) == 0 else { return nil }
+
         var rxByName: [String: UInt64] = [:]
         var txByName: [String: UInt64] = [:]
-        var sawHeader = false
-
-        for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            // Header row: Name  Mtu  Network  Address  Ibytes  Obytes ...
-            if trimmed.hasPrefix("Name") {
-                sawHeader = true
-                continue
+        buffer.withUnsafeBytes { raw in
+            var offset = 0
+            while offset + MemoryLayout<if_msghdr>.size <= length {
+                let header = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr.self)
+                let messageLength = Int(header.ifm_msglen)
+                guard messageLength > 0 else { break }
+                if Int32(header.ifm_type) == RTM_IFINFO2, offset + MemoryLayout<if_msghdr2>.size <= length {
+                    let info = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr2.self)
+                    var nameBuffer = [CChar](repeating: 0, count: Int(IF_NAMESIZE))
+                    if if_indextoname(UInt32(info.ifm_index), &nameBuffer) != nil {
+                        let name = String(cString: nameBuffer)
+                        rxByName[name] = info.ifm_data.ifi_ibytes
+                        txByName[name] = info.ifm_data.ifi_obytes
+                    }
+                }
+                offset += messageLength
             }
-            guard sawHeader else { continue }
-
-            // Real `netstat -ib` columns (confirmed against actual macOS output —
-            // the original 6-column assumption here was wrong and silently read
-            // Ipkts as bytes-in and Ierrs as bytes-out, which is why throughput
-            // always showed ~0):
-            //   Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll
-            // Some rows omit Address, so byte fields are parsed from the end.
-            let fields = trimmed.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-            guard fields.count >= 9 else { continue }
-
-            let name = fields[0]
-            guard !name.isEmpty, name != "Name" else { continue }
-
-            guard let (rx, tx) = parseByteFields(fields) else { continue }
-
-            rxByName[name, default: 0] += rx
-            txByName[name, default: 0] += tx
         }
-
-        guard sawHeader else { return nil }
-        return (rxByName, txByName)
-    }
-
-    /// Extracts Ibytes/Obytes from a `netstat -ib` field array.
-    static func parseByteFields(_ fields: [String]) -> (rx: UInt64, tx: UInt64)? {
-        guard fields.count >= 9 else { return nil }
-        guard let rx = UInt64(fields[fields.count - 5]),
-              let tx = UInt64(fields[fields.count - 2]) else { return nil }
-        return (rx, tx)
+        return rxByName.isEmpty ? nil : (rxByName, txByName)
     }
 
     // MARK: - IP resolution via getifaddrs
@@ -188,32 +173,6 @@ public enum NetworkMonitor {
         box.lastIPAt = now
     }
 
-    // MARK: - subprocess
-
-    /// Runs `netstat -ib` and returns parsed per-interface byte maps.
-    private static func readNetstatIB() -> (rxByName: [String: UInt64], txByName: [String: UInt64])? {
-        let out = runSync("/usr/sbin/netstat", ["-ib"])
-        guard let output = out else { return nil }
-        return parseNetstatIB(output)
-    }
-
-    /// Synchronous subprocess capture with a short timeout (best-effort).
-    static func runSync(_ command: String, _ args: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: command)
-        process.arguments = args
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-        process.waitUntilExit()
-        guard let data = try? pipe.fileHandleForReading.readToEnd(), !data.isEmpty else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
 }
 
 /// Mutable box holding prev-sample state for network rate collection.

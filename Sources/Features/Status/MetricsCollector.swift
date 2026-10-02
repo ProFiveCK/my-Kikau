@@ -4,12 +4,11 @@ import IOKit
 import IOKit.ps
 
 /// Collects system metrics concurrently using TaskGroup.
-/// Mirrors Mole's `cmd/status/metrics.go` Collector with fan-out collection.
 public final class MetricsCollector {
     public static let shared = MetricsCollector()
 
-    private var prevCPUTotal: UInt64 = 0
-    private var prevCPUIdle: UInt64 = 0
+    /// Previous user/system/idle/nice tick counters.
+    private var prevCPUTicks: (UInt32, UInt32, UInt32, UInt32) = (0, 0, 0, 0)
     private var lastCPUAt: Date = .distantPast
 
     // Network rate collection state (per-instance to diff successive samples).
@@ -86,81 +85,109 @@ public final class MetricsCollector {
             return CPUStatus(usage: 0, coreCount: ProcessInfo.processInfo.activeProcessorCount)
         }
 
-        let total = UInt64(cpuInfo.cpu_ticks.0) + UInt64(cpuInfo.cpu_ticks.1) + UInt64(cpuInfo.cpu_ticks.2) + UInt64(cpuInfo.cpu_ticks.3)
-        let idle = UInt64(cpuInfo.cpu_ticks.2)
-
+        let ticks = cpuInfo.cpu_ticks
         var usage: Double = 0
         let now = Date()
         if lastCPUAt != .distantPast && now.timeIntervalSince(lastCPUAt) < 60 {
-            let deltaTotal = total - prevCPUTotal
-            let deltaIdle = idle - prevCPUIdle
-            if deltaTotal > 0 {
-                usage = (1.0 - Double(deltaIdle) / Double(deltaTotal)) * 100
-            }
+            usage = Self.cpuUsage(previous: prevCPUTicks, current: ticks)
         }
-        prevCPUTotal = total
-        prevCPUIdle = idle
+        prevCPUTicks = ticks
         lastCPUAt = now
 
         let logical = ProcessInfo.processInfo.activeProcessorCount
         return CPUStatus(usage: usage, coreCount: logical, logicalCPU: logical)
     }
 
+    /// Busy share of the interval between two tick samples, 0…100.
+    ///
+    /// The kernel's counters are 32-bit and wrap after weeks of uptime, so
+    /// each delta uses wrapping subtraction: across a wrap it still yields
+    /// the true (small) difference instead of trapping.
+    static func cpuUsage(
+        previous: (UInt32, UInt32, UInt32, UInt32),
+        current: (UInt32, UInt32, UInt32, UInt32)
+    ) -> Double {
+        let user = UInt64(current.0 &- previous.0)
+        let system = UInt64(current.1 &- previous.1)
+        let idle = UInt64(current.2 &- previous.2)
+        let nice = UInt64(current.3 &- previous.3)
+        let total = user + system + idle + nice
+        guard total > 0 else { return 0 }
+        return min(100, max(0, (1.0 - Double(idle) / Double(total)) * 100))
+    }
+
     // MARK: - Memory
 
     private func collectMemory() async -> MemoryStatus {
-        var stats = vm_statistics()
-        var count = mach_msg_type_size_t(MemoryLayout<vm_statistics>.size / MemoryLayout<integer_t>.size)
+        let totalMemory = UInt64(ProcessInfo.processInfo.physicalMemory)
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
         let result = withUnsafeMutablePointer(to: &stats) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebPtr in
-                host_statistics(mach_host_self(), HOST_VM_INFO, rebPtr, &count)
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, rebPtr, &count)
             }
         }
-
-        let pageSize = UInt64(vm_kernel_page_size)
-        let totalMemory = UInt64(ProcessInfo.processInfo.physicalMemory)
-
         guard result == KERN_SUCCESS else {
             return MemoryStatus(total: totalMemory)
         }
+        return Self.memoryStatus(from: stats, pageSize: UInt64(vm_kernel_page_size), total: totalMemory, pressureLevel: Self.kernelPressureLevel())
+    }
 
-        let free = UInt64(stats.free_count) * pageSize
-        let inactive = UInt64(stats.inactive_count) * pageSize
-        let active = UInt64(stats.active_count) * pageSize
-        let wired = UInt64(stats.wire_count) * pageSize
-        let used = active + wired
-        let available = free + inactive
-        let usedPercent = totalMemory > 0 ? Double(used) / Double(totalMemory) * 100 : 0
+    /// "Memory Used" the way Activity Monitor defines it: app memory
+    /// (anonymous pages that aren't purgeable) + wired + compressed. Cached
+    /// files and free pages are both available, so a Mac with little *free*
+    /// memory is not under pressure — macOS fills free RAM with cache by design.
+    static func memoryStatus(
+        from stats: vm_statistics64,
+        pageSize: UInt64,
+        total: UInt64,
+        pressureLevel: Int32?
+    ) -> MemoryStatus {
+        let internalPages = UInt64(stats.internal_page_count)
+        let purgeable = UInt64(stats.purgeable_count)
+        let appPages = internalPages > purgeable ? internalPages - purgeable : 0
+        let used = min(total, (appPages + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)) * pageSize)
+        let available = total > used ? total - used : 0
+        let usedPercent = total > 0 ? Double(used) / Double(total) * 100 : 0
+        return MemoryStatus(
+            used: used, total: total, available: available,
+            usedPercent: usedPercent, pressure: pressureName(level: pressureLevel)
+        )
+    }
 
-        // Pressure level via host_statistics64 (HOST_VM_INFO64 flavor)
-        // On macOS the memory pressure is inferred from the free/inactive ratio.
-        let pressure: String
-        if totalMemory > 0 {
-            let freePercent = Double(free + inactive) / Double(totalMemory) * 100
-            if freePercent < 10 { pressure = "critical" }
-            else if freePercent < 20 { pressure = "warn" }
-            else { pressure = "normal" }
-        } else {
-            pressure = "normal"
+    /// The kernel's own memory-pressure verdict — the figure behind Activity
+    /// Monitor's pressure graph — rather than a guess from page counts.
+    static func kernelPressureLevel() -> Int32? {
+        var level: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 else { return nil }
+        return level
+    }
+
+    /// 1 = normal, 2 = warning, 4 = critical (`dispatch_source_memorypressure_flags_t`).
+    static func pressureName(level: Int32?) -> String {
+        switch level {
+        case 4: "critical"
+        case 2: "warn"
+        default: "normal"
         }
-
-        return MemoryStatus(used: used, total: totalMemory, available: available, usedPercent: usedPercent, pressure: pressure)
     }
 
     // MARK: - Disk
 
     private func collectDisks() async -> [DiskStatus] {
-        var results: [DiskStatus] = []
-
-        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: "/") {
-            let total = (attrs[.systemSize] as? UInt64) ?? 0
-            let free = (attrs[.systemFreeSize] as? UInt64) ?? 0
-            let used = total - free
-            let percent = total > 0 ? Double(used) / Double(total) * 100 : 0
-            results.append(DiskStatus(mount: "/", used: used, total: total, usedPercent: percent))
+        // "Free" is what Finder calls Available: it counts space macOS will
+        // purge on demand. Analyse uses the same figure, so the two screens agree.
+        let root = URL(fileURLWithPath: "/")
+        guard let values = try? root.resourceValues(forKeys: [
+            .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey,
+        ]), let totalCapacity = values.volumeTotalCapacity, totalCapacity > 0 else {
+            return []
         }
-
-        return results
+        let total = UInt64(totalCapacity)
+        let free = UInt64(max(0, values.volumeAvailableCapacityForImportantUsage ?? Int64(values.volumeAvailableCapacity ?? 0)))
+        let used = total > free ? total - free : 0
+        return [DiskStatus(mount: "/", used: used, total: total, usedPercent: Double(used) / Double(total) * 100)]
     }
 
     // MARK: - Battery
@@ -170,45 +197,60 @@ public final class MetricsCollector {
 
         let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
         let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as [CFTypeRef]
+        // Wear data (cycle count, capacity vs design) isn't in the power-source
+        // description; it comes from the battery's registry entry.
+        let health = SmartBattery.properties().map(SmartBattery.health(from:))
 
         for source in sources {
             guard let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] else {
                 continue
             }
+            // Only the internal battery — a UPS or a Bluetooth accessory is
+            // also a "power source".
+            if let type = desc[kIOPSTypeKey] as? String, type != kIOPSInternalBatteryType { continue }
             let percent = (desc[kIOPSCurrentCapacityKey] as? Double) ?? 0
             let maxCap = (desc[kIOPSMaxCapacityKey] as? Double) ?? 100
             let pct = maxCap > 0 ? percent / maxCap * 100 : 0
-            let isCharging = (desc[kIOPSIsChargingKey] as? Bool) ?? false
-            let status = isCharging ? "Charging" : "Discharging"
 
             batteries.append(BatteryStatus(
                 percent: pct,
-                status: status,
-                cycleCount: 0,
-                capacity: 100
+                status: Self.batteryStatusText(
+                    isCharging: (desc[kIOPSIsChargingKey] as? Bool) ?? false,
+                    isCharged: (desc[kIOPSIsChargedKey] as? Bool) ?? false,
+                    onACPower: (desc[kIOPSPowerSourceStateKey] as? String) == kIOPSACPowerValue
+                ),
+                cycleCount: health?.cycleCount ?? 0,
+                capacity: health?.capacityPercent ?? 0
             ))
         }
         return batteries
+    }
+
+    static func batteryStatusText(isCharging: Bool, isCharged: Bool, onACPower: Bool) -> String {
+        if isCharging { return "Charging" }
+        if isCharged { return "Charged" }
+        // Plugged in but holding (optimised charging, or a full battery).
+        if onACPower { return "On Power" }
+        return "Discharging"
     }
 
     // MARK: - Uptime
 
     private func collectUptime() async -> UInt64 {
         var bootTime = timeval()
-        var size = Int(MemoryLayout<timeval>.size)
-        let name = "kern.boottime"
-        withUnsafeMutablePointer(to: &bootTime) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: size) { rebPtr in
-                sysctlbyname(name, rebPtr, &size, nil, 0)
-            }
-        }
+        var size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &bootTime, &size, nil, 0) == 0, bootTime.tv_sec > 0 else { return 0 }
         return UInt64(max(0, Date().timeIntervalSince1970 - Double(bootTime.tv_sec)))
     }
 
     // MARK: - Host
 
+    /// The computer name from Sharing settings. Read once: it's not a
+    /// per-tick value, and `ProcessInfo.hostName` can block on a DNS lookup.
+    private static let hostName: String = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+
     private func collectHost() async -> String {
-        ProcessInfo.processInfo.hostName
+        Self.hostName
     }
 
     // MARK: - Network

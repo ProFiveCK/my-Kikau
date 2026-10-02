@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Core
 import Features
+import UI
 
 /// Maintenance, redesigned around a scan-first flow: instead of a flat grid
 /// of technical checkboxes with no signal on which ones actually matter, a
@@ -22,6 +23,7 @@ struct OptimizeView: View {
     @State private var inFlight: Set<String> = []
     @State private var lastRuns: [String: MaintenanceRunStatus] = [:]
     @State private var guidedTask: MaintenanceCatalog.Task?
+    @State private var confirmingFix = false
 
     private let tint = ContentView.SidebarItem.optimize.tint
 
@@ -73,8 +75,8 @@ struct OptimizeView: View {
                 }
                 Spacer()
                 if scanState == .scanned && !selectedTasks.isEmpty {
-                    Button(applying ? "Fixing…" : "Fix \(selectedTasks.count) Issue\(selectedTasks.count == 1 ? "" : "s")") {
-                        Task { await applySelected() }
+                    Button(applying ? "Fixing…" : "Fix \(selectedTasks.count) Issue\(selectedTasks.count == 1 ? "" : "s")…") {
+                        confirmingFix = true
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(tint)
@@ -82,6 +84,7 @@ struct OptimizeView: View {
                 }
                 if scanState == .scanned {
                     Button(scanButtonTitle) { Task { await runScan() } }
+                        .keyboardShortcut("r", modifiers: .command)
                         .buttonStyle(.bordered)
                         .tint(tint)
                         .disabled(scanState == .scanning || applying)
@@ -147,6 +150,17 @@ struct OptimizeView: View {
         .onAppear { reloadLastRuns() }
         .sheet(item: $guidedTask) { task in
             GuidedRepairSheet(task: task, result: scanResults[task.id])
+        }
+        .sheet(isPresented: $confirmingFix) {
+            FixConfirmationSheet(
+                tasks: MaintenanceCatalog.tasks.filter { selectedTasks.contains($0.id) },
+                scanResults: scanResults,
+                onCancel: { confirmingFix = false },
+                onConfirm: {
+                    confirmingFix = false
+                    Task { await applySelected() }
+                }
+            )
         }
     }
 
@@ -227,6 +241,77 @@ struct OptimizeView: View {
             )
         }
         lastRuns = statuses
+    }
+}
+
+/// What "Fix" is about to do, spelled out: each selected task, and — for the
+/// ones that move files to the Trash — exactly which files.
+private struct FixConfirmationSheet: View {
+    let tasks: [MaintenanceCatalog.Task]
+    let scanResults: [String: MaintenanceRunner.Result]
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    private var fileCount: Int {
+        tasks.reduce(0) { $0 + (scanResults[$1.id]?.output.count ?? 0) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Fix \(tasks.count) Issue\(tasks.count == 1 ? "" : "s")").font(.headline)
+                Text(fileCount > 0
+                    ? "\(fileCount) file\(fileCount == 1 ? "" : "s") will move to the Trash, where you can put them back. Everything else is a setting or cache macOS rebuilds."
+                    : "These refresh settings and caches that macOS rebuilds on its own. No files are removed.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+
+            Divider()
+
+            List {
+                ForEach(tasks) { task in
+                    Section {
+                        if let detail = scanResults[task.id]?.outcome.detail, !detail.isEmpty {
+                            Text(detail)
+                                .font(.subheadline)
+                        }
+                        ForEach(scanResults[task.id]?.output ?? [], id: \.self) { path in
+                            let url = URL(fileURLWithPath: path)
+                            VStack(alignment: .leading) {
+                                Text(url.lastPathComponent).lineLimit(1)
+                                Text(url.deletingLastPathComponent().path)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            .help(path)
+                            .contextMenu { PathMenu(url: url) }
+                        }
+                    } header: {
+                        Text(task.name)
+                    } footer: {
+                        Text(task.summary)
+                    }
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Fix", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+        }
+        .frame(minWidth: 520, minHeight: 420)
     }
 }
 
@@ -460,9 +545,9 @@ private struct MaintenanceTaskCard: View {
         switch task.id {
         case "finder_cache", "launch_services", "shared_file_lists":
             return ("Finder", "sparkles.rectangle.stack", .blue)
-        case "saved_state", "quarantine":
+        case "saved_state":
             return ("Privacy", "clock.arrow.circlepath", .purple)
-        case "broken_configs", "legacy_overrides", "spotlight_orphans", "font_cache":
+        case "broken_configs", "legacy_overrides", "font_cache":
             return ("Repair", "wrench.and.screwdriver", .orange)
         case "prevent_dsstore", "launch_agents":
             return ("Startup", "bolt.horizontal.circle", .green)
@@ -564,6 +649,11 @@ private struct MaintenanceTaskCard: View {
                         .foregroundStyle(result.outcome.color)
                         .lineLimit(2)
                 }
+                if let result, !result.output.isEmpty {
+                    Text("\(result.output.count) file\(result.output.count == 1 ? "" : "s") — listed before anything is changed")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
@@ -574,6 +664,18 @@ private struct MaintenanceTaskCard: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(task.name). \(task.summary)")
+        .accessibilityValue(accessibilityState)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var accessibilityState: String {
+        var parts: [String] = []
+        if let result { parts.append(result.outcome.label) }
+        if let detail = result?.outcome.detail, !detail.isEmpty { parts.append(detail) }
+        if task.kind != .guidedDiagnostic { parts.append(selected ? "Selected" : "Not selected") }
+        return parts.joined(separator: ", ")
     }
 
     private var tintColor: Color { ContentView.SidebarItem.optimize.tint }
