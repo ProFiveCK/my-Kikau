@@ -270,15 +270,15 @@ public struct PlanReviewView: View {
 
     static func title(for category: SafeFileDeleter.Category) -> String {
         switch category {
-        case .app: "Application"
-        case .leftover: "Leftovers & Settings"
-        case .cache: "Caches"
-        case .log: "Logs & Temporary Files"
-        case .artifact: "Build Artifacts"
-        case .duplicate: "Duplicate Copies"
-        case .largeFile: "Large Files"
-        case .installer: "Installers"
-        case .trash: "In the Trash"
+        case .app: String(localized: "Application")
+        case .leftover: String(localized: "Leftovers & Settings")
+        case .cache: String(localized: "Caches")
+        case .log: String(localized: "Logs & Temporary Files")
+        case .artifact: String(localized: "Build Artifacts")
+        case .duplicate: String(localized: "Duplicate Copies")
+        case .largeFile: String(localized: "Large Files")
+        case .installer: String(localized: "Installers")
+        case .trash: String(localized: "In the Trash")
         }
     }
 

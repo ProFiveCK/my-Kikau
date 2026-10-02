@@ -25,3 +25,6 @@ website-upload/
 
 # Logs
 *.log
+
+# Localisation extraction scratch
+.build-loc/

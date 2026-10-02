@@ -391,10 +391,10 @@ private struct AdvancedSettings: View {
 
     private var helperStatusText: String {
         switch helperStatus {
-        case .notBundled: "Not included in this build"
-        case .notInstalled: "Not installed"
-        case .requiresApproval: "Waiting for approval in System Settings"
-        case .enabled: "Installed"
+        case .notBundled: String(localized: "Not included in this build")
+        case .notInstalled: String(localized: "Not installed")
+        case .requiresApproval: String(localized: "Waiting for approval in System Settings")
+        case .enabled: String(localized: "Installed")
         }
     }
 

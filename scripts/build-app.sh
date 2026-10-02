@@ -110,6 +110,15 @@ else
   echo "⚠ no app icon found; bundle will have no icon"
 fi
 
+# Compile the String Catalog into per-language .lproj folders. With only the
+# English source strings in the catalog this produces nothing — the keys are
+# the English text — so the app simply runs in English.
+if [[ -f Resources/Localizable.xcstrings ]]; then
+  echo "› compiling Localizable.xcstrings"
+  xcrun xcstringstool compile Resources/Localizable.xcstrings \
+    --output-directory "$app_bundle/Contents/Resources"
+fi
+
 # Copy the menu bar (status item) icon — a separate, simplified monochrome
 # vector distinct from AppIcon.icns. It's loaded at runtime with isTemplate =
 # true so AppKit recolors it automatically for the light/dark menu bar, the

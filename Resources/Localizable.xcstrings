@@ -1,0 +1,1244 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "%@ (%lld/%lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$lld/%3$lld)"
+          }
+        }
+      }
+    },
+    "%@ file(s) stored only in iCloud were skipped — checking them would download them." : {
+
+    },
+    "%@ in %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ in %2$@"
+          }
+        }
+      }
+    },
+    "%@ over the last few minutes" : {
+
+    },
+    "%@ · up %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · up %2$@"
+          }
+        }
+      }
+    },
+    "%@ — %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ — %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@"
+          }
+        }
+      }
+    },
+    "%@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@. %2$@"
+          }
+        }
+      }
+    },
+    "%@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@"
+          }
+        }
+      }
+    },
+    "%@: %@%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@%3$@"
+          }
+        }
+      }
+    },
+    "%@: %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@, %3$@"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld copies · %@ each" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld copies · %2$@ each"
+          }
+        }
+      }
+    },
+    "%lld dBm · SNR %lld dB" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld dBm · SNR %2$lld dB"
+          }
+        }
+      }
+    },
+    "%lld file%@ will move to the Trash, where you can put them back. Everything else is a setting or cache macOS rebuilds." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld file%2$@ will move to the Trash, where you can put them back. Everything else is a setting or cache macOS rebuilds."
+          }
+        }
+      }
+    },
+    "%lld file%@ — listed before anything is changed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld file%2$@ — listed before anything is changed"
+          }
+        }
+      }
+    },
+    "%lld item%@ already in the Trash and will be deleted permanently." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld item%2$@ already in the Trash and will be deleted permanently."
+          }
+        }
+      }
+    },
+    "%lld item%@ removed with administrator rights." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld item%2$@ removed with administrator rights."
+          }
+        }
+      }
+    },
+    "%lld items" : {
+
+    },
+    "%lld items · %@ reclaimable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld items · %2$@ reclaimable"
+          }
+        }
+      }
+    },
+    "%lld of %lld selected · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld selected · %3$@"
+          }
+        }
+      }
+    },
+    "%lld protected item%@ left alone." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld protected item%2$@ left alone."
+          }
+        }
+      }
+    },
+    "%lld record%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld record%2$@"
+          }
+        }
+      }
+    },
+    "%lld selected" : {
+
+    },
+    "%lld selected · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld selected · %2$@"
+          }
+        }
+      }
+    },
+    "%lld system setting issue%@ need review" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld system setting issue%2$@ need review"
+          }
+        }
+      }
+    },
+    "%lld task(s)" : {
+
+    },
+    "%lld%%" : {
+
+    },
+    "1 GB" : {
+
+    },
+    "1 GB or more" : {
+
+    },
+    "10 GB or more" : {
+
+    },
+    "100 MB" : {
+
+    },
+    "2 GB or more" : {
+
+    },
+    "250 MB" : {
+
+    },
+    "5 GB or more" : {
+
+    },
+    "50 MB" : {
+
+    },
+    "500 MB" : {
+
+    },
+    "A background scan only measures. Nothing is removed until you review it." : {
+
+    },
+    "A native Swift macOS cleanup, uninstaller, and maintenance app." : {
+
+    },
+    "About" : {
+
+    },
+    "Activity" : {
+
+    },
+    "Activity Monitor" : {
+
+    },
+    "Add Folder…" : {
+
+    },
+    "Adds Project Purge to the sidebar: finds node_modules, build output and virtual environments in your project folders." : {
+
+    },
+    "Add…" : {
+
+    },
+    "Administrator Helper" : {
+
+    },
+    "Administrator actions" : {
+
+    },
+    "Advanced" : {
+
+    },
+    "All Users — start when anyone logs in" : {
+
+    },
+    "All tasks below are bounded and safe to run — myKikau only lists vetted maintenance operations, nothing that could break your Mac." : {
+
+    },
+    "Also done" : {
+
+    },
+    "An app has to be quit before it can be uninstalled. Save any open work first." : {
+
+    },
+    "Analyse" : {
+
+    },
+    "Analyse Disk" : {
+
+    },
+    "Analyse the whole startup disk — see used vs free space, then drill into the folders using the most storage." : {
+
+    },
+    "App Store" : {
+
+    },
+    "App-Specific Cache" : {
+
+    },
+    "Application" : {
+
+    },
+    "Apps" : {
+
+    },
+    "Apps that open at login, and apps allowed to run in the background, are managed in System Settings" : {
+
+    },
+    "Asks for an administrator password, then removes these through the myKikau helper" : {
+
+    },
+    "Background Scan" : {
+
+    },
+    "Based on CPU, memory pressure, disk space, temperature, disk activity, battery, and uptime." : {
+
+    },
+    "Battery" : {
+
+    },
+    "Browser Cache" : {
+
+    },
+    "Build Artifacts" : {
+
+    },
+    "Build caches and package downloads. The next build or install re-downloads what it needs." : {
+
+    },
+    "Built from scratch in native Swift for macOS." : {
+
+    },
+    "Cached web content. Bookmarks, history, passwords and open tabs are not touched." : {
+
+    },
+    "Caches" : {
+
+    },
+    "Caches that apps rebuild when they next need them. Running apps are skipped." : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Check Log Integrity" : {
+
+    },
+    "Check Public IP" : {
+
+    },
+    "Check for Updates…" : {
+
+    },
+    "Check for updates automatically" : {
+
+    },
+    "Checking %lld maintenance tasks…" : {
+
+    },
+    "Checking system settings" : {
+
+    },
+    "Checking…" : {
+
+    },
+    "Clean" : {
+
+    },
+    "Clear" : {
+
+    },
+    "Clear search" : {
+
+    },
+    "Collecting metrics..." : {
+
+    },
+    "Collecting processes..." : {
+
+    },
+    "Comparing files" : {
+
+    },
+    "Continue" : {
+
+    },
+    "Copied" : {
+
+    },
+    "Copy %@" : {
+
+    },
+    "Copy All" : {
+
+    },
+    "Copy IP address" : {
+
+    },
+    "Copy Path" : {
+
+    },
+    "Couldn't remove (%lld)" : {
+
+    },
+    "Delete Permanently" : {
+
+    },
+    "Developer Tools" : {
+
+    },
+    "Developer tools" : {
+
+    },
+    "Disabled features" : {
+
+    },
+    "Disk Analyser" : {
+
+    },
+    "Disk usage chart" : {
+
+    },
+    "Done" : {
+
+    },
+    "Duplicate Copies" : {
+
+    },
+    "Duplicates" : {
+
+    },
+    "Empty Trash" : {
+
+    },
+    "Every %lld hours" : {
+
+    },
+    "Every day" : {
+
+    },
+    "Every week" : {
+
+    },
+    "Everything in the Trash. This is permanent." : {
+
+    },
+    "Everything myKikau removes or repairs is recorded here." : {
+
+    },
+    "Export as CSV…" : {
+
+    },
+    "Export as JSON Lines…" : {
+
+    },
+    "Files" : {
+
+    },
+    "Filter apps" : {
+
+    },
+    "Find Leftovers…" : {
+
+    },
+    "Find caches, logs, temporary files and Trash contents that are safe to remove. Nothing is removed until you review it." : {
+
+    },
+    "Finds node_modules, build, target and similar folders. Projects you've worked on recently are flagged so you can leave them alone." : {
+
+    },
+    "Fix" : {
+
+    },
+    "Fix %lld Issue%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Fix %1$lld Issue%2$@"
+          }
+        }
+      }
+    },
+    "Fix %lld Issue%@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Fix %1$lld Issue%2$@…"
+          }
+        }
+      }
+    },
+    "Fixing…" : {
+
+    },
+    "Folders Scanned for Duplicates and Large Files" : {
+
+    },
+    "For You — start when you log in" : {
+
+    },
+    "Full Disk Access granted" : {
+
+    },
+    "Full Disk Access isn't granted — some cleanup and analysis features will under-report or fail." : {
+
+    },
+    "Full Disk Access not granted yet" : {
+
+    },
+    "Full System Scan" : {
+
+    },
+    "General" : {
+
+    },
+    "Go" : {
+
+    },
+    "Grant Location Access" : {
+
+    },
+    "Guided" : {
+
+    },
+    "Guided repair package prepared" : {
+
+    },
+    "Hidden items" : {
+
+    },
+    "History" : {
+
+    },
+    "In the Trash" : {
+
+    },
+    "Inspecting Local Network privacy records…" : {
+
+    },
+    "Install Helper…" : {
+
+    },
+    "Installed" : {
+
+    },
+    "Installed for all users" : {
+
+    },
+    "Installers" : {
+
+    },
+    "Items already in the Trash can't be recovered once deleted." : {
+
+    },
+    "Items already moved stay in the Trash, where you can put them back." : {
+
+    },
+    "Items owned by another user can be dragged to the Trash in Finder, which will ask for an administrator password." : {
+
+    },
+    "Keep" : {
+
+    },
+    "Keeps this copy instead" : {
+
+    },
+    "Large Files" : {
+
+    },
+    "Last run %@%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Last run %1$@%2$@"
+          }
+        }
+      }
+    },
+    "Last scanned %@" : {
+
+    },
+    "Launch myKikau at login" : {
+
+    },
+    "Leftovers & Settings" : {
+
+    },
+    "Leftovers from removed apps" : {
+
+    },
+    "List files larger than" : {
+
+    },
+    "List installed applications, see which are large or unused, and remove them with their leftovers." : {
+
+    },
+    "Listing installed apps" : {
+
+    },
+    "Local Network privacy records are healthy" : {
+
+    },
+    "Log" : {
+
+    },
+    "Login Items Settings…" : {
+
+    },
+    "Logs & Temporary Files" : {
+
+    },
+    "Looked up via api.ipify.org" : {
+
+    },
+    "Looking for build artifacts" : {
+
+    },
+    "Looks for files left behind by apps that are no longer installed" : {
+
+    },
+    "Looks through Downloads, Documents, Desktop, Pictures and Movies for files with identical content and for oversized files. Add more folders in Settings." : {
+
+    },
+    "Lowest %lld percent, highest %lld percent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Lowest %1$lld percent, highest %2$lld percent"
+          }
+        }
+      }
+    },
+    "Mac Health" : {
+
+    },
+    "Mac Health: %@" : {
+
+    },
+    "Managed by Your Organisation" : {
+
+    },
+    "Measuring caches, logs and Trash" : {
+
+    },
+    "Media and download caches for chat, music and meeting apps." : {
+
+    },
+    "More" : {
+
+    },
+    "Needs your admin password to run" : {
+
+    },
+    "Network" : {
+
+    },
+    "Never" : {
+
+    },
+    "Never Remove" : {
+
+    },
+    "Never Remove This…" : {
+
+    },
+    "Never run" : {
+
+    },
+    "No Activity Yet" : {
+
+    },
+    "No Apps Listed Yet" : {
+
+    },
+    "No Apps Match" : {
+
+    },
+    "No Background Items" : {
+
+    },
+    "No Duplicates Found" : {
+
+    },
+    "No Large Files Found" : {
+
+    },
+    "No Projects Scanned" : {
+
+    },
+    "No Scan Yet" : {
+
+    },
+    "No build artifacts were found in your project folders." : {
+
+    },
+    "No entries fit the “%@” filter." : {
+
+    },
+    "No installed app fits the “%@” filter." : {
+
+    },
+    "No launch agents or daemons are installed." : {
+
+    },
+    "No removable caches, logs or Trash contents were found." : {
+
+    },
+    "Not Scanned Yet" : {
+
+    },
+    "Not included in this build" : {
+
+    },
+    "Not installed" : {
+
+    },
+    "Not selected" : {
+
+    },
+    "Nothing Matches" : {
+
+    },
+    "Nothing duplicated across your scanned folders." : {
+
+    },
+    "Nothing excluded" : {
+
+    },
+    "Nothing over %@ in your scanned folders. Change the size in Settings." : {
+
+    },
+    "Nothing to Clean" : {
+
+    },
+    "Nothing to Purge" : {
+
+    },
+    "Notify me when it finds" : {
+
+    },
+    "OK" : {
+
+    },
+    "One scan across storage, apps, files, and unhealthy system settings" : {
+
+    },
+    "Open History" : {
+
+    },
+    "Open Local Network Settings" : {
+
+    },
+    "Open Login Items Settings…" : {
+
+    },
+    "Open Settings" : {
+
+    },
+    "Open Settings…" : {
+
+    },
+    "Open System Settings…" : {
+
+    },
+    "Opens %@" : {
+
+    },
+    "Opens the list of items to review" : {
+
+    },
+    "Opens this folder" : {
+
+    },
+    "Operation Log" : {
+
+    },
+    "Operation log" : {
+
+    },
+    "Optimise" : {
+
+    },
+    "PID %lld" : {
+
+    },
+    "Percent" : {
+
+    },
+    "Permanent" : {
+
+    },
+    "Permanently delete %lld item%@?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Permanently delete %1$lld item%2$@?"
+          }
+        }
+      }
+    },
+    "Prepare Another Backup…" : {
+
+    },
+    "Prepare Guided Repair…" : {
+
+    },
+    "Preparing…" : {
+
+    },
+    "Product Page" : {
+
+    },
+    "Project Purge" : {
+
+    },
+    "Protected" : {
+
+    },
+    "Protected paths" : {
+
+    },
+    "Protected software" : {
+
+    },
+    "Protected — %@" : {
+
+    },
+    "Protected — will not be touched (%lld)" : {
+
+    },
+    "Purge" : {
+
+    },
+    "Put Back" : {
+
+    },
+    "Put back %@" : {
+
+    },
+    "Quick Actions" : {
+
+    },
+    "Quit" : {
+
+    },
+    "Quit %@" : {
+
+    },
+    "Quit %@?" : {
+
+    },
+    "Quit and Continue" : {
+
+    },
+    "Quit myKikau" : {
+
+    },
+    "Reading your folders" : {
+
+    },
+    "Ready" : {
+
+    },
+    "Recent Items" : {
+
+    },
+    "Recently used" : {
+
+    },
+    "Record what myKikau removes" : {
+
+    },
+    "Refresh" : {
+
+    },
+    "Remove" : {
+
+    },
+    "Remove %lld Other Cop%@… (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove %1$lld Other Cop%2$@… (%3$@)"
+          }
+        }
+      }
+    },
+    "Remove %lld With Administrator Rights…" : {
+
+    },
+    "Remove Helper" : {
+
+    },
+    "Remove Selected…" : {
+
+    },
+    "Requires explicit guided steps; never included in Fix All" : {
+
+    },
+    "Rescan" : {
+
+    },
+    "Reveal Instructions" : {
+
+    },
+    "Reveal Log File in Finder" : {
+
+    },
+    "Reveal in Finder" : {
+
+    },
+    "Review All (%@)" : {
+
+    },
+    "Review All…" : {
+
+    },
+    "Review Selected…" : {
+
+    },
+    "Runs at start" : {
+
+    },
+    "Runs through the plan and records it in the log without touching any file" : {
+
+    },
+    "Safe — bounded, reversible, vetted for unattended use" : {
+
+    },
+    "Safety" : {
+
+    },
+    "Sample" : {
+
+    },
+    "Save Diagnostics…" : {
+
+    },
+    "Saves app settings and counts for a support request. No file names or paths are included." : {
+
+    },
+    "Scan" : {
+
+    },
+    "Scan Apps" : {
+
+    },
+    "Scan Projects" : {
+
+    },
+    "Scan automatically" : {
+
+    },
+    "Scan to Find Issues" : {
+
+    },
+    "Search apps or bundle ID" : {
+
+    },
+    "See which helpers and updaters are set to start in the background, and remove the ones you don't need." : {
+
+    },
+    "Select %@" : {
+
+    },
+    "Select All" : {
+
+    },
+    "Select Broken" : {
+
+    },
+    "Select None" : {
+
+    },
+    "Select Older Projects" : {
+
+    },
+    "Selected" : {
+
+    },
+    "Set by your organisation" : {
+
+    },
+    "Settings…" : {
+
+    },
+    "Show" : {
+
+    },
+    "Show Dock icon" : {
+
+    },
+    "Show hidden items" : {
+
+    },
+    "Show or hide dot-prefixed items like .cache, .npm, .docker" : {
+
+    },
+    "Showing the most recent %@ entries. Export the log for the full record." : {
+
+    },
+    "Signal" : {
+
+    },
+    "Simulate — Change Nothing" : {
+
+    },
+    "Size" : {
+
+    },
+    "Skip for now" : {
+
+    },
+    "Software missing" : {
+
+    },
+    "Sort" : {
+
+    },
+    "Sort apps" : {
+
+    },
+    "Sort by %@" : {
+
+    },
+    "Source Code" : {
+
+    },
+    "Startup" : {
+
+    },
+    "Startup Items" : {
+
+    },
+    "Status" : {
+
+    },
+    "Support" : {
+
+    },
+    "System Status" : {
+
+    },
+    "System — start when the Mac starts" : {
+
+    },
+    "The Recent Items lists in the Apple menu and Open dialogs." : {
+
+    },
+    "The files were moved, removed or edited after the scan, so nothing was queued for removal. Scan again for an up-to-date list." : {
+
+    },
+    "The log powers History, Put Back and “freed to date”. It stays on this Mac." : {
+
+    },
+    "The operation log is switched off in Settings — new activity isn't being recorded." : {
+
+    },
+    "The starred copy in each set is kept. Click another copy to keep that one instead." : {
+
+    },
+    "These Files Have Changed" : {
+
+    },
+    "These refresh settings and caches that macOS rebuilds on its own. No files are removed." : {
+
+    },
+    "This asks the app to quit normally. Unsaved work in that app may be lost if it does not handle quit cleanly." : {
+
+    },
+    "Tick items under “For You” to remove them. System-wide items need an administrator." : {
+
+    },
+    "Tick the files you want to remove." : {
+
+    },
+    "Tick the folders you want to remove." : {
+
+    },
+    "Trash" : {
+
+    },
+    "Uninstall" : {
+
+    },
+    "Uninstall %@" : {
+
+    },
+    "Uninstall %lld App%@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Uninstall %1$lld App%2$@…"
+          }
+        }
+      }
+    },
+    "Uninstall — administrator helper" : {
+
+    },
+    "Uninstall — background services stopped" : {
+
+    },
+    "Uninstall…" : {
+
+    },
+    "Up" : {
+
+    },
+    "Updates" : {
+
+    },
+    "Used %@" : {
+
+    },
+    "User App Cache" : {
+
+    },
+    "Version %@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Version %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "View" : {
+
+    },
+    "Waiting for approval in System Settings" : {
+
+    },
+    "Welcome to myKikau" : {
+
+    },
+    "When off, myKikau stays in the menu bar and no longer appears in the Dock or app switcher." : {
+
+    },
+    "Will be kept" : {
+
+    },
+    "Will be removed" : {
+
+    },
+    "Working — %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Working — %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "You can grant this later too — Status will show a reminder until it's on." : {
+
+    },
+    "Your Mac's maintenance is up to date — nothing needs fixing right now." : {
+
+    },
+    "Your account's log files and temporary files untouched for three days." : {
+
+    },
+    "Your public IP is what sites and services on the internet see. Looking it up sends one request to api.ipify.org." : {
+
+    },
+    "macOS hides the network name until myKikau has Location access. Channel, signal and speed still work without it." : {
+
+    },
+    "myKikau" : {
+
+    },
+    "myKikau can't read your %@ folder%@ — scans here will under-report or find nothing." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "myKikau can't read your %1$@ folder%2$@ — scans here will under-report or find nothing."
+          }
+        }
+      }
+    },
+    "myKikau cleans caches, uninstalls apps along with their leftovers, and inspects disk usage across your whole Mac — including other apps' Library folders. macOS calls that Full Disk Access, and it can only be granted by hand, in System Settings." : {
+
+    },
+    "© 2026 Project Five. Distributed directly, not through the Mac App Store." : {
+
+    },
+    "· %@" : {
+
+    },
+    "· Not connected" : {
+
+    },
+    "· Online" : {
+
+    }
+  },
+  "version" : "1.0"
+}

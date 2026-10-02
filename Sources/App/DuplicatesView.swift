@@ -68,7 +68,7 @@ struct DuplicatesView: View {
             ScreenHeader("Duplicates & Large Files", subtitle: subtitle, systemImage: ContentView.SidebarItem.duplicates.icon, tint: tint) {
                 Picker("View", selection: $mode) {
                     ForEach(Mode.allCases) { m in
-                        Text(m.rawValue).tag(m)
+                        Text(LocalizedStringKey(m.rawValue)).tag(m)
                     }
                 }
                 .pickerStyle(.segmented)

@@ -302,7 +302,7 @@ struct UninstallView: View {
 
             Picker("Show", selection: $filter) {
                 ForEach(Filter.allCases) { option in
-                    Text(option.rawValue).tag(option)
+                    Text(LocalizedStringKey(option.rawValue)).tag(option)
                 }
             }
             .pickerStyle(.menu)

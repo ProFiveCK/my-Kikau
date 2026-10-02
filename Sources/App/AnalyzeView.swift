@@ -35,7 +35,7 @@ struct AnalyzeView: View {
                 if !session.entries.isEmpty {
                     Picker("View", selection: $mode) {
                         ForEach(ViewMode.allCases) { m in
-                            Text(m.rawValue).tag(m)
+                            Text(LocalizedStringKey(m.rawValue)).tag(m)
                         }
                     }
                     .pickerStyle(.segmented)

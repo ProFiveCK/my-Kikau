@@ -142,9 +142,9 @@ struct StartupView: View {
 
     private func header(for scope: StartupItems.Scope) -> String {
         switch scope {
-        case .user: "For You — start when you log in"
-        case .systemAgent: "All Users — start when anyone logs in"
-        case .systemDaemon: "System — start when the Mac starts"
+        case .user: String(localized: "For You — start when you log in")
+        case .systemAgent: String(localized: "All Users — start when anyone logs in")
+        case .systemDaemon: String(localized: "System — start when the Mac starts")
         }
     }
 

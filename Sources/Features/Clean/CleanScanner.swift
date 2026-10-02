@@ -28,13 +28,13 @@ public enum CleanScanner {
 
         public var displayName: String {
             switch self {
-            case .userAppCache: "User App Cache"
-            case .browserCache: "Browser Cache"
-            case .devTools: "Developer Tools"
-            case .systemLogs: "Logs & Temporary Files"
-            case .appSpecificCache: "App-Specific Cache"
-            case .trash: "Trash"
-            case .recentItems: "Recent Items"
+            case .userAppCache: String(localized: "User App Cache")
+            case .browserCache: String(localized: "Browser Cache")
+            case .devTools: String(localized: "Developer Tools")
+            case .systemLogs: String(localized: "Logs & Temporary Files")
+            case .appSpecificCache: String(localized: "App-Specific Cache")
+            case .trash: String(localized: "Trash")
+            case .recentItems: String(localized: "Recent Items")
             }
         }
 
@@ -53,13 +53,13 @@ public enum CleanScanner {
         /// One line saying what the section holds and what removing it costs.
         public var explanation: String {
             switch self {
-            case .userAppCache: "Caches that apps rebuild when they next need them. Running apps are skipped."
-            case .browserCache: "Cached web content. Bookmarks, history, passwords and open tabs are not touched."
-            case .devTools: "Build caches and package downloads. The next build or install re-downloads what it needs."
-            case .systemLogs: "Your account's log files and temporary files untouched for three days."
-            case .appSpecificCache: "Media and download caches for chat, music and meeting apps."
-            case .trash: "Everything in the Trash. This is permanent."
-            case .recentItems: "The Recent Items lists in the Apple menu and Open dialogs."
+            case .userAppCache: String(localized: "Caches that apps rebuild when they next need them. Running apps are skipped.")
+            case .browserCache: String(localized: "Cached web content. Bookmarks, history, passwords and open tabs are not touched.")
+            case .devTools: String(localized: "Build caches and package downloads. The next build or install re-downloads what it needs.")
+            case .systemLogs: String(localized: "Your account's log files and temporary files untouched for three days.")
+            case .appSpecificCache: String(localized: "Media and download caches for chat, music and meeting apps.")
+            case .trash: String(localized: "Everything in the Trash. This is permanent.")
+            case .recentItems: String(localized: "The Recent Items lists in the Apple menu and Open dialogs.")
             }
         }
     }

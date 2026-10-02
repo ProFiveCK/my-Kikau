@@ -55,7 +55,7 @@ struct HistoryView: View {
             ScreenHeader("History", subtitle: subtitle, systemImage: ContentView.SidebarItem.history.icon, tint: tint) {
                 Picker("Show", selection: $filter) {
                     ForEach(Filter.allCases) { option in
-                        Text(option.rawValue).tag(option)
+                        Text(LocalizedStringKey(option.rawValue)).tag(option)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -277,18 +277,18 @@ private struct HistoryRow: View {
             return "Optimise — " + (MaintenanceCatalog.tasks.first { $0.id == id }?.name ?? id)
         }
         switch action {
-        case "clean": return "Clean"
-        case "uninstall", "uninstall.app", "uninstall.leftovers": return "Uninstall"
-        case "uninstall.admin": return "Uninstall — administrator helper"
-        case "uninstall.orphans": return "Leftovers from removed apps"
-        case "startup": return "Startup Items"
-        case "uninstall.teardown": return "Uninstall — background services stopped"
-        case "duplicates": return "Duplicates"
-        case "largeFiles": return "Large Files"
-        case "purge": return "Project Purge"
-        case "analyze": return "Disk Analyser"
-        case "menubar.emptyTrash": return "Empty Trash"
-        case "putBack": return "Put Back"
+        case "clean": return String(localized: "Clean")
+        case "uninstall", "uninstall.app", "uninstall.leftovers": return String(localized: "Uninstall")
+        case "uninstall.admin": return String(localized: "Uninstall — administrator helper")
+        case "uninstall.orphans": return String(localized: "Leftovers from removed apps")
+        case "startup": return String(localized: "Startup Items")
+        case "uninstall.teardown": return String(localized: "Uninstall — background services stopped")
+        case "duplicates": return String(localized: "Duplicates")
+        case "largeFiles": return String(localized: "Large Files")
+        case "purge": return String(localized: "Project Purge")
+        case "analyze": return String(localized: "Disk Analyser")
+        case "menubar.emptyTrash": return String(localized: "Empty Trash")
+        case "putBack": return String(localized: "Put Back")
         default: return action
         }
     }

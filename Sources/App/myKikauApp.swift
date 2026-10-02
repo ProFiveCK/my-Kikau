@@ -236,17 +236,17 @@ struct ContentView: View {
         /// uses "Analyse"/"Optimise".
         var label: String {
             switch self {
-            case .status: "Status"
-            case .clean: "Clean"
-            case .uninstall: "Apps"
-            case .analyze: "Analyse"
-            case .duplicates: "Files"
-            case .network: "Network"
-            case .optimize: "Optimise"
-            case .startup: "Startup"
-            case .purge: "Purge"
-            case .history: "History"
-            case .about: "About"
+            case .status: String(localized: "Status")
+            case .clean: String(localized: "Clean")
+            case .uninstall: String(localized: "Apps")
+            case .analyze: String(localized: "Analyse")
+            case .duplicates: String(localized: "Files")
+            case .network: String(localized: "Network")
+            case .optimize: String(localized: "Optimise")
+            case .startup: String(localized: "Startup")
+            case .purge: String(localized: "Purge")
+            case .history: String(localized: "History")
+            case .about: String(localized: "About")
             }
         }
 

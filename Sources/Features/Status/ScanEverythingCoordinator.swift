@@ -20,12 +20,12 @@ public final class ScanEverythingCoordinator: ObservableObject {
 
         public var label: String {
             switch self {
-            case .clean: "Measuring caches, logs and Trash"
-            case .apps: "Listing installed apps"
-            case .files: "Reading your folders"
-            case .duplicates: "Comparing files"
-            case .systemHealth: "Checking system settings"
-            case .developer: "Looking for build artifacts"
+            case .clean: String(localized: "Measuring caches, logs and Trash")
+            case .apps: String(localized: "Listing installed apps")
+            case .files: String(localized: "Reading your folders")
+            case .duplicates: String(localized: "Comparing files")
+            case .systemHealth: String(localized: "Checking system settings")
+            case .developer: String(localized: "Looking for build artifacts")
             }
         }
     }
