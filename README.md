@@ -7,9 +7,9 @@ Built for macOS 14+ (Sonoma), fully native Swift. One external dependency: [Spar
 ## Features
 
 - **Clean** — caches, logs, temporary files and Trash, reviewed item by item before anything moves
-- **Uninstall** — app inventory, plus each app's leftovers matched by exact bundle ID, in one review sheet; uninstall several at once, and find files left by apps removed earlier
+- **Uninstall** — app inventory, plus each app's leftovers matched by exact bundle ID, in one review sheet; uninstall several at once, find files left by apps removed earlier, and check for newer versions of installed apps
 - **Analyse** — disk space explorer with a donut chart, squarified treemap, and sorted list views, folder-by-folder drill-down
-- **Duplicates** — content-hash-verified duplicate files (you choose which copy to keep), plus a large-files mode, across Downloads/Documents/Desktop/Pictures/Movies and any folders you add
+- **Files** — content-hash-verified duplicates (you choose which copy to keep), a large-files mode, and similar-photo detection using on-device image analysis, across Downloads/Documents/Desktop/Pictures/Movies and any folders you add
 - **Status** — live CPU / memory / disk / network / battery-health / thermal dashboard + menu bar HUD, with a one-click, cancellable "Scan Everything"
 - **Optimise** — 9 bounded, no-sudo maintenance tasks (LaunchServices repair, Finder cache, broken config/plist repair, stale launch agents, etc.), each listing the exact files it will touch
 - **Startup** — launch agents and daemons that start in the background; remove your own, see the system-wide ones
@@ -26,6 +26,10 @@ Background scans and low-disk notifications are optional (Settings → General).
 - Never touched: system paths, keychains, SSH/GPG keys, Mail, Messages, iCloud Drive, security and device-management software, and anything on your exclusion list
 - Only rebuildable data is ever a Clean target — never a browser profile, a database or an archive
 - Exact bundle-ID evidence for leftovers — no vendor-prefix or generic-name wildcards
+
+## Administrator helper (optional)
+
+Apps installed for all users (App Store, most installer packages) are owned by root, which the app can't remove on its own. Settings → Advanced can install a small privileged helper for that. It needs an administrator's approval in System Settings once and a password each time; it only ever moves specific, policy-checked items into your Trash. See `Sources/Helper/main.swift` and `HelperPolicy.swift`.
 
 ## Managed deployment
 

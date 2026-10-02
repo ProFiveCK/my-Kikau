@@ -15,7 +15,9 @@ struct UninstallView: View {
     @State private var notice: Notice?
     @State private var selectedAppIDs: Set<String> = []
     @State private var searchText = ""
-    @State private var sortOption: SortOption = .size
+    /// Column sort; size first, largest on top — the reason most people open
+    /// an uninstaller.
+    @State private var sortOrder = [KeyPathComparator(\AppInventory.AppInfo.sizeBytes, order: .reverse)]
     @State private var filter: Filter = .all
     /// Explicit focus control for the search field. Without this, clicking
     /// into the field could silently fail to accept keystrokes: macOS's
@@ -47,17 +49,6 @@ struct UninstallView: View {
         let id = UUID()
         let title: String
         let message: String
-    }
-
-    /// Size is the default — it's the reason most people open an uninstaller
-    /// in the first place.
-    private enum SortOption: String, CaseIterable, Identifiable {
-        case size = "Size"
-        case name = "Name"
-        case lastUsed = "Last Used"
-        var id: String {
-            rawValue
-        }
     }
 
     private enum Filter: String, CaseIterable, Identifiable {
@@ -113,16 +104,7 @@ struct UninstallView: View {
                     || ($0.bundleID?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
-        switch sortOption {
-        case .size:
-            return result.sorted { $0.sizeBytes > $1.sizeBytes }
-        case .name:
-            return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        case .lastUsed:
-            // Longest-unused first: that's what you're looking for when
-            // deciding what to remove.
-            return result.sorted { ($0.lastUsed ?? .distantPast) < ($1.lastUsed ?? .distantPast) }
-        }
+        return result.sorted(using: sortOrder)
     }
 
     var body: some View {
@@ -182,25 +164,7 @@ struct UninstallView: View {
                     ContentUnavailableView.search(text: searchText)
                 }
             } else {
-                List(visible) { app in
-                    AppRow(
-                        app: app,
-                        isSelected: Binding(
-                            get: { selectedAppIDs.contains(app.id) },
-                            set: { isOn in
-                                if isOn {
-                                    selectedAppIDs.insert(app.id)
-                                } else {
-                                    selectedAppIDs.remove(app.id)
-                                }
-                            }
-                        ),
-                        update: model.updates[app.id],
-                        busy: preparing,
-                        onUninstall: { beginUninstall([app]) }
-                    )
-                    .contextMenu { PathMenu(url: app.url) }
-                }
+                appsTable(visible)
 
                 if !selected.isEmpty {
                     HStack {
@@ -327,19 +291,46 @@ struct UninstallView: View {
             .labelsHidden()
             .frame(width: 190)
             .accessibilityLabel("Filter apps")
-
-            Picker("Sort", selection: $sortOption) {
-                ForEach(SortOption.allCases) { option in
-                    Text("Sort by \(option.rawValue)").tag(option)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(width: 160)
-            .accessibilityLabel("Sort apps")
         }
         .padding(.horizontal)
         .padding(.bottom, 8)
+    }
+
+    /// Rows are selected the native way (click, ⇧-click, ⌘-click, ⌘A);
+    /// column headers sort.
+    private func appsTable(_ visible: [AppInventory.AppInfo]) -> some View {
+        Table(visible, selection: $selectedAppIDs, sortOrder: $sortOrder) {
+            TableColumn("Application", value: \.name, comparator: .localizedStandard) { app in
+                AppNameCell(app: app)
+            }
+            .width(min: 240, ideal: 320)
+            TableColumn("Last Used", value: \.lastUsedSortKey) { app in
+                LastUsedCell(app: app)
+            }
+            .width(min: 88, ideal: 100, max: 120)
+            TableColumn("Update") { app in
+                UpdateCell(app: app, update: model.updates[app.id])
+            }
+            .width(min: 60, ideal: 90, max: 120)
+            TableColumn("Size", value: \.sizeBytes) { app in
+                SizeCell(bytes: app.sizeBytes)
+            }
+            .width(min: 70, ideal: 84)
+            .alignment(.trailing)
+            TableColumn("") { app in
+                UninstallCell(app: app, disabled: preparing) { beginUninstall([app]) }
+            }
+            .width(92)
+        }
+        .contextMenu(forSelectionType: AppInventory.AppInfo.ID.self) { ids in
+            if ids.count == 1, let app = apps.first(where: { $0.id == ids.first }) {
+                PathMenu(url: app.url)
+            }
+        } primaryAction: { ids in
+            if ids.count == 1, let app = apps.first(where: { $0.id == ids.first }) {
+                NSWorkspace.shared.activateFileViewerSelecting([app.url])
+            }
+        }
     }
 
     private func reviewSubtitle(for item: PendingUninstall) -> String {
@@ -529,12 +520,34 @@ struct UninstallView: View {
     }
 }
 
-private struct AppRow: View {
+private struct UpdateCell: View {
     let app: AppInventory.AppInfo
-    @Binding var isSelected: Bool
     let update: AppUpdateChecker.Update?
-    let busy: Bool
-    let onUninstall: () -> Void
+
+    var body: some View {
+        if let update {
+            Button {
+                // The app updates itself; an App Store app updates from
+                // its store page.
+                NSWorkspace.shared.open(update.storeURL ?? app.url)
+            } label: {
+                Label(update.latestVersion, systemImage: "arrow.down.circle.fill")
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.blue)
+            .help(update.storeURL == nil
+                ? "Version \(update.latestVersion) is available — opens the app so it can update itself"
+                : "Version \(update.latestVersion) is available — opens its App Store page")
+            .accessibilityLabel("Update \(app.name) to \(update.latestVersion)")
+        } else {
+            Text("")
+        }
+    }
+}
+
+private struct AppNameCell: View {
+    let app: AppInventory.AppInfo
 
     private var protectionReason: String? {
         AppInventory.protectionReason(app)
@@ -542,75 +555,82 @@ private struct AppRow: View {
 
     var body: some View {
         let protected = protectionReason != nil
-        HStack(spacing: 12) {
-            Toggle(isOn: $isSelected) { EmptyView() }
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .disabled(protected)
-                .accessibilityLabel("Select \(app.name)")
+        HStack(spacing: 10) {
             Image(nsImage: AppIconCache.icon(for: app.url))
                 .resizable()
-                .frame(width: 32, height: 32)
+                .frame(width: 28, height: 28)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(app.name).font(.subheadline.bold())
                     if let version = app.version {
                         Text(version).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if let bundleID = app.bundleID {
-                    Text(bundleID).font(.caption2).foregroundStyle(.tertiary)
-                }
-                HStack(spacing: 10) {
-                    if let reason = protectionReason {
-                        Label("Protected — \(reason)", systemImage: "lock.shield")
-                            .foregroundStyle(.secondary)
-                    } else if let bucket = app.staleUseBucket {
-                        Label(bucket, systemImage: "clock")
-                            .foregroundStyle(.orange)
-                    } else if let lastUsed = app.lastUsed {
-                        Label("Used \(lastUsed.formatted(date: .abbreviated, time: .omitted))", systemImage: "clock")
-                            .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    if let bundleID = app.bundleID {
+                        Text(bundleID).foregroundStyle(.tertiary).lineLimit(1)
                     }
-                    if let update {
-                        Button {
-                            // The app updates itself; an App Store app updates
-                            // from its store page.
-                            NSWorkspace.shared.open(update.storeURL ?? app.url)
-                        } label: {
-                            Label("Update to \(update.latestVersion)", systemImage: "arrow.down.circle.fill")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.blue)
-                        .help(update.storeURL == nil ? "Opens the app so it can update itself" : "Opens its App Store page")
+                    if let reason = protectionReason {
+                        Label("Protected — \(reason)", systemImage: "lock.shield").foregroundStyle(.secondary)
                     }
                     if app.isAppStore {
                         Text("App Store").foregroundStyle(.secondary)
                     }
                     if app.requiresAdministrator, !protected {
-                        Text("Installed for all users").foregroundStyle(.secondary)
+                        Text("For all users").foregroundStyle(.secondary)
                     }
                 }
-                .font(.caption)
+                .font(.caption2)
+                .lineLimit(1)
             }
-            Spacer()
-            Text(ByteSizeFormatter.format(app.sizeBytes))
-                .font(.subheadline.bold())
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-            Button("Uninstall…", role: .destructive, action: onUninstall)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(protected || busy)
-                .accessibilityLabel("Uninstall \(app.name)")
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
         .opacity(protected ? 0.6 : 1)
+        .help(app.url.path)
+    }
+}
+
+private struct LastUsedCell: View {
+    let app: AppInventory.AppInfo
+
+    var body: some View {
+        Text(app.lastUsed.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "—")
+            .foregroundStyle(app.staleUseBucket == nil ? Color.secondary : Color.orange)
+            .help(app.staleUseBucket ?? "")
+    }
+}
+
+private struct SizeCell: View {
+    let bytes: Int64
+
+    var body: some View {
+        Text(ByteSizeFormatter.format(bytes))
+            .monospacedDigit()
+            .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+}
+
+private struct UninstallCell: View {
+    let app: AppInventory.AppInfo
+    let disabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button("Uninstall…", role: .destructive, action: action)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(AppInventory.isProtected(app) || disabled)
+            .accessibilityLabel("Uninstall \(app.name)")
     }
 }
 
 private extension AppInventory.AppInfo {
+    /// Sortable "last used": apps never opened sort as oldest.
+    var lastUsedSortKey: Date {
+        lastUsed ?? .distantPast
+    }
+
     var staleUseBucket: String? {
         guard let lastUsed else { return nil }
         let days = Calendar.current.dateComponents([.day], from: lastUsed, to: Date()).day ?? 0

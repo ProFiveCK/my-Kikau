@@ -53,6 +53,12 @@ struct DuplicatesView: View {
         if model.isScanning {
             return "Scanning…"
         }
+        if mode == .similar {
+            guard let report = model.similar else { return "Pictures that look alike without being exact copies" }
+            return report.groups.isEmpty
+                ? "No similar pictures among \(report.imagesExamined.formatted()) examined"
+                : "\(report.groups.count) set\(report.groups.count == 1 ? "" : "s") of similar pictures"
+        }
         guard hasScanned else { return "Your own folders — never app or system data" }
         switch mode {
         case .duplicates:
@@ -63,10 +69,7 @@ struct DuplicatesView: View {
             let threshold = ByteSizeFormatter.formatRounded(DuplicateFinder.largeFileThreshold)
             return largeFiles.isEmpty ? "Nothing over \(threshold)" : "\(largeFiles.count) files over \(threshold)"
         case .similar:
-            guard let report = model.similar else { return "Pictures that look alike without being exact copies" }
-            return report.groups.isEmpty
-                ? "No similar pictures among \(report.imagesExamined.formatted()) examined"
-                : "\(report.groups.count) set\(report.groups.count == 1 ? "" : "s") of similar pictures"
+            return ""
         }
     }
 
@@ -81,7 +84,7 @@ struct DuplicatesView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 330)
-                Button(hasScanned ? "Rescan" : "Scan") {
+                Button(mode == .similar ? (model.similar == nil ? "Find" : "Find Again") : (hasScanned ? "Rescan" : "Scan")) {
                     deniedFolders = ProtectedFolderAccessCheck.deniedFolders()
                     selectedLargeFiles = []
                     if mode == .similar {

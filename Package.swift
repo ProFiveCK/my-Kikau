@@ -4,7 +4,11 @@ import PackageDescription
 /// Complete data-race checking on every source target, so a new violation
 /// shows up as a warning now rather than as a wall of errors when the package
 /// moves to the Swift 6 language mode.
-let strictConcurrency: [SwiftSetting] = [.enableExperimentalFeature("StrictConcurrency")]
+let strictConcurrency: [SwiftSetting] = [
+    .enableExperimentalFeature("StrictConcurrency"),
+    // Key paths and closures that capture only Sendable values are Sendable.
+    .enableUpcomingFeature("InferSendableFromCaptures"),
+]
 
 let package = Package(
     name: "myKikau",

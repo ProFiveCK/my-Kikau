@@ -89,7 +89,7 @@ It reads the same preference domain as the app, so exclusions and policy apply. 
 
 ## 7. Known limits
 
-- **No privileged helper yet.** myKikau runs as the logged-in user. Apps owned by root (App Store and most package installs) and system-level launch daemons cannot be removed by it; the app says so and leaves them in place. A signed helper over XPC is the planned fix.
+- **Privileged helper is opt-in.** By default myKikau runs as the logged-in user and leaves root-owned apps and system-level launch daemons in place. Settings → Advanced can install a launch daemon (approved once by an administrator in System Settings) that removes those after a password prompt; `DisablePrivilegedTools` hides the option. The helper accepts only app bundles in /Applications and third-party launch plists / helper tools in /Library, and only moves them to the user's Trash.
 - **Standard (non-admin) users** can clean their own caches, files and user-installed apps, but cannot remove anything in `/Applications` they do not own.
 - **Background scans** run only while the app is running (it lives in the menu bar; enable "Launch at login").
 - **English only.**
