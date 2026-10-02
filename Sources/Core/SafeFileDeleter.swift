@@ -31,8 +31,8 @@ public final class SafeFileDeleter: @unchecked Sendable {
     }
 
     public enum Mode: String, Codable, Sendable {
-        case trash       // Route to Finder Trash (recoverable)
-        case permanent   // Direct removal (non-recoverable) — only honoured inside a Trash folder
+        case trash // Route to Finder Trash (recoverable)
+        case permanent // Direct removal (non-recoverable) — only honoured inside a Trash folder
     }
 
     public enum Category: String, Codable, Sendable {
@@ -49,23 +49,23 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
     /// A single item to be deleted.
     public struct Item: Identifiable, Hashable, Sendable {
-        public let id: String        // absolute path
+        public let id: String // absolute path
         public let url: URL
         public let sizeBytes: Int64
         public let category: Category
-        public let protected: Bool   // true if PathProtection says do not touch
+        public let protected: Bool // true if PathProtection says do not touch
 
         public init(url: URL, sizeBytes: Int64, category: Category) {
             self.url = url
-            self.id = url.path
+            id = url.path
             self.sizeBytes = sizeBytes
             self.category = category
-            self.protected = PathProtection.shared.shouldProtect(url)
+            protected = PathProtection.shared.shouldProtect(url)
         }
 
         public init(url: URL, sizeBytes: Int64, category: Category, protected: Bool) {
             self.url = url
-            self.id = url.path
+            id = url.path
             self.sizeBytes = sizeBytes
             self.category = category
             self.protected = protected
@@ -90,7 +90,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
             self.items = items
             self.protectedItems = protectedItems
             self.missingItems = missingItems
-            self.totalReclaimable = items.reduce(0) { $0 + $1.sizeBytes }
+            totalReclaimable = items.reduce(0) { $0 + $1.sizeBytes }
         }
 
         public static let empty = Plan(items: [], protectedItems: [], missingItems: [])
@@ -130,7 +130,10 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
     /// One item that could not be removed, with a reason a person can act on.
     public struct Failure: Identifiable, Hashable, Sendable {
-        public var id: String { path }
+        public var id: String {
+            path
+        }
+
         public let path: String
         public let reason: String
         /// The item is owned by another user (usually root) — removing it
@@ -187,7 +190,9 @@ public final class SafeFileDeleter: @unchecked Sendable {
         var seen = Set<String>()
 
         for url in targets where seen.insert(url.path).inserted {
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                break
+            }
             // The second check looks a couple of levels inside the folder for
             // a security agent's files — removing the folder would take them too.
             if protection.shouldProtect(url) || protection.containsEndpointSecurityItem(url, fileManager: fileManager) {
@@ -383,7 +388,9 @@ public final class SafeFileDeleter: @unchecked Sendable {
         guard fileManager.fileExists(atPath: trashedPath), !fileManager.fileExists(atPath: originalPath) else {
             return false
         }
-        if let expected { return fileNumber(atPath: trashedPath) == expected }
+        if let expected {
+            return fileNumber(atPath: trashedPath) == expected
+        }
         return true
     }
 
@@ -429,7 +436,8 @@ public final class SafeFileDeleter: @unchecked Sendable {
         // returns 0 for non-directories).
         if !isDir.boolValue {
             if let attrs = try? fileManager.attributesOfItem(atPath: url.path),
-               let size = (attrs[.size] as? NSNumber)?.int64Value {
+               let size = (attrs[.size] as? NSNumber)?.int64Value
+            {
                 return size
             }
             return 0
@@ -443,9 +451,12 @@ public final class SafeFileDeleter: @unchecked Sendable {
         var visited = 0
         for case let fileURL as URL in enumerator {
             visited += 1
-            if visited % 512 == 0, Task.isCancelled { break }
+            if visited % 512 == 0, Task.isCancelled {
+                break
+            }
             if let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-               values.isRegularFile == true {
+               values.isRegularFile == true
+            {
                 total += Int64(values.fileSize ?? 0)
             }
         }

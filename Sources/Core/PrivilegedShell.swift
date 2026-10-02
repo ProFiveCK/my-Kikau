@@ -19,8 +19,8 @@ public enum PrivilegedShell {
 
         public var errorDescription: String? {
             switch self {
-            case .cancelled: return "Authentication was cancelled."
-            case .failed(let detail): return detail.isEmpty ? "The command could not complete." : detail
+            case .cancelled: "Authentication was cancelled."
+            case let .failed(detail): detail.isEmpty ? "The command could not complete." : detail
             }
         }
     }

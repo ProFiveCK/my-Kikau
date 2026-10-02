@@ -90,7 +90,7 @@ struct MaintenanceRunnerTests {
     func sudoTasksSkipped() async {
         let runner = MaintenanceRunner()
         let sudoTasks = ["dns_spotlight", "network_cache", "network_stack",
-                         "disk_permissions", "spotlight_index", "periodic", "disk_verify"]
+                         "disk_permissions", "spotlight_index", "periodic", "disk_verify",]
         for id in sudoTasks {
             let result = await runner.run(taskID: id, dryRun: false)
             if case .skipped = result.outcome {
@@ -217,7 +217,7 @@ struct MaintenanceRunnerTests {
         let brokenPlist = agentsDir.appendingPathComponent("com.broken.agent.plist")
         let brokenDict: NSDictionary = [
             "Program": "/usr/local/nonexistent/binary",
-            "Label": "com.broken.agent"
+            "Label": "com.broken.agent",
         ]
         brokenDict.write(to: brokenPlist, atomically: true)
 
@@ -225,7 +225,7 @@ struct MaintenanceRunnerTests {
         let okPlist = agentsDir.appendingPathComponent("com.ok.agent.plist")
         let okDict: NSDictionary = [
             "Program": "/bin/echo",
-            "Label": "com.ok.agent"
+            "Label": "com.ok.agent",
         ]
         okDict.write(to: okPlist, atomically: true)
 
@@ -253,7 +253,7 @@ struct MaintenanceRunnerTests {
         let okPlist = agentsDir.appendingPathComponent("com.ok.agent.plist")
         let okDict: NSDictionary = [
             "Program": "/bin/echo",
-            "Label": "com.ok.agent"
+            "Label": "com.ok.agent",
         ]
         okDict.write(to: okPlist, atomically: true)
 

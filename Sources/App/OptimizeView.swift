@@ -36,19 +36,23 @@ struct OptimizeView: View {
     }
 
     private func isRecommended(_ taskID: String) -> Bool {
-        if case .applied = scanResults[taskID]?.outcome { return true }
-        if case .attention = scanResults[taskID]?.outcome { return true }
+        if case .applied = scanResults[taskID]?.outcome {
+            return true
+        }
+        if case .attention = scanResults[taskID]?.outcome {
+            return true
+        }
         return false
     }
 
     private var headerSubtitle: String {
         switch scanState {
         case .notScanned:
-            return "\(MaintenanceCatalog.tasks.count) safe, reversible checks — caches, broken prefs, stale agents"
+            "\(MaintenanceCatalog.tasks.count) safe, reversible checks — caches, broken prefs, stale agents"
         case .scanning:
-            return "Checking your Mac…"
+            "Checking your Mac…"
         case .scanned:
-            return recommendedTasks.isEmpty
+            recommendedTasks.isEmpty
                 ? "Nothing to fix — your Mac's maintenance is up to date"
                 : "\(recommendedTasks.count) issue\(recommendedTasks.count == 1 ? "" : "s") found"
         }
@@ -56,9 +60,9 @@ struct OptimizeView: View {
 
     private var scanButtonTitle: String {
         switch scanState {
-        case .notScanned: return "Scan for Issues"
-        case .scanning: return "Scanning…"
-        case .scanned: return "Rescan"
+        case .notScanned: "Scan for Issues"
+        case .scanning: "Scanning…"
+        case .scanned: "Rescan"
         }
     }
 
@@ -74,7 +78,7 @@ struct OptimizeView: View {
                         .foregroundStyle(scanState == .scanned && !recommendedTasks.isEmpty ? tint : .secondary)
                 }
                 Spacer()
-                if scanState == .scanned && !selectedTasks.isEmpty {
+                if scanState == .scanned, !selectedTasks.isEmpty {
                     Button(applying ? "Fixing…" : "Fix \(selectedTasks.count) Issue\(selectedTasks.count == 1 ? "" : "s")…") {
                         confirmingFix = true
                     }
@@ -245,7 +249,7 @@ struct OptimizeView: View {
     private func reloadLastRuns() {
         let prefix = "optimize."
         var statuses: [String: MaintenanceRunStatus] = [:]
-        for entry in OperationLog.shared.recent(limit: 10_000) where entry.action.hasPrefix(prefix) {
+        for entry in OperationLog.shared.recent(limit: 10000) where entry.action.hasPrefix(prefix) {
             let id = String(entry.action.dropFirst(prefix.count))
             guard statuses[id] == nil else { continue }
             statuses[id] = MaintenanceRunStatus(
@@ -560,17 +564,17 @@ private struct MaintenanceTaskCard: View {
     private var category: (label: String, icon: String, color: Color) {
         switch task.id {
         case "finder_cache", "launch_services", "shared_file_lists":
-            return ("Finder", "sparkles.rectangle.stack", .blue)
+            ("Finder", "sparkles.rectangle.stack", .blue)
         case "saved_state":
-            return ("Privacy", "clock.arrow.circlepath", .purple)
+            ("Privacy", "clock.arrow.circlepath", .purple)
         case "broken_configs", "legacy_overrides", "font_cache":
-            return ("Repair", "wrench.and.screwdriver", .orange)
+            ("Repair", "wrench.and.screwdriver", .orange)
         case "prevent_dsstore", "launch_agents":
-            return ("Startup", "bolt.horizontal.circle", .green)
+            ("Startup", "bolt.horizontal.circle", .green)
         case "network_privacy":
-            return ("System", "checkmark.shield", .orange)
+            ("System", "checkmark.shield", .orange)
         default:
-            return ("Maintenance", "checkmark.shield", .secondary)
+            ("Maintenance", "checkmark.shield", .secondary)
         }
     }
 
@@ -686,13 +690,21 @@ private struct MaintenanceTaskCard: View {
 
     private var accessibilityState: String {
         var parts: [String] = []
-        if let result { parts.append(result.outcome.label) }
-        if let detail = result?.outcome.detail, !detail.isEmpty { parts.append(detail) }
-        if task.kind != .guidedDiagnostic { parts.append(selected ? "Selected" : "Not selected") }
+        if let result {
+            parts.append(result.outcome.label)
+        }
+        if let detail = result?.outcome.detail, !detail.isEmpty {
+            parts.append(detail)
+        }
+        if task.kind != .guidedDiagnostic {
+            parts.append(selected ? "Selected" : "Not selected")
+        }
         return parts.joined(separator: ", ")
     }
 
-    private var tintColor: Color { ContentView.SidebarItem.optimize.tint }
+    private var tintColor: Color {
+        ContentView.SidebarItem.optimize.tint
+    }
 }
 
 private extension OperationLog.Outcome {
@@ -743,20 +755,26 @@ private struct SummaryBanner: View {
 
     private var skippedCount: Int {
         results.values.filter {
-            if case .skipped = $0.outcome { return true }
-            if case .unavailable = $0.outcome { return true }
-            if case .attention = $0.outcome { return true }
+            if case .skipped = $0.outcome {
+                return true
+            }
+            if case .unavailable = $0.outcome {
+                return true
+            }
+            if case .attention = $0.outcome {
+                return true
+            }
             return false
         }.count
     }
 
-    // Compare by case (ignoring associated detail).
+    /// Compare by case (ignoring associated detail).
     private func sameCase(_ a: MaintenanceOutcome, _ b: MaintenanceOutcome) -> Bool {
         switch (a, b) {
         case (.applied, .applied), (.unchanged, .unchanged), (.failed, .failed):
-            return true
+            true
         default:
-            return false
+            false
         }
     }
 }

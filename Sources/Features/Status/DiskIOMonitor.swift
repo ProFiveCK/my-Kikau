@@ -7,7 +7,6 @@ import IOKit
 /// diffs them against the previous sample to produce MB/s rates. The first sample primes
 /// state and returns zero rates.
 public enum DiskIOMonitor {
-
     // MARK: - Collection
 
     /// Collects disk IO rates, maintaining prev-sample state on the provided box.
@@ -24,11 +23,13 @@ public enum DiskIOMonitor {
         }
 
         let elapsed = nowTs - lastAt
-        let status = diskIORates(currentRead: readBytes,
-                                 currentWrite: writeBytes,
-                                 previousRead: prev.read,
-                                 previousWrite: prev.write,
-                                 elapsed: elapsed)
+        let status = diskIORates(
+            currentRead: readBytes,
+            currentWrite: writeBytes,
+            previousRead: prev.read,
+            previousWrite: prev.write,
+            elapsed: elapsed
+        )
 
         box.prev = (readBytes, writeBytes)
         box.lastAt = nowTs
@@ -83,10 +84,12 @@ public enum DiskIOMonitor {
             service = next
             defer { IOObjectRelease(service) }
 
-            if let statsRef = IORegistryEntryCreateCFProperty(service,
-                                                              "Statistics" as CFString,
-                                                              kCFAllocatorDefault,
-                                                              0) {
+            if let statsRef = IORegistryEntryCreateCFProperty(
+                service,
+                "Statistics" as CFString,
+                kCFAllocatorDefault,
+                0
+            ) {
                 if let stats = statsRef.takeRetainedValue() as? [String: Any] {
                     totalRead += uint64(stats["Bytes (Read)"])
                     totalWrite += uint64(stats["Bytes (Written)"])
@@ -100,8 +103,12 @@ public enum DiskIOMonitor {
 
     /// Reads a UInt64 from a statistics dictionary entry (accepts NSNumber or String).
     static func uint64(_ value: Any?) -> UInt64 {
-        if let n = value as? NSNumber { return n.uint64Value }
-        if let s = value as? String, let v = UInt64(s) { return v }
+        if let n = value as? NSNumber {
+            return n.uint64Value
+        }
+        if let s = value as? String, let v = UInt64(s) {
+            return v
+        }
         return 0
     }
 }

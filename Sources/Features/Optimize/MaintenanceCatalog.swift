@@ -10,9 +10,9 @@ public enum MaintenanceCatalog {
 
     /// A maintenance task definition.
     public struct Task: Identifiable, Hashable, Sendable {
-        public let id: String        // action slug
-        public let name: String      // display name
-        public let summary: String   // one-line description
+        public let id: String // action slug
+        public let name: String // display name
+        public let summary: String // one-line description
         public let requiresSudo: Bool
         public let safeForAuto: Bool
         public let kind: TaskKind
@@ -54,35 +54,76 @@ public enum MaintenanceCatalog {
     /// Spotlight orphan rules — were retired: both edited live system
     /// databases/preferences in place, outside the deletion funnel.
     public static let tasks: [Task] = [
-        Task(id: "finder_cache", name: "Finder Cache Refresh",
-             summary: "Refresh QuickLook thumbnails & icon services cache",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "saved_state", name: "App State Cleanup",
-             summary: "Remove old saved application states (30+ days)",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "broken_configs", name: "Broken Config Repair",
-             summary: "Fix corrupted preferences files",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "launch_services", name: "LaunchServices Repair",
-             summary: "Repair \"Open with\" menu & file associations",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "prevent_dsstore", name: "Prevent Finder .DS_Store",
-             summary: "Set a persistent Finder preference to stop writing .DS_Store on network/USB volumes",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "legacy_overrides", name: "Legacy Overrides",
-             summary: "Remove hidden App Nap and disk-image verification overrides left by old tweak tools",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "shared_file_lists", name: "Shared File Lists",
-             summary: "Repair corrupted Finder favourites and recent documents",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "launch_agents", name: "Launch Agents Cleanup",
-             summary: "Remove broken LaunchAgents whose binaries no longer exist",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "font_cache", name: "Font Cache Reset",
-             summary: "Clear the per-user font registration cache — fixes garbled or missing text in apps",
-             requiresSudo: false, safeForAuto: true),
-        Task(id: "network_privacy", name: "System Privacy Records",
-             summary: "Detect duplicate, conflicting, and orphaned Local Network app permissions",
-             requiresSudo: false, safeForAuto: false, kind: .guidedDiagnostic)
+        Task(
+            id: "finder_cache",
+            name: "Finder Cache Refresh",
+            summary: "Refresh QuickLook thumbnails & icon services cache",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "saved_state",
+            name: "App State Cleanup",
+            summary: "Remove old saved application states (30+ days)",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "broken_configs",
+            name: "Broken Config Repair",
+            summary: "Fix corrupted preferences files",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "launch_services",
+            name: "LaunchServices Repair",
+            summary: "Repair \"Open with\" menu & file associations",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "prevent_dsstore",
+            name: "Prevent Finder .DS_Store",
+            summary: "Set a persistent Finder preference to stop writing .DS_Store on network/USB volumes",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "legacy_overrides",
+            name: "Legacy Overrides",
+            summary: "Remove hidden App Nap and disk-image verification overrides left by old tweak tools",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "shared_file_lists",
+            name: "Shared File Lists",
+            summary: "Repair corrupted Finder favourites and recent documents",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "launch_agents",
+            name: "Launch Agents Cleanup",
+            summary: "Remove broken LaunchAgents whose binaries no longer exist",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "font_cache",
+            name: "Font Cache Reset",
+            summary: "Clear the per-user font registration cache — fixes garbled or missing text in apps",
+            requiresSudo: false,
+            safeForAuto: true
+        ),
+        Task(
+            id: "network_privacy",
+            name: "System Privacy Records",
+            summary: "Detect duplicate, conflicting, and orphaned Local Network app permissions",
+            requiresSudo: false,
+            safeForAuto: false,
+            kind: .guidedDiagnostic
+        ),
     ]
 }

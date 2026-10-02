@@ -9,16 +9,18 @@ struct AnalyzeView: View {
         case chart = "Chart"
         case map = "Map"
         case list = "List"
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     @ObservedObject private var session = AnalyzeScanSession.shared
     @State private var mode: ViewMode = .chart
-    // Marks that this user actually uses Analyse, so the launch-time
-    // background preload (see myKikauApp) knows it's worth doing for them.
+    /// Marks that this user actually uses Analyse, so the launch-time
+    /// background preload (see myKikauApp) knows it's worth doing for them.
     @AppStorage(AppStorageKey.hasUsedAnalyze) private var hasUsedAnalyze = false
-    // Non-empty means Desktop/Documents/Downloads under-report or read as
-    // empty here without any visible error — see ProtectedFolderAccessCheck.
+    /// Non-empty means Desktop/Documents/Downloads under-report or read as
+    /// empty here without any visible error — see ProtectedFolderAccessCheck.
     @State private var deniedFolders: [String] = ProtectedFolderAccessCheck.deniedFolders()
 
     private let tint = ContentView.SidebarItem.analyze.tint
@@ -40,7 +42,7 @@ struct AnalyzeView: View {
                     .labelsHidden()
                     .frame(width: 200)
                 }
-                if !session.isOverview && !session.entries.isEmpty {
+                if !session.isOverview, !session.entries.isEmpty {
                     Menu {
                         Toggle("Show hidden items", isOn: $session.showHidden)
                     } label: {
@@ -107,7 +109,7 @@ struct AnalyzeView: View {
                 .padding(.bottom, 8)
             }
 
-            if session.entries.isEmpty && !session.isScanning {
+            if session.entries.isEmpty, !session.isScanning {
                 ContentUnavailableView {
                     Label("No Scan Yet", systemImage: "chart.pie")
                 } description: {
@@ -141,7 +143,9 @@ struct AnalyzeView: View {
                         label: { $0.name },
                         sublabel: { ByteSizeFormatter.format($0.sizeBytes) },
                         onSelect: { entry in
-                            if entry.isNavigable { session.scan(entry.url) }
+                            if entry.isNavigable {
+                                session.scan(entry.url)
+                            }
                         }
                     )
                     .frame(minWidth: 360)
@@ -150,9 +154,15 @@ struct AnalyzeView: View {
                         AnalyzeRow(entry: entry, tint: tint, maxSize: mapEntries.map(\.sizeBytes).max() ?? 1)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                if entry.isNavigable { session.scan(entry.url) }
+                                if entry.isNavigable {
+                                    session.scan(entry.url)
+                                }
                             }
-                            .contextMenu { if entry.isNavigable { PathMenu(url: entry.url) } }
+                            .contextMenu {
+                                if entry.isNavigable {
+                                    PathMenu(url: entry.url)
+                                }
+                            }
                     }
                     .frame(minWidth: 260, idealWidth: 320)
                 }
@@ -163,7 +173,9 @@ struct AnalyzeView: View {
                     AnalyzeRow(entry: entry, tint: tint, maxSize: maxSize)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if entry.isNavigable { session.scan(entry.url) }
+                            if entry.isNavigable {
+                                session.scan(entry.url)
+                            }
                         }
                         .contextMenu {
                             if entry.url.path.hasPrefix("/"), !entry.id.hasPrefix("synthetic://") {
@@ -182,7 +194,9 @@ struct AnalyzeView: View {
     }
 
     private var scanButtonTitle: String {
-        if session.isScanning { return "Scanning..." }
+        if session.isScanning {
+            return "Scanning..."
+        }
         return session.hasResults ? "Rescan" : "Analyse Disk"
     }
 
@@ -232,7 +246,7 @@ private struct BreadcrumbBar: View {
     private struct Crumb: Identifiable {
         let id: Int
         let name: String
-        let url: URL?   // nil == the disk-overview root
+        let url: URL? // nil == the disk-overview root
     }
 
     private var crumbs: [Crumb] {
@@ -253,7 +267,11 @@ private struct BreadcrumbBar: View {
                 ForEach(Array(crumbs.enumerated()), id: \.element.id) { index, crumb in
                     let isLast = index == crumbs.count - 1
                     Button {
-                        if let url = crumb.url { onSelect(url) } else { onSelectRoot() }
+                        if let url = crumb.url {
+                            onSelect(url)
+                        } else {
+                            onSelectRoot()
+                        }
                     } label: {
                         HStack(spacing: 3) {
                             if index == 0 {
@@ -295,21 +313,23 @@ private struct PieChartSection: View {
         let name: String
         let sizeBytes: Int64
         let color: Color
-        let entry: DiskScanner.Entry?   // nil for the aggregated "Other" slice
-        var isNavigable: Bool { entry?.isNavigable == true }
+        let entry: DiskScanner.Entry? // nil for the aggregated "Other" slice
+        var isNavigable: Bool {
+            entry?.isNavigable == true
+        }
     }
 
     private static let palette: [Color] = [
-        .teal, .blue, .purple, .pink, .orange, .yellow, .green, .indigo, .mint, .cyan
+        .teal, .blue, .purple, .pink, .orange, .yellow, .green, .indigo, .mint, .cyan,
     ]
 
     /// Neutral greys for the computed rows so they don't compete with the
     /// folder palette — Free is the lightest, System a mid grey.
     private static func neutralColor(for name: String) -> Color {
         switch name {
-        case "Free": return Color(white: 0.82)
-        case "macOS System": return Color(white: 0.55)
-        default: return Color(white: 0.68)   // "Hidden Items" and any other aggregate
+        case "Free": Color(white: 0.82)
+        case "macOS System": Color(white: 0.55)
+        default: Color(white: 0.68) // "Hidden Items" and any other aggregate
         }
     }
 
@@ -318,7 +338,7 @@ private struct PieChartSection: View {
         // smaller ones roll up into "Other". Computed rows (Free, macOS System,
         // Hidden Items) always keep their own slice — never folded into "Other"
         // — so the donut visibly sums to the whole disk.
-        let navigable = entries.filter { $0.isNavigable }
+        let navigable = entries.filter(\.isNavigable)
         let computed = entries.filter { !$0.isNavigable }
 
         let topCount = 9
@@ -358,8 +378,12 @@ private struct PieChartSection: View {
         // "Free", which is pinned last so the donut reads used-space first,
         // then the gap.
         return result.sorted { lhs, rhs in
-            if lhs.name == "Free" { return false }
-            if rhs.name == "Free" { return true }
+            if lhs.name == "Free" {
+                return false
+            }
+            if rhs.name == "Free" {
+                return true
+            }
             return lhs.sizeBytes > rhs.sizeBytes
         }
     }
@@ -398,7 +422,9 @@ private struct PieChartSection: View {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(slices) { slice in
                         Button {
-                            if let entry = slice.entry, entry.isNavigable { onSelect(entry) }
+                            if let entry = slice.entry, entry.isNavigable {
+                                onSelect(entry)
+                            }
                         } label: {
                             HStack(spacing: 10) {
                                 Circle().fill(slice.color).frame(width: 10, height: 10)
@@ -426,7 +452,9 @@ private struct PieChartSection: View {
                         .buttonStyle(.plain)
                         .disabled(!slice.isNavigable)
                         .contextMenu {
-                            if let entry = slice.entry, entry.isNavigable { PathMenu(url: entry.url) }
+                            if let entry = slice.entry, entry.isNavigable {
+                                PathMenu(url: entry.url)
+                            }
                         }
                         .accessibilityLabel("\(slice.name), \(ByteSizeFormatter.format(slice.sizeBytes)), \(percentString(slice.sizeBytes))")
                     }

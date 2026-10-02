@@ -78,7 +78,7 @@ public final class AppTeardown {
     /// System launch locations requiring sudo (skipped in this phase).
     public static let systemLaunchPaths: [String] = [
         "/Library/LaunchAgents",
-        "/Library/LaunchDaemons"
+        "/Library/LaunchDaemons",
     ]
 
     private func unloadLaunchAgents(
@@ -155,7 +155,9 @@ public final class AppTeardown {
     /// app and is not matched.
     public func matchesAgent(_ plist: URL, bundleID: String, appPath: String) -> Bool {
         let name = plist.lastPathComponent
-        if !bundleID.isEmpty, name == "\(bundleID).plist" { return true }
+        if !bundleID.isEmpty, name == "\(bundleID).plist" {
+            return true
+        }
         // App-path reference inside the plist body.
         guard !appPath.isEmpty,
               let data = try? Data(contentsOf: plist),
@@ -201,7 +203,8 @@ public final class AppTeardown {
             guard let bundle = Bundle(path: entry.path),
                   let id = bundle.bundleIdentifier,
                   isReverseDNSBundleID(id),
-                  !isAppleLabel(id) else {
+                  !isAppleLabel(id)
+            else {
                 continue
             }
             helperIDs.append(id)
@@ -255,7 +258,7 @@ public final class AppTeardown {
     public func lsregisterPath() -> String? {
         let candidates = [
             "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
-            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
         ]
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path

@@ -17,7 +17,9 @@ public enum ProcessRunner {
         public let launchFailed: Bool
         public let timedOut: Bool
 
-        public var succeeded: Bool { !launchFailed && !timedOut && exitCode == 0 }
+        public var succeeded: Bool {
+            !launchFailed && !timedOut && exitCode == 0
+        }
 
         public init(exitCode: Int32, stdout: String, stderr: String, launchFailed: Bool = false, timedOut: Bool = false) {
             self.exitCode = exitCode
@@ -77,7 +79,9 @@ public enum ProcessRunner {
             process.terminate()
             // A child that ignores SIGTERM doesn't get to ignore this.
             DispatchQueue.global().asyncAfter(deadline: .now() + terminationGrace) {
-                if process.isRunning { kill(pid, SIGKILL) }
+                if process.isRunning {
+                    kill(pid, SIGKILL)
+                }
             }
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: killer)
@@ -137,11 +141,11 @@ private final class PipeCollector: @unchecked Sendable {
             guard let self else { return }
             if chunk.isEmpty {
                 handle.readabilityHandler = nil
-                self.done.signal()
+                done.signal()
             } else {
-                self.lock.lock()
-                self.buffer.append(chunk)
-                self.lock.unlock()
+                lock.lock()
+                buffer.append(chunk)
+                lock.unlock()
             }
         }
     }

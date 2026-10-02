@@ -10,7 +10,6 @@ import Core
 /// `CPUTemperatureMonitor`, from real Apple Silicon die sensors (0 on Intel,
 /// where that sensor family doesn't exist).
 public enum ThermalMonitor {
-
     /// Cache TTL for the `system_profiler SPPowerDataType` fan-source output (seconds).
     public static let fanCacheTTL: Double = 300
 
@@ -31,11 +30,10 @@ public enum ThermalMonitor {
         // Battery temp + power straight from the IORegistry — this runs on
         // every tick, so it must not spawn a process. `ioreg` text is only a
         // fallback for a registry read that fails.
-        let battery: ThermalStatus?
-        if let properties = SmartBattery.properties() {
-            battery = status(fromBatteryProperties: properties)
+        let battery: ThermalStatus? = if let properties = SmartBattery.properties() {
+            status(fromBatteryProperties: properties)
         } else {
-            battery = captureIOReg().map(parseAppleSmartBatteryThermal)
+            captureIOReg().map(parseAppleSmartBatteryThermal)
         }
         if let battery {
             thermal.batteryTemp = battery.batteryTemp
@@ -61,8 +59,10 @@ public enum ThermalMonitor {
                 let after = line[colonRange.upperBound...]
                 let trimmed = after.trimmingCharacters(in: .whitespaces)
                 let numStr = trimmed.split(separator: " ").first.map(String.init) ?? ""
-                if let value = Int(numStr.filter { $0.isNumber }) {
-                    if speed == 0 { speed = value }
+                if let value = Int(numStr.filter(\.isNumber)) {
+                    if speed == 0 {
+                        speed = value
+                    }
                     count += 1
                 }
             }
@@ -83,14 +83,16 @@ public enum ThermalMonitor {
             thermal.batteryTemp = temp < 1000 ? temp : temp / 100.0
         }
         if let adapter = properties["AdapterDetails"] as? [String: Any],
-           let watts = SmartBattery.double(adapter["Watts"]), watts > 0 {
+           let watts = SmartBattery.double(adapter["Watts"]), watts > 0
+        {
             thermal.adapterPower = watts
         }
         if let powerMW = SmartBattery.double(telemetry["SystemPowerIn"]) {
             setSystemPowerMW(&thermal, powerMW)
         }
         if thermal.systemPower == 0,
-           let powerMW = SmartBattery.double(telemetry["SystemPower"]) ?? SmartBattery.double(properties["SystemPower"]) {
+           let powerMW = SmartBattery.double(telemetry["SystemPower"]) ?? SmartBattery.double(properties["SystemPower"])
+        {
             setSystemPowerMW(&thermal, powerMW)
         }
         if let powerMW = SmartBattery.signed(telemetry["BatteryPower"]) ?? SmartBattery.signed(properties["BatteryPower"]) {
@@ -152,9 +154,15 @@ public enum ThermalMonitor {
                 setBatteryPowerMW(&thermal, powerMW)
             }
 
-            if let voltage = ioRegFloat(line, "Voltage"), voltage > 0 { voltageMV = voltage }
-            if let voltage = ioRegFloat(line, "AppleRawBatteryVoltage"), voltage > 0 { voltageMV = voltage }
-            if let amperage = ioRegSignedNumber(line, "InstantAmperage"), amperage != 0 { amperageMA = amperage }
+            if let voltage = ioRegFloat(line, "Voltage"), voltage > 0 {
+                voltageMV = voltage
+            }
+            if let voltage = ioRegFloat(line, "AppleRawBatteryVoltage"), voltage > 0 {
+                voltageMV = voltage
+            }
+            if let amperage = ioRegSignedNumber(line, "InstantAmperage"), amperage != 0 {
+                amperageMA = amperage
+            }
             if amperageMA == 0, let amperage = ioRegSignedNumber(line, "Amperage"), amperage != 0 {
                 amperageMA = amperage
             }
@@ -184,8 +192,12 @@ public enum ThermalMonitor {
     /// (ioreg sometimes prints negative int64 as uint64 two's-complement).
     static func ioRegSignedNumber(_ line: String, _ key: String) -> Double? {
         guard let raw = ioRegValueForKey(line, key) else { return nil }
-        if let v = Int64(raw) { return Double(v) }
-        if let v = UInt64(raw), v <= UInt64(Int64.max) { return Double(Int64(v)) }
+        if let v = Int64(raw) {
+            return Double(v)
+        }
+        if let v = UInt64(raw), v <= UInt64(Int64.max) {
+            return Double(Int64(v))
+        }
         return nil
     }
 
@@ -204,12 +216,18 @@ public enum ThermalMonitor {
         let terminators: Set<Character> = [",", "}", ")", " ", "\t", "\n", "\r"]
         var end = rest.startIndex
         for i in rest.indices {
-            if terminators.contains(rest[i]) { break }
+            if terminators.contains(rest[i]) {
+                break
+            }
             end = rest.index(after: i)
         }
-        var value = String(rest[rest.startIndex..<end])
-        if value.hasPrefix("\"") { value.removeFirst() }
-        if value.hasSuffix("\"") { value.removeLast() }
+        var value = String(rest[rest.startIndex ..< end])
+        if value.hasPrefix("\"") {
+            value.removeFirst()
+        }
+        if value.hasSuffix("\"") {
+            value.removeLast()
+        }
         guard !value.isEmpty else { return nil }
         return value
     }
@@ -309,7 +327,7 @@ public final class ThermalSampleBox {
     /// Returns cached power output when fresh, otherwise invokes `capture`.
     func cachedPowerOutput(now: Date, capture: () -> String) -> String {
         let nowTs = now.timeIntervalSince1970
-        if !cachedPower.isEmpty, let lastAt = lastAt, nowTs - lastAt < ThermalMonitor.fanCacheTTL {
+        if !cachedPower.isEmpty, let lastAt, nowTs - lastAt < ThermalMonitor.fanCacheTTL {
             return cachedPower
         }
         let fresh = capture()

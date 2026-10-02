@@ -51,7 +51,7 @@ struct CleanTargetSafetyTests {
             "Library/Safari",
             "Library/Developer/Xcode/Archives",
             ".m2/repository",
-            "Library/Group Containers/UBF8T346G9.com.microsoft.teams"
+            "Library/Group Containers/UBF8T346G9.com.microsoft.teams",
         ]
         for relative in forbidden { makeDir(home.appendingPathComponent(relative)) }
 

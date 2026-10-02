@@ -49,7 +49,9 @@ public final class AnalyzeScanSession: ObservableObject {
         showHidden = defaults.object(forKey: Self.showHiddenKey) as? Bool ?? true
     }
 
-    public var hasResults: Bool { !entries.isEmpty }
+    public var hasResults: Bool {
+        !entries.isEmpty
+    }
 
     /// Cache key for a directory scan at the current `showHidden` setting.
     /// Overview results don't depend on the flag, so they use a fixed key.
@@ -78,8 +80,12 @@ public final class AnalyzeScanSession: ObservableObject {
             // Listings beneath this folder, and listings of the folders that
             // contain it (their totals included it), are all out of date.
             cachedEntries = cachedEntries.filter { key, _ in
-                if key.hasPrefix(prefix) { return false }
-                if key == Self.overviewCacheKey { return false }
+                if key.hasPrefix(prefix) {
+                    return false
+                }
+                if key == Self.overviewCacheKey {
+                    return false
+                }
                 let listed = key.components(separatedBy: "|hidden=").first ?? key
                 return !(directory.path == listed || directory.path.hasPrefix(listed.hasSuffix("/") ? listed : listed + "/"))
             }
@@ -153,7 +159,9 @@ public final class AnalyzeScanSession: ObservableObject {
             entries = cached
             lastScanAt = cachedScanDates[Self.overviewCacheKey]
             finishWalk()
-            if let info = DiskScanner.startupVolumeInfo() { volumeName = info.name }
+            if let info = DiskScanner.startupVolumeInfo() {
+                volumeName = info.name
+            }
             return
         }
         isScanning = true
@@ -174,7 +182,9 @@ public final class AnalyzeScanSession: ObservableObject {
                 self.cachedEntries[Self.overviewCacheKey] = result
                 self.cachedScanDates[Self.overviewCacheKey] = scannedAt
                 guard token == self.scanToken else { return }
-                if let info { self.volumeName = info.name }
+                if let info {
+                    self.volumeName = info.name
+                }
                 self.entries = result
                 self.lastScanAt = scannedAt
                 self.finishWalk()
@@ -202,7 +212,9 @@ public final class AnalyzeScanSession: ObservableObject {
         }
     }
 
-    public var canNavigateUp: Bool { !isOverview && currentDir != nil }
+    public var canNavigateUp: Bool {
+        !isOverview && currentDir != nil
+    }
 
     /// Re-runs the current directory scan when `showHidden` changes. The
     /// overview is unaffected (it always accounts for everything).
@@ -223,7 +235,9 @@ public final class AnalyzeScanSession: ObservableObject {
         isOverview = true
         entries = cached
         lastScanAt = cachedScanDates[Self.overviewCacheKey]
-        if let info = DiskScanner.startupVolumeInfo() { volumeName = info.name }
+        if let info = DiskScanner.startupVolumeInfo() {
+            volumeName = info.name
+        }
         return true
     }
 

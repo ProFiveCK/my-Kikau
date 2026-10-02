@@ -63,7 +63,9 @@ public final class MaintenanceRunner {
         let duration = Date().timeIntervalSince(start)
         let result = Result(outcome: outcome, output: details, durationSeconds: duration)
         logResult(taskID: taskID, result: result, dryRun: dryRun)
-        if !dryRun { lastSuccessCache = nil }
+        if !dryRun {
+            lastSuccessCache = nil
+        }
         return result
     }
 
@@ -81,41 +83,37 @@ public final class MaintenanceRunner {
     private func dispatch(taskID: String, dryRun: Bool) async -> MaintenanceOutcome {
         switch taskID {
         // Non-sudo, fully implemented tasks.
-        case "launch_services": return await runLaunchServices(dryRun: dryRun)
-        case "prevent_dsstore": return await runPreventDSStore(dryRun: dryRun)
-        case "legacy_overrides": return await runLegacyOverrides(dryRun: dryRun)
-        case "finder_cache": return await runFinderCache(dryRun: dryRun)
-        case "font_cache": return await runFontCache(dryRun: dryRun)
-        case "saved_state": return await runSavedStateCleanup(dryRun: dryRun)
-        case "shared_file_lists": return await runSharedFileLists(dryRun: dryRun)
-        case "broken_configs": return await runBrokenConfigs(dryRun: dryRun)
-        case "launch_agents": return await runLaunchAgentsCleanup(dryRun: dryRun)
-        case "network_privacy": return runNetworkPrivacyAudit()
-
+        case "launch_services": await runLaunchServices(dryRun: dryRun)
+        case "prevent_dsstore": await runPreventDSStore(dryRun: dryRun)
+        case "legacy_overrides": await runLegacyOverrides(dryRun: dryRun)
+        case "finder_cache": await runFinderCache(dryRun: dryRun)
+        case "font_cache": await runFontCache(dryRun: dryRun)
+        case "saved_state": await runSavedStateCleanup(dryRun: dryRun)
+        case "shared_file_lists": await runSharedFileLists(dryRun: dryRun)
+        case "broken_configs": await runBrokenConfigs(dryRun: dryRun)
+        case "launch_agents": await runLaunchAgentsCleanup(dryRun: dryRun)
+        case "network_privacy": runNetworkPrivacyAudit()
         // Sudo tasks — deferred pending sudo-prompting UX.
         case "dns_spotlight", "network_cache", "network_stack",
              "disk_permissions", "spotlight_index", "periodic", "disk_verify":
-            return .skipped("Requires sudo — not implemented in this phase")
-
+            .skipped("Requires sudo — not implemented in this phase")
         // Retired: both edited live system databases/preferences in place,
         // outside the deletion funnel and with no way to undo.
         case "quarantine":
-            return .unavailable("Removed — the quarantine history is a live system database and a security record")
+            .unavailable("Removed — the quarantine history is a live system database and a security record")
         case "spotlight_orphans":
-            return .unavailable("Removed — Spotlight preferences are system-managed")
-
+            .unavailable("Removed — Spotlight preferences are system-managed")
         // Active-database / complex tasks — deferred for safety.
         case "sqlite_vacuum":
-            return .unavailable("Database optimisation deferred — active-app safety check pending")
+            .unavailable("Database optimisation deferred — active-app safety check pending")
         case "notifications":
-            return .unavailable("Notification cleanup deferred — active-database safety concerns")
+            .unavailable("Notification cleanup deferred — active-database safety concerns")
         case "coreduet":
-            return .unavailable("Usage data cleanup deferred — active-database safety concerns")
+            .unavailable("Usage data cleanup deferred — active-database safety concerns")
         case "login_items":
-            return .unavailable("Login items audit deferred — SMAppService integration pending")
-
+            .unavailable("Login items audit deferred — SMAppService integration pending")
         default:
-            return .failed("Unknown task ID: \(taskID)")
+            .failed("Unknown task ID: \(taskID)")
         }
     }
 
@@ -140,11 +138,10 @@ public final class MaintenanceRunner {
             return (1, "sudo credentials not available")
         }
 
-        let output: ProcessRunner.Output
-        if requiresSudo {
-            output = await ProcessRunner.run("/usr/bin/sudo", ["-n", executable] + arguments, timeout: 120)
+        let output: ProcessRunner.Output = if requiresSudo {
+            await ProcessRunner.run("/usr/bin/sudo", ["-n", executable] + arguments, timeout: 120)
         } else {
-            output = await ProcessRunner.run(executable, arguments, timeout: 120)
+            await ProcessRunner.run(executable, arguments, timeout: 120)
         }
         if output.launchFailed {
             return (1, "Failed to launch \(executable): \(output.stderr)")
@@ -167,7 +164,7 @@ public final class MaintenanceRunner {
         guard let lsregister = lsregisterPath() else { return [] }
         return [
             (lsregister, ["-gc"]),
-            (lsregister, ["-r", "-f", "-domain", "local", "-domain", "user", "-domain", "system"])
+            (lsregister, ["-r", "-f", "-domain", "local", "-domain", "user", "-domain", "system"]),
         ]
     }
 
@@ -191,17 +188,25 @@ public final class MaintenanceRunner {
         var failed = 0
         for (exec, args) in commands {
             let (code, _) = await runProcess(exec, arguments: args, dryRun: dryRun)
-            if code == 0 { applied += 1 } else { failed += 1 }
+            if code == 0 {
+                applied += 1
+            } else {
+                failed += 1
+            }
         }
-        if failed > 0 { return .failed("LaunchServices rebuild failed (\(failed) command(s))") }
-        if applied > 0 { return .applied("LaunchServices repaired") }
+        if failed > 0 {
+            return .failed("LaunchServices rebuild failed (\(failed) command(s))")
+        }
+        if applied > 0 {
+            return .applied("LaunchServices repaired")
+        }
         return .unchanged("LaunchServices already current")
     }
 
     private func lsregisterPath() -> String? {
         let candidates = [
             "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
-            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+            "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
         ]
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
@@ -214,7 +219,7 @@ public final class MaintenanceRunner {
     /// Builds the defaults commands for .DS_Store prevention.
     func preventDSStoreCommands() -> [(domain: String, key: String)] {
         [("com.apple.desktopservices", "DSDontWriteNetworkStores"),
-         ("com.apple.desktopservices", "DSDontWriteUSBStores")]
+         ("com.apple.desktopservices", "DSDontWriteUSBStores"),]
     }
 
     private func runPreventDSStore(dryRun: Bool) async -> MaintenanceOutcome {
@@ -246,11 +251,19 @@ public final class MaintenanceRunner {
                 arguments: ["write", domain, key, "-bool", "true"],
                 dryRun: false
             )
-            if write.exitCode == 0 { changed += 1 } else { failed += 1 }
+            if write.exitCode == 0 {
+                changed += 1
+            } else {
+                failed += 1
+            }
         }
 
-        if failed > 0 { return .failed("Failed to enable .DS_Store prevention for \(failed) volume type(s)") }
-        if changed > 0 { return .applied(".DS_Store prevention enabled on network & USB volumes") }
+        if failed > 0 {
+            return .failed("Failed to enable .DS_Store prevention for \(failed) volume type(s)")
+        }
+        if changed > 0 {
+            return .applied(".DS_Store prevention enabled on network & USB volumes")
+        }
         return .unchanged(".DS_Store prevention already enabled")
     }
 
@@ -261,7 +274,7 @@ public final class MaintenanceRunner {
         [("-g", "NSAppSleepDisabled", "App Nap disabled globally"),
          ("com.apple.frameworks.diskimages", "skip-verify", "Disk-image verification skipped"),
          ("com.apple.frameworks.diskimages", "skip-verify-locked", "Disk-image verification skipped (locked)"),
-         ("com.apple.frameworks.diskimages", "skip-verify-remote", "Disk-image verification skipped (remote)")]
+         ("com.apple.frameworks.diskimages", "skip-verify-remote", "Disk-image verification skipped (remote)"),]
     }
 
     private func runLegacyOverrides(dryRun: Bool) async -> MaintenanceOutcome {
@@ -289,11 +302,19 @@ public final class MaintenanceRunner {
                 arguments: domain == "-g" ? ["delete", "NSGlobalDomain", key] : ["delete", domain, key],
                 dryRun: false
             )
-            if del.exitCode == 0 { changed += 1 } else { failed += 1 }
+            if del.exitCode == 0 {
+                changed += 1
+            } else {
+                failed += 1
+            }
         }
 
-        if failed > 0 { return .failed("Failed to remove \(failed) override(s)") }
-        if changed > 0 { return .applied("Removed \(changed) legacy override(s)") }
+        if failed > 0 {
+            return .failed("Failed to remove \(failed) override(s)")
+        }
+        if changed > 0 {
+            return .applied("Removed \(changed) legacy override(s)")
+        }
         return .unchanged("No legacy overrides found")
     }
 
@@ -312,10 +333,20 @@ public final class MaintenanceRunner {
 
         var applied = 0
         var failed = 0
-        if qlCache.exitCode == 0 { applied += 1 } else { failed += 1 }
-        if qlRefresh.exitCode == 0 { applied += 1 } else { failed += 1 }
+        if qlCache.exitCode == 0 {
+            applied += 1
+        } else {
+            failed += 1
+        }
+        if qlRefresh.exitCode == 0 {
+            applied += 1
+        } else {
+            failed += 1
+        }
 
-        if failed > 0 { return .failed("Finder cache refresh failed (\(failed) service(s))") }
+        if failed > 0 {
+            return .failed("Finder cache refresh failed (\(failed) service(s))")
+        }
         return .applied("QuickLook thumbnails and icon caches refreshed")
     }
 
@@ -360,7 +391,8 @@ public final class MaintenanceRunner {
         ) {
             for entry in entries where entry.pathExtension == "savedState" {
                 if let mod = try? entry.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                   mod < cutoff {
+                   mod < cutoff
+                {
                     targets.append(entry)
                 }
             }
@@ -404,12 +436,18 @@ public final class MaintenanceRunner {
         ) {
             for entry in entries where ["sfl2", "sfl3"].contains(entry.pathExtension) {
                 // Skip recent-documents list (user data, not a cache).
-                if entry.lastPathComponent.contains("ApplicationRecentDocuments") { continue }
-                if !isValidPropertyList(entry) { corrupt.append(entry) }
+                if entry.lastPathComponent.contains("ApplicationRecentDocuments") {
+                    continue
+                }
+                if !isValidPropertyList(entry) {
+                    corrupt.append(entry)
+                }
             }
         }
 
-        if corrupt.isEmpty { return .unchanged("Shared file lists all healthy") }
+        if corrupt.isEmpty {
+            return .unchanged("Shared file lists all healthy")
+        }
 
         let plan = deleter.preview(corrupt, category: .leftover)
         guard !plan.items.isEmpty else { return .unchanged("Shared file lists all healthy") }
@@ -441,17 +479,28 @@ public final class MaintenanceRunner {
             let recentlyWritten = Date().addingTimeInterval(-60)
             for entry in entries where entry.pathExtension == "plist" {
                 // Skip protected plists and anything macOS itself owns.
-                if PathProtection.shared.shouldProtect(entry) { continue }
-                if entry.lastPathComponent.hasPrefix("com.apple.") || entry.lastPathComponent.hasPrefix(".") { continue }
+                if PathProtection.shared.shouldProtect(entry) {
+                    continue
+                }
+                if entry.lastPathComponent.hasPrefix("com.apple.") || entry.lastPathComponent.hasPrefix(".") {
+                    continue
+                }
                 // cfprefsd rewrites preference files in place; one that's
                 // mid-write can look corrupt for a moment.
                 if let modified = try? entry.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                   modified > recentlyWritten { continue }
-                if !isValidPropertyList(entry) { corrupt.append(entry) }
+                   modified > recentlyWritten
+                {
+                    continue
+                }
+                if !isValidPropertyList(entry) {
+                    corrupt.append(entry)
+                }
             }
         }
 
-        if corrupt.isEmpty { return .unchanged("All preference files valid") }
+        if corrupt.isEmpty {
+            return .unchanged("All preference files valid")
+        }
 
         let plan = deleter.preview(corrupt, category: .leftover)
         guard !plan.items.isEmpty else { return .unchanged("All preference files valid") }
@@ -491,14 +540,18 @@ public final class MaintenanceRunner {
             options: [.skipsHiddenFiles]
         ) {
             for entry in entries where entry.pathExtension == "plist" {
-                if PathProtection.shared.shouldProtect(entry) { continue }
+                if PathProtection.shared.shouldProtect(entry) {
+                    continue
+                }
                 if isLaunchAgentBroken(entry) {
                     broken.append(entry)
                 }
             }
         }
 
-        if broken.isEmpty { return .unchanged("Launch Agents all healthy") }
+        if broken.isEmpty {
+            return .unchanged("Launch Agents all healthy")
+        }
 
         let plan = deleter.preview(broken, category: .leftover)
         guard !plan.items.isEmpty else { return .unchanged("Launch Agents all healthy") }
@@ -526,9 +579,13 @@ public final class MaintenanceRunner {
     /// network volume is merely unavailable right now, not broken — neither
     /// is evidence the agent is dead. `com.apple.*` agents are never judged.
     func isLaunchAgentBroken(_ plist: URL) -> Bool {
-        if plist.lastPathComponent.hasPrefix("com.apple.") { return false }
+        if plist.lastPathComponent.hasPrefix("com.apple.") {
+            return false
+        }
         guard let dict = NSDictionary(contentsOf: plist) as? [String: Any] else { return false }
-        if let label = dict["Label"] as? String, label.hasPrefix("com.apple.") { return false }
+        if let label = dict["Label"] as? String, label.hasPrefix("com.apple.") {
+            return false
+        }
         let executable = (dict["Program"] as? String) ?? (dict["ProgramArguments"] as? [String])?.first
         guard let executable, executable.hasPrefix("/"), !executable.hasPrefix("/Volumes/") else { return false }
         return !FileManager.default.fileExists(atPath: executable)
@@ -566,8 +623,9 @@ public final class MaintenanceRunner {
         if lastSuccessCache == nil {
             var cache: [String: Date] = [:]
             // Newest first, so the first hit per action is the latest run.
-            for entry in opLog.recent(limit: 10_000)
-            where entry.outcome == .success && !entry.dryRun && cache[entry.action] == nil {
+            for entry in opLog.recent(limit: 10000)
+                where entry.outcome == .success && !entry.dryRun && cache[entry.action] == nil
+            {
                 cache[entry.action] = entry.timestamp
             }
             lastSuccessCache = cache
@@ -578,7 +636,9 @@ public final class MaintenanceRunner {
 
     private func daysDescription(_ days: Double) -> String {
         let whole = Int(days)
-        if whole < 1 { return "today" }
+        if whole < 1 {
+            return "today"
+        }
         return "\(whole) day\(whole == 1 ? "" : "s")"
     }
 
@@ -600,12 +660,12 @@ public final class MaintenanceRunner {
 
     private func mapOutcome(_ outcome: MaintenanceOutcome, dryRun: Bool) -> (OperationLog.Outcome, Int64) {
         switch outcome {
-        case .applied: return (dryRun ? .dryRun : .success, 0)
-        case .unchanged: return (.skipped, 0)
-        case .skipped: return (.skipped, 0)
-        case .unavailable: return (.skipped, 0)
-        case .attention: return (.skipped, 0)
-        case .failed: return (.failed, 0)
+        case .applied: (dryRun ? .dryRun : .success, 0)
+        case .unchanged: (.skipped, 0)
+        case .skipped: (.skipped, 0)
+        case .unavailable: (.skipped, 0)
+        case .attention: (.skipped, 0)
+        case .failed: (.failed, 0)
         }
     }
 }

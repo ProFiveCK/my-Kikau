@@ -27,7 +27,7 @@ public enum NetworkPrivacyRepairAssistant {
         "com.apple.networkextension.uuidcache.plist",
         "com.apple.networkextension.cache.plist",
         "com.apple.networkextension.control.plist",
-        "com.apple.networkextension.necp.plist"
+        "com.apple.networkextension.necp.plist",
     ].map { URL(fileURLWithPath: "/Library/Preferences").appendingPathComponent($0) }
 
     public static func prepare(
@@ -42,7 +42,7 @@ public enum NetworkPrivacyRepairAssistant {
 
         let root = destinationRoot
             ?? FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Documents/myKikau Repairs")
+            .appendingPathComponent("Documents/myKikau Repairs")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
         let formatter = DateFormatter()

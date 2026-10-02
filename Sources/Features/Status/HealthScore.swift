@@ -1,6 +1,6 @@
 import Foundation
 #if canImport(SwiftUI)
-import SwiftUI
+    import SwiftUI
 #endif
 
 /// Calculates a 0-100 system health score from metrics.
@@ -61,7 +61,9 @@ public enum HealthScore {
                 score -= (cpuWeight / 2) * (snapshot.cpu.usage - cpuNormal) / (cpuHigh - cpuNormal)
             }
         }
-        if snapshot.cpu.usage > cpuHigh { issues.append("High CPU") }
+        if snapshot.cpu.usage > cpuHigh {
+            issues.append("High CPU")
+        }
 
         // Memory penalty
         if snapshot.memory.usedPercent > memNormal {
@@ -71,7 +73,9 @@ public enum HealthScore {
                 score -= (memWeight / 2) * (snapshot.memory.usedPercent - memNormal) / (memHigh - memNormal)
             }
         }
-        if snapshot.memory.usedPercent > memHigh { issues.append("High Memory") }
+        if snapshot.memory.usedPercent > memHigh {
+            issues.append("High Memory")
+        }
 
         // Memory pressure penalty
         switch snapshot.memory.pressure {
@@ -93,7 +97,9 @@ public enum HealthScore {
                     score -= (diskWeight / 2) * (disk.usedPercent - diskWarn) / (diskCrit - diskWarn)
                 }
             }
-            if disk.usedPercent > diskCrit { issues.append("Disk Almost Full") }
+            if disk.usedPercent > diskCrit {
+                issues.append("Disk Almost Full")
+            }
         }
 
         // Thermal penalty
@@ -142,12 +148,11 @@ public enum HealthScore {
         // Clamp
         score = max(0, min(100, score))
 
-        var msg: String
-        switch Int(score) {
-        case scoreExcellent...: msg = "Excellent"
-        case scoreGood..<scoreExcellent: msg = "Good"
-        case scoreFair..<scoreGood: msg = "Fair"
-        default: msg = "Needs Attention"
+        var msg = switch Int(score) {
+        case scoreExcellent...: "Excellent"
+        case scoreGood ..< scoreExcellent: "Good"
+        case scoreFair ..< scoreGood: "Fair"
+        default: "Needs Attention"
         }
         if !issues.isEmpty {
             msg += ": " + issues.joined(separator: ", ")
@@ -172,45 +177,49 @@ public enum HealthScore {
         let days = seconds / 86400
         let hours = (seconds % 86400) / 3600
         let mins = (seconds % 3600) / 60
-        if days > 0 { return "\(days)d \(hours)h" }
-        if hours > 0 { return "\(hours)h \(mins)m" }
+        if days > 0 {
+            return "\(days)d \(hours)h"
+        }
+        if hours > 0 {
+            return "\(hours)h \(mins)m"
+        }
         return "\(mins)m"
     }
 
     #if canImport(SwiftUI)
-    /// The one branded accent color used for a "Great"/"Good" health band —
-    /// shared here so the dashboard's hero card and its glass-tile buttons
-    /// can't drift apart into two different teals.
-    public static let accentTeal = Color(red: 0.42, green: 0.94, blue: 0.86)
+        /// The one branded accent color used for a "Great"/"Good" health band —
+        /// shared here so the dashboard's hero card and its glass-tile buttons
+        /// can't drift apart into two different teals.
+        public static let accentTeal = Color(red: 0.42, green: 0.94, blue: 0.86)
 
-    /// A displayed score's word, one-line explanation, color, and SF Symbol —
-    /// all derived from one shared set of bands. Both the dashboard's
-    /// `HeroHealthCard` and the menu bar HUD used to compute this themselves,
-    /// each with its own hand-rolled `switch`. They drifted: the word bands
-    /// and color bands didn't line up in either copy, so a score in the
-    /// high-70s/low-80s could show a positive word ("Good") in a cautionary
-    /// color (yellow). Centralizing here means there's exactly one place
-    /// this can go wrong, not two independently-maintained ones.
-    public struct Band {
-        public let word: String
-        public let explanation: String
-        public let color: Color
-        public let symbol: String
-    }
-
-    public static func band(for score: Int) -> Band {
-        switch score {
-        case 90...:
-            return Band(word: "Great", explanation: "No urgent issues detected", color: accentTeal, symbol: "checkmark.circle.fill")
-        case 75..<90:
-            return Band(word: "Good", explanation: "Minor pressure detected", color: accentTeal, symbol: "checkmark.circle.fill")
-        case 60..<75:
-            return Band(word: "OK", explanation: "Some maintenance is worth reviewing", color: .yellow, symbol: "exclamationmark.circle.fill")
-        case 40..<60:
-            return Band(word: "Needs Maintenance", explanation: "Action recommended", color: .orange, symbol: "exclamationmark.triangle.fill")
-        default:
-            return Band(word: "Needs Maintenance", explanation: "Action recommended", color: .red, symbol: "xmark.octagon.fill")
+        /// A displayed score's word, one-line explanation, color, and SF Symbol —
+        /// all derived from one shared set of bands. Both the dashboard's
+        /// `HeroHealthCard` and the menu bar HUD used to compute this themselves,
+        /// each with its own hand-rolled `switch`. They drifted: the word bands
+        /// and color bands didn't line up in either copy, so a score in the
+        /// high-70s/low-80s could show a positive word ("Good") in a cautionary
+        /// color (yellow). Centralizing here means there's exactly one place
+        /// this can go wrong, not two independently-maintained ones.
+        public struct Band {
+            public let word: String
+            public let explanation: String
+            public let color: Color
+            public let symbol: String
         }
-    }
+
+        public static func band(for score: Int) -> Band {
+            switch score {
+            case 90...:
+                Band(word: "Great", explanation: "No urgent issues detected", color: accentTeal, symbol: "checkmark.circle.fill")
+            case 75 ..< 90:
+                Band(word: "Good", explanation: "Minor pressure detected", color: accentTeal, symbol: "checkmark.circle.fill")
+            case 60 ..< 75:
+                Band(word: "OK", explanation: "Some maintenance is worth reviewing", color: .yellow, symbol: "exclamationmark.circle.fill")
+            case 40 ..< 60:
+                Band(word: "Needs Maintenance", explanation: "Action recommended", color: .orange, symbol: "exclamationmark.triangle.fill")
+            default:
+                Band(word: "Needs Maintenance", explanation: "Action recommended", color: .red, symbol: "xmark.octagon.fill")
+            }
+        }
     #endif
 }

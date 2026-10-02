@@ -10,7 +10,6 @@ import Core
 /// key isn't present on a given macOS/GPU combination, usage reads as -1.
 /// `memoryUsed`/`memoryTotal` are not exposed by `system_profiler` on macOS and stay 0.
 public enum GPUMonitor {
-
     /// Static GPU info cache TTL (seconds).
     public static let infoTTL: Double = 6 * 3600
 
@@ -26,7 +25,8 @@ public enum GPUMonitor {
         // Static GPU info (cached for hours — the hardware doesn't change).
         if box.cachedGPU.isEmpty || box.lastInfoAt == nil || nowTs - box.lastInfoAt! >= infoTTL {
             if let data = captureDisplaysJSON(),
-               let gpus = parseDisplaysJSON(data), !gpus.isEmpty {
+               let gpus = parseDisplaysJSON(data), !gpus.isEmpty
+            {
                 box.cachedGPU = gpus
                 box.lastInfoAt = nowTs
             }
@@ -64,7 +64,9 @@ public enum GPUMonitor {
         var gpus: [GPUStatus] = []
         for d in displays {
             let name = (d["_name"] as? String) ?? ""
-            if name.isEmpty { continue }
+            if name.isEmpty {
+                continue
+            }
 
             let vram = d["spdisplays_vram"] as? String
             let vendor = d["spdisplays_vendor"] as? String
@@ -73,15 +75,23 @@ public enum GPUMonitor {
             let cores = Int(coresStr ?? "") ?? 0
 
             var noteParts: [String] = []
-            if let v = vram, !v.isEmpty { noteParts.append("VRAM " + v) }
-            if let m = metal, !m.isEmpty { noteParts.append(m) }
-            if let v = vendor, !v.isEmpty { noteParts.append(v) }
+            if let v = vram, !v.isEmpty {
+                noteParts.append("VRAM " + v)
+            }
+            if let m = metal, !m.isEmpty {
+                noteParts.append(m)
+            }
+            if let v = vendor, !v.isEmpty {
+                noteParts.append(v)
+            }
             let note = noteParts.joined(separator: " · ")
 
             gpus.append(GPUStatus(name: name, usage: -1, coreCount: cores, note: note))
         }
 
-        if gpus.isEmpty { return nil }
+        if gpus.isEmpty {
+            return nil
+        }
         return gpus
     }
 
@@ -122,7 +132,8 @@ public enum GPUMonitor {
             var propsUnmanaged: Unmanaged<CFMutableDictionary>?
             guard IORegistryEntryCreateCFProperties(service, &propsUnmanaged, kCFAllocatorDefault, 0) == KERN_SUCCESS,
                   let props = propsUnmanaged?.takeRetainedValue() as? [String: Any],
-                  let perfStats = props["PerformanceStatistics"] as? [String: Any] else {
+                  let perfStats = props["PerformanceStatistics"] as? [String: Any]
+            else {
                 continue
             }
 

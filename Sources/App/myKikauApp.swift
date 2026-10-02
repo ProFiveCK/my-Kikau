@@ -9,8 +9,8 @@ import UI
 struct myKikauApp: App {
     @StateObject private var updaterViewModel = UpdaterViewModel()
     @AppStorage(AppStorageKey.showDockIcon) private var showDockIcon = true
-    // Gates the launch-time Analyze preload below — only set once the user
-    // has actually opened Analyse at least once (see AnalyzeView.onAppear).
+    /// Gates the launch-time Analyze preload below — only set once the user
+    /// has actually opened Analyse at least once (see AnalyzeView.onAppear).
     @AppStorage(AppStorageKey.hasUsedAnalyze) private var hasUsedAnalyze = false
     // Shared singleton, not a fresh instance — @ObservedObject here just
     // subscribes this Scene to its existing @Published changes so the menu
@@ -157,7 +157,8 @@ enum DockIconController {
     /// NSImage's template flag surviving SwiftUI's `Image(nsImage:)` bridge.
     static func menuBarImage() -> NSImage {
         if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "pdf"),
-           let image = NSImage(contentsOf: url) {
+           let image = NSImage(contentsOf: url)
+        {
             image.isTemplate = true
             image.size = NSSize(width: 18, height: 18)
             return image
@@ -190,12 +191,16 @@ enum DockIconController {
         let knotH: CGFloat = 3.5
         let knot = NSBezierPath()
         knot.move(to: NSPoint(x: cx - knotW / 2, y: cy - knotH / 2))
-        knot.curve(to: NSPoint(x: cx + knotW / 2, y: cy + knotH / 2),
-                   controlPoint1: NSPoint(x: cx - knotW / 2, y: cy + knotH),
-                   controlPoint2: NSPoint(x: cx + knotW / 2, y: cy - knotH))
-        knot.curve(to: NSPoint(x: cx - knotW / 2, y: cy - knotH / 2),
-                   controlPoint1: NSPoint(x: cx + knotW / 2, y: cy + knotH),
-                   controlPoint2: NSPoint(x: cx - knotW / 2, y: cy - knotH))
+        knot.curve(
+            to: NSPoint(x: cx + knotW / 2, y: cy + knotH / 2),
+            controlPoint1: NSPoint(x: cx - knotW / 2, y: cy + knotH),
+            controlPoint2: NSPoint(x: cx + knotW / 2, y: cy - knotH)
+        )
+        knot.curve(
+            to: NSPoint(x: cx - knotW / 2, y: cy - knotH / 2),
+            controlPoint1: NSPoint(x: cx + knotW / 2, y: cy + knotH),
+            controlPoint2: NSPoint(x: cx - knotW / 2, y: cy - knotH)
+        )
         knot.lineWidth = 1.2
         knot.stroke()
 
@@ -221,7 +226,9 @@ struct RootView: View {
 struct ContentView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
         case status, clean, uninstall, analyze, duplicates, network, optimize, startup, purge, history, about
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
 
         /// Explicit display strings rather than `rawValue.capitalized` — the
         /// case names are American-spelled internal identifiers ("analyze",
@@ -249,8 +256,12 @@ struct ContentView: View {
         static func visibleCases(developerTools: Bool) -> [SidebarItem] {
             let policy = ManagedPolicy.shared
             return allCases.filter { item in
-                if item == .purge, !developerTools { return false }
-                if item == .status || item == .about || item == .history { return true }
+                if item == .purge, !developerTools {
+                    return false
+                }
+                if item == .status || item == .about || item == .history {
+                    return true
+                }
                 return !policy.isFeatureDisabled(item.rawValue)
             }
         }
@@ -262,7 +273,9 @@ struct ContentView: View {
             case inspect = "Inspect"
             case maintain = "Maintain"
             case app = "myKikau"
-            var id: String { rawValue }
+            var id: String {
+                rawValue
+            }
 
             /// Caption shown above the group, if it has one.
             var title: String? {
@@ -346,7 +359,9 @@ struct ContentView: View {
                         } header: {
                             // The first and last groups need no caption;
                             // skipping them keeps the list inside the window.
-                            if let title = group.title { Text(title) }
+                            if let title = group.title {
+                                Text(title)
+                            }
                         }
                     }
                 }
@@ -383,13 +398,17 @@ struct ContentView: View {
             }
         }
         .onChange(of: selection) { _, value in
-            if let value { storedSelection = value.rawValue }
+            if let value {
+                storedSelection = value.rawValue
+            }
         }
         // Picked up when the menu bar HUD or a ⌘-number shortcut requests a
         // specific screen.
         .onReceive(navigation.$pendingSelection) { pending in
             guard let pending else { return }
-            if items.contains(pending), !deletionActivity.isRunning { selection = pending }
+            if items.contains(pending), !deletionActivity.isRunning {
+                selection = pending
+            }
             navigation.pendingSelection = nil
         }
     }

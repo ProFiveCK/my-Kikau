@@ -14,25 +14,25 @@ import Features
 
 AppDefaults.store = UserDefaults(suiteName: AppDefaults.appDomain) ?? .standard
 
-// Kept in step with Info.plist by scripts/bump-version.sh.
+/// Kept in step with Info.plist by scripts/bump-version.sh.
 let cliVersion = "0.8.0"
 
 let usage = """
-    Usage: mykikau-cli <command> [options]
+Usage: mykikau-cli <command> [options]
 
-    Commands:
-      scan [--json]            Measure what Clean could reclaim, per category.
-      status [--json]          Current CPU, memory, disk, battery and health score.
-      policy [--json]          The administrator policy in effect on this Mac.
-      log verify               Check the operation log's integrity chain.
-      log export <path> [--csv]
-                               Write the operation log to a file (JSON Lines by default).
-      version                  Print the version.
+Commands:
+  scan [--json]            Measure what Clean could reclaim, per category.
+  status [--json]          Current CPU, memory, disk, battery and health score.
+  policy [--json]          The administrator policy in effect on this Mac.
+  log verify               Check the operation log's integrity chain.
+  log export <path> [--csv]
+                           Write the operation log to a file (JSON Lines by default).
+  version                  Print the version.
 
-    Nothing is ever removed by this tool.
-    """
+Nothing is ever removed by this tool.
+"""
 
-func emit<T: Encodable>(_ value: T) {
+func emit(_ value: some Encodable) {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
     encoder.dateEncodingStrategy = .iso8601
@@ -129,8 +129,12 @@ func runStatus(json: Bool) async {
     }
     if let battery = snapshot.batteries.first {
         var line = "Battery: \(Int(battery.percent))% \(battery.status)"
-        if battery.capacity > 0 { line += ", health \(battery.capacity)%" }
-        if battery.cycleCount > 0 { line += ", \(battery.cycleCount) cycles" }
+        if battery.capacity > 0 {
+            line += ", health \(battery.capacity)%"
+        }
+        if battery.cycleCount > 0 {
+            line += ", \(battery.cycleCount) cycles"
+        }
         print(line)
     }
 }
@@ -156,13 +160,27 @@ func runPolicy(json: Bool) {
         return
     }
     print("Administrator policy in effect:")
-    if !report.disabledFeatures.isEmpty { print("  Disabled features: \(report.disabledFeatures.joined(separator: ", "))") }
-    if !report.protectedPaths.isEmpty { print("  Protected paths: \(report.protectedPaths.joined(separator: ", "))") }
-    if !report.protectedBundlePrefixes.isEmpty { print("  Protected software: \(report.protectedBundlePrefixes.joined(separator: ", "))") }
-    if report.forceOperationLog { print("  Operation log: always on") }
-    if report.disableAutomaticUpdates { print("  Automatic updates: off") }
-    if report.disablePrivilegedTools { print("  Administrator actions: disabled") }
-    if let hours = report.scheduledScanIntervalHours { print("  Background scan: every \(hours) hours") }
+    if !report.disabledFeatures.isEmpty {
+        print("  Disabled features: \(report.disabledFeatures.joined(separator: ", "))")
+    }
+    if !report.protectedPaths.isEmpty {
+        print("  Protected paths: \(report.protectedPaths.joined(separator: ", "))")
+    }
+    if !report.protectedBundlePrefixes.isEmpty {
+        print("  Protected software: \(report.protectedBundlePrefixes.joined(separator: ", "))")
+    }
+    if report.forceOperationLog {
+        print("  Operation log: always on")
+    }
+    if report.disableAutomaticUpdates {
+        print("  Automatic updates: off")
+    }
+    if report.disablePrivilegedTools {
+        print("  Administrator actions: disabled")
+    }
+    if let hours = report.scheduledScanIntervalHours {
+        print("  Background scan: every \(hours) hours")
+    }
 }
 
 func runLog(_ arguments: [String]) {

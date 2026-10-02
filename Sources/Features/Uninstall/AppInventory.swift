@@ -34,7 +34,7 @@ public enum AppInventory {
             requiresAdministrator: Bool = false,
             isAppStore: Bool = false
         ) {
-            self.id = url.path
+            id = url.path
             self.url = url
             self.name = name
             self.bundleID = bundleID
@@ -73,7 +73,7 @@ public enum AppInventory {
     public static func appBundleURLs() -> [URL] {
         let appDirs = [
             URL(fileURLWithPath: "/Applications"),
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"),
         ]
         var bundles: [URL] = []
         for dir in appDirs {
@@ -143,7 +143,9 @@ public enum AppInventory {
     /// Returns true if the app is protected from uninstallation: a critical
     /// system app, a security or device-management agent, or myKikau itself.
     public static func isProtected(_ app: AppInfo) -> Bool {
-        if app.url.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL { return true }
+        if app.url.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL {
+            return true
+        }
         guard let bundleID = app.bundleID else { return false }
         let protection = PathProtection.shared
         return protection.isSystemCriticalBundle(bundleID) || protection.isEndpointSecurityBundle(bundleID)
@@ -156,8 +158,12 @@ public enum AppInventory {
         }
         guard let bundleID = app.bundleID else { return nil }
         let protection = PathProtection.shared
-        if protection.isEndpointSecurityBundle(bundleID) { return "Security or device-management software" }
-        if protection.isSystemCriticalBundle(bundleID) { return "Part of macOS" }
+        if protection.isEndpointSecurityBundle(bundleID) {
+            return "Security or device-management software"
+        }
+        if protection.isSystemCriticalBundle(bundleID) {
+            return "Part of macOS"
+        }
         return nil
     }
 

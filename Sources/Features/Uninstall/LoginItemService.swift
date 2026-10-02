@@ -62,7 +62,9 @@ public final class SystemEventsLoginItemService: LoginItemManaging {
         guard !bundleID.isEmpty else { return false }
         // Never boot out the protected Apple namespace regardless of what a
         // third-party helper's Info.plist claims.
-        if bundleID.hasPrefix("com.apple.") { return false }
+        if bundleID.hasPrefix("com.apple.") {
+            return false
+        }
         let output = ProcessRunner.runBlocking("/bin/launchctl", ["bootout", "gui/\(getuid())/\(bundleID)"], timeout: 20)
         // `launchctl bootout` returns non-zero when the service is not
         // loaded (already gone), which is the desired end state for an

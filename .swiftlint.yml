@@ -43,3 +43,9 @@ identifier_name:
 large_tuple:
   warning: 4
   error: 5
+
+# SwiftFormat owns these two; keep SwiftLint in agreement with it.
+trailing_comma:
+  mandatory_comma: true
+opening_brace:
+  ignore_multiline_statement_conditions: true

@@ -14,15 +14,15 @@ public final class MetricsCollector: @unchecked Sendable {
     private var prevCPUTicks: (UInt32, UInt32, UInt32, UInt32) = (0, 0, 0, 0)
     private var lastCPUAt: Date = .distantPast
 
-    // Network rate collection state (per-instance to diff successive samples).
+    /// Network rate collection state (per-instance to diff successive samples).
     private let networkBox = NetworkSampleBox()
-    // Thermal fan-source cache.
+    /// Thermal fan-source cache.
     private let thermalBox = ThermalSampleBox()
-    // GPU static info + usage cache.
+    /// GPU static info + usage cache.
     private let gpuBox = GPUSampleBox()
-    // Disk IO rate collection state.
+    /// Disk IO rate collection state.
     private let diskIOBox = DiskIOSampleBox()
-    // CPU die temperature sensor cache (Apple Silicon only).
+    /// CPU die temperature sensor cache (Apple Silicon only).
     private let cpuTempBox = CPUTempSampleBox()
 
     public init() {}
@@ -44,16 +44,16 @@ public final class MetricsCollector: @unchecked Sendable {
         var thermalStatus = await thermal
         thermalStatus.cpuTemp = await cpuTemp
 
-        let snapshot = MetricsSnapshot(
-            host: await host,
-            uptimeSeconds: await uptime,
-            cpu: await cpu,
-            memory: await memory,
-            disks: await disks,
-            diskIO: await diskIO,
-            network: await network,
-            gpu: await gpu,
-            batteries: await batteries,
+        let snapshot = await MetricsSnapshot(
+            host: host,
+            uptimeSeconds: uptime,
+            cpu: cpu,
+            memory: memory,
+            disks: disks,
+            diskIO: diskIO,
+            network: network,
+            gpu: gpu,
+            batteries: batteries,
             thermal: thermalStatus
         )
 
@@ -91,7 +91,7 @@ public final class MetricsCollector: @unchecked Sendable {
         let ticks = cpuInfo.cpu_ticks
         var usage: Double = 0
         let now = Date()
-        if lastCPUAt != .distantPast && now.timeIntervalSince(lastCPUAt) < 60 {
+        if lastCPUAt != .distantPast, now.timeIntervalSince(lastCPUAt) < 60 {
             usage = Self.cpuUsage(previous: prevCPUTicks, current: ticks)
         }
         prevCPUTicks = ticks
@@ -183,7 +183,7 @@ public final class MetricsCollector: @unchecked Sendable {
         // purge on demand. Analyse uses the same figure, so the two screens agree.
         let root = URL(fileURLWithPath: "/")
         guard let values = try? root.resourceValues(forKeys: [
-            .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey
+            .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey,
         ]), let totalCapacity = values.volumeTotalCapacity, totalCapacity > 0 else {
             return []
         }
@@ -210,7 +210,9 @@ public final class MetricsCollector: @unchecked Sendable {
             }
             // Only the internal battery — a UPS or a Bluetooth accessory is
             // also a "power source".
-            if let type = desc[kIOPSTypeKey] as? String, type != kIOPSInternalBatteryType { continue }
+            if let type = desc[kIOPSTypeKey] as? String, type != kIOPSInternalBatteryType {
+                continue
+            }
             let percent = (desc[kIOPSCurrentCapacityKey] as? Double) ?? 0
             let maxCap = (desc[kIOPSMaxCapacityKey] as? Double) ?? 100
             let pct = maxCap > 0 ? percent / maxCap * 100 : 0
@@ -230,10 +232,16 @@ public final class MetricsCollector: @unchecked Sendable {
     }
 
     static func batteryStatusText(isCharging: Bool, isCharged: Bool, onACPower: Bool) -> String {
-        if isCharging { return "Charging" }
-        if isCharged { return "Charged" }
+        if isCharging {
+            return "Charging"
+        }
+        if isCharged {
+            return "Charged"
+        }
         // Plugged in but holding (optimised charging, or a full battery).
-        if onACPower { return "On Power" }
+        if onACPower {
+            return "On Power"
+        }
         return "Discharging"
     }
 

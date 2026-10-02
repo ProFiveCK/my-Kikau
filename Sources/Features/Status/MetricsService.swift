@@ -67,7 +67,9 @@ public final class MetricsService: ObservableObject {
         // The very first sample has no previous CPU reading to diff against.
         if sampleCounter > 1 {
             history.append(Sample(id: sampleCounter, cpuPercent: latest.cpu.usage, memoryPercent: latest.memory.usedPercent))
-            if history.count > Self.historyLimit { history.removeFirst(history.count - Self.historyLimit) }
+            if history.count > Self.historyLimit {
+                history.removeFirst(history.count - Self.historyLimit)
+            }
         }
     }
 }

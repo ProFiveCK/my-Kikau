@@ -17,7 +17,7 @@ public enum ProcessMonitor {
         public let residentBytes: Int64
 
         public init(pid: Int, command: String, cpuPercent: Double, memoryPercent: Double, residentBytes: Int64) {
-            self.id = pid
+            id = pid
             self.pid = pid
             self.command = command
             self.cpuPercent = cpuPercent
@@ -61,12 +61,11 @@ public enum ProcessMonitor {
                 )
             }
 
-        let sorted: [ProcessInfo]
-        switch sort {
+        let sorted: [ProcessInfo] = switch sort {
         case .cpu:
-            sorted = rows.sorted { $0.cpuPercent > $1.cpuPercent }
+            rows.sorted { $0.cpuPercent > $1.cpuPercent }
         case .memory:
-            sorted = rows.sorted { $0.residentBytes > $1.residentBytes }
+            rows.sorted { $0.residentBytes > $1.residentBytes }
         }
         return Array(sorted.prefix(limit))
     }

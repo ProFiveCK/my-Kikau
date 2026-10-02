@@ -111,7 +111,7 @@ private struct FullSystemScanCard: View {
         ScanCategory(icon: "internaldrive", title: "Clean", subtitle: "Cache & junk files", tint: ContentView.SidebarItem.clean.tint),
         ScanCategory(icon: "app.dashed", title: "Apps", subtitle: "Installed applications", tint: ContentView.SidebarItem.uninstall.tint),
         ScanCategory(icon: "doc.on.doc", title: "Files", subtitle: "Duplicates & large files", tint: ContentView.SidebarItem.duplicates.tint),
-        ScanCategory(icon: "checkmark.shield", title: "System Health", subtitle: "Settings & app records", tint: ContentView.SidebarItem.optimize.tint)
+        ScanCategory(icon: "checkmark.shield", title: "System Health", subtitle: "Settings & app records", tint: ContentView.SidebarItem.optimize.tint),
     ]
 
     var body: some View {
@@ -259,7 +259,9 @@ private struct ScanCategory: Identifiable {
     let title: String
     let subtitle: String
     let tint: Color
-    var id: String { title }
+    var id: String {
+        title
+    }
 }
 
 private struct ScanCategoryChip: View {
@@ -325,10 +327,12 @@ private struct SummaryPill: View {
 private struct FullDiskAccessBanner: View {
     var body: some View {
         HStack {
-            Label("Full Disk Access isn't granted — some cleanup and analysis features will under-report or fail.",
-                  systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(.orange)
+            Label(
+                "Full Disk Access isn't granted — some cleanup and analysis features will under-report or fail.",
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.caption)
+            .foregroundStyle(.orange)
             Spacer()
             Button("Open Settings…") {
                 if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
@@ -364,11 +368,21 @@ private struct HeroHealthCard: View {
     /// in `HealthScore` — also used by the menu bar HUD, so the two can't
     /// drift out of sync the way they used to (each had its own hand-rolled
     /// bands, and neither one's word/color bands actually lined up).
-    private var healthBand: HealthScore.Band { HealthScore.band(for: snapshot.healthScore) }
+    private var healthBand: HealthScore.Band {
+        HealthScore.band(for: snapshot.healthScore)
+    }
 
-    private var statusWord: String { healthBand.word }
-    private var statusExplanation: String { healthBand.explanation }
-    private var statusColor: Color { healthBand.color }
+    private var statusWord: String {
+        healthBand.word
+    }
+
+    private var statusExplanation: String {
+        healthBand.explanation
+    }
+
+    private var statusColor: Color {
+        healthBand.color
+    }
 
     /// Everything after the first ":" in e.g. "Fair: High CPU, Heavy Disk IO" —
     /// empty when the score has no active issues (message is just "Excellent").
@@ -405,16 +419,24 @@ private struct HeroHealthCard: View {
 
     private var temperatureValue: String {
         let t = snapshot.thermal
-        if t.cpuTemp > 0 { return String(format: "%.0f°C", t.cpuTemp) }
-        if t.batteryTemp > 0 { return String(format: "%.0f°C", t.batteryTemp) }
+        if t.cpuTemp > 0 {
+            return String(format: "%.0f°C", t.cpuTemp)
+        }
+        if t.batteryTemp > 0 {
+            return String(format: "%.0f°C", t.batteryTemp)
+        }
         return "N/A"
     }
 
     private var temperatureCaption: String? {
         let t = snapshot.thermal
         var parts: [String] = []
-        if t.fanSpeed > 0 { parts.append("Fan \(t.fanSpeed) rpm") }
-        if t.systemPower > 0 { parts.append(String(format: "%.0fW draw", t.systemPower)) }
+        if t.fanSpeed > 0 {
+            parts.append("Fan \(t.fanSpeed) rpm")
+        }
+        if t.systemPower > 0 {
+            parts.append(String(format: "%.0fW draw", t.systemPower))
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -426,7 +448,7 @@ private struct HeroHealthCard: View {
         let temp = t.cpuTemp > 0 ? t.cpuTemp : t.batteryTemp
         switch temp {
         case ..<85: return .white
-        case 85..<100: return .yellow
+        case 85 ..< 100: return .yellow
         default: return .red
         }
     }
@@ -545,8 +567,8 @@ private struct HeroHealthCard: View {
 
             if let memoryActionMessage {
                 Text(memoryActionMessage)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.6))
             }
         }
         .padding(14)
@@ -562,13 +584,19 @@ private struct HeroHealthCard: View {
     /// Wear: full-charge capacity against design capacity, and cycle count.
     private func batteryCaption(_ battery: BatteryStatus) -> String? {
         var parts: [String] = []
-        if battery.capacity > 0 { parts.append("Health \(battery.capacity)%") }
-        if battery.cycleCount > 0 { parts.append("\(battery.cycleCount) cycles") }
+        if battery.capacity > 0 {
+            parts.append("Health \(battery.capacity)%")
+        }
+        if battery.cycleCount > 0 {
+            parts.append("\(battery.cycleCount) cycles")
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var memoryActionLabel: String {
-        if freeingMemory { return "Freeing..." }
+        if freeingMemory {
+            return "Freeing..."
+        }
         return canPurgeMemory ? "Free Up" : "View Usage"
     }
 }
@@ -659,7 +687,11 @@ private struct ProcessListSheet: View {
             "Quit \(confirmQuit?.command ?? "process")?",
             isPresented: Binding(
                 get: { confirmQuit != nil },
-                set: { if !$0 { confirmQuit = nil } }
+                set: {
+                    if !$0 {
+                        confirmQuit = nil
+                    }
+                }
             ),
             titleVisibility: .visible
         ) {
@@ -691,7 +723,8 @@ private struct ProcessListSheet: View {
 
     private func canQuit(_ row: ProcessMonitor.ProcessInfo) -> Bool {
         guard row.pid != Int(Foundation.ProcessInfo.processInfo.processIdentifier),
-              let app = NSRunningApplication(processIdentifier: pid_t(row.pid)) else {
+              let app = NSRunningApplication(processIdentifier: pid_t(row.pid))
+        else {
             return false
         }
         return !app.isTerminated
@@ -741,8 +774,8 @@ private struct GlassTile: View {
     var secondaryAction: (() -> Void)?
     var isBusy = false
 
-    // Two lines: title with its actions, then the reading with its trend.
-    // The caption, when there is one, sits under the reading in small type.
+    /// Two lines: title with its actions, then the reading with its trend.
+    /// The caption, when there is one, sits under the reading in small type.
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
@@ -786,7 +819,7 @@ private struct GlassTile: View {
                     }
                     .chartXAxis(.hidden)
                     .chartYAxis(.hidden)
-                    .chartYScale(domain: 0...100)
+                    .chartYScale(domain: 0 ... 100)
                     .frame(maxWidth: .infinity, minHeight: 16, maxHeight: 16)
                     .accessibilityLabel("\(title) over the last few minutes")
                     .accessibilityValue("Lowest \(Int(trend.min() ?? 0)) percent, highest \(Int(trend.max() ?? 0)) percent")

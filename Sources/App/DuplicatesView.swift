@@ -12,7 +12,9 @@ struct DuplicatesView: View {
     private enum Mode: String, CaseIterable, Identifiable {
         case duplicates = "Duplicates"
         case largeFiles = "Large Files"
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
@@ -21,24 +23,34 @@ struct DuplicatesView: View {
     @State private var selectedLargeFiles: Set<String> = []
     @State private var review: ReviewRequest?
     @State private var staleNotice = false
-    // Non-empty means macOS hasn't granted access to one of the folders this
-    // feature scans — the most likely explanation for "Duplicates always
-    // finds nothing" on a Mac that obviously has files there (see
-    // ProtectedFolderAccessCheck).
+    /// Non-empty means macOS hasn't granted access to one of the folders this
+    /// feature scans — the most likely explanation for "Duplicates always
+    /// finds nothing" on a Mac that obviously has files there (see
+    /// ProtectedFolderAccessCheck).
     @State private var deniedFolders: [String] = ProtectedFolderAccessCheck.deniedFolders()
 
     private let tint = ContentView.SidebarItem.duplicates.tint
 
-    private var duplicateGroups: [DuplicateFinder.DuplicateGroup] { coordinator.duplicateGroups ?? [] }
-    private var largeFiles: [DuplicateFinder.FileEntry] { coordinator.largeFiles ?? [] }
-    private var hasScanned: Bool { coordinator.duplicateGroups != nil || coordinator.largeFiles != nil }
+    private var duplicateGroups: [DuplicateFinder.DuplicateGroup] {
+        coordinator.duplicateGroups ?? []
+    }
+
+    private var largeFiles: [DuplicateFinder.FileEntry] {
+        coordinator.largeFiles ?? []
+    }
+
+    private var hasScanned: Bool {
+        coordinator.duplicateGroups != nil || coordinator.largeFiles != nil
+    }
 
     private var totalDuplicateReclaimable: Int64 {
         duplicateGroups.reduce(0) { $0 + $1.reclaimableBytes }
     }
 
     private var subtitle: String {
-        if model.isScanning { return "Scanning…" }
+        if model.isScanning {
+            return "Scanning…"
+        }
         guard hasScanned else { return "Your own folders — never app or system data" }
         switch mode {
         case .duplicates:
@@ -131,7 +143,9 @@ struct DuplicatesView: View {
                 if let result, !result.dryRun {
                     coordinator.removeDuplicateFiles(ids: result.removedIDs)
                     selectedLargeFiles.subtract(result.removedIDs)
-                    if !result.removedIDs.isEmpty { AnalyzeScanSession.shared.markStale() }
+                    if !result.removedIDs.isEmpty {
+                        AnalyzeScanSession.shared.markStale()
+                    }
                 }
                 review = nil
             }
@@ -232,7 +246,11 @@ struct DuplicatesView: View {
                 LargeFileRow(file: file, isSelected: Binding(
                     get: { selectedLargeFiles.contains(file.id) },
                     set: { isOn in
-                        if isOn { selectedLargeFiles.insert(file.id) } else { selectedLargeFiles.remove(file.id) }
+                        if isOn {
+                            selectedLargeFiles.insert(file.id)
+                        } else {
+                            selectedLargeFiles.remove(file.id)
+                        }
                     }
                 ))
             }

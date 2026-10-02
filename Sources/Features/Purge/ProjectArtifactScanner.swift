@@ -17,7 +17,7 @@ public enum ProjectArtifactScanner {
         "DerivedData",
         ".next",
         ".turbo",
-        ".cache"
+        ".cache",
     ]
 
     /// Default project search paths.
@@ -28,7 +28,7 @@ public enum ProjectArtifactScanner {
         "~/Developer",
         "~/code",
         "~/src",
-        "~/MyProjects"
+        "~/MyProjects",
     ]
 
     /// A discovered artifact to potentially purge.
@@ -36,13 +36,13 @@ public enum ProjectArtifactScanner {
         public let id: String
         public let url: URL
         public let projectName: String
-        public let artifactType: String  // e.g. "node_modules"
+        public let artifactType: String // e.g. "node_modules"
         public let sizeBytes: Int64
         public let lastModified: Date?
-        public let isRecent: Bool        // modified within 7 days
+        public let isRecent: Bool // modified within 7 days
 
         public init(url: URL, projectName: String, artifactType: String, sizeBytes: Int64, lastModified: Date?, isRecent: Bool) {
-            self.id = url.path
+            id = url.path
             self.url = url
             self.projectName = projectName
             self.artifactType = artifactType
@@ -74,7 +74,9 @@ public enum ProjectArtifactScanner {
     /// (tests pass a temp home), otherwise against the current user's home.
     public static func searchPaths(home: URL? = nil) -> [URL] {
         let configured = configuredPaths(home: home)
-        if !configured.isEmpty { return configured }
+        if !configured.isEmpty {
+            return configured
+        }
         let resolvedHome = home ?? FileManager.default.homeDirectoryForCurrentUser
         return defaultSearchPaths.map { raw -> URL in
             if raw.hasPrefix("~/") {
@@ -128,6 +130,6 @@ public enum ProjectArtifactScanner {
 
     /// Builds a deletion plan from selected artifacts.
     public static func plan(for artifacts: [Artifact], deleter: SafeFileDeleter = .shared) -> SafeFileDeleter.Plan {
-        deleter.preview(artifacts.map { $0.url }, category: .artifact)
+        deleter.preview(artifacts.map(\.url), category: .artifact)
     }
 }

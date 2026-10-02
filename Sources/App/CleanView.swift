@@ -19,7 +19,9 @@ struct CleanView: View {
     }
 
     private var subtitle: String {
-        if model.isScanning { return "Measuring…" }
+        if model.isScanning {
+            return "Measuring…"
+        }
         guard coordinator.cleanPlans != nil else { return "Caches, logs, temporary files and the Trash" }
         return totalReclaimable > 0
             ? "\(ByteSizeFormatter.format(totalReclaimable)) can be reclaimed"
@@ -97,7 +99,9 @@ struct CleanView: View {
             ) { result in
                 if let result, !result.dryRun {
                     coordinator.removeCleanItems(ids: result.removedIDs)
-                    if !result.removedIDs.isEmpty { AnalyzeScanSession.shared.markStale() }
+                    if !result.removedIDs.isEmpty {
+                        AnalyzeScanSession.shared.markStale()
+                    }
                 }
                 review = nil
             }

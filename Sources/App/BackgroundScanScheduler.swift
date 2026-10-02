@@ -91,7 +91,7 @@ final class BackgroundScanScheduler: NSObject, UNUserNotificationCenterDelegate 
         guard freeFraction < Self.lowDiskFraction else { return }
         // At most once a day.
         let last = defaults.object(forKey: Self.lowDiskNotifiedKey) as? Date ?? .distantPast
-        guard Date().timeIntervalSince(last) >= 86_400 else { return }
+        guard Date().timeIntervalSince(last) >= 86400 else { return }
         defaults.set(Date(), forKey: Self.lowDiskNotifiedKey)
         post(
             id: "low-disk",
@@ -109,10 +109,10 @@ final class BackgroundScanScheduler: NSObject, UNUserNotificationCenterDelegate 
         UNUserNotificationCenter.current().add(request)
     }
 
-    // Clicking the notification brings the app forward on the dashboard.
+    /// Clicking the notification brings the app forward on the dashboard.
     nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse,
+        _: UNUserNotificationCenter,
+        didReceive _: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         Task { @MainActor in

@@ -14,7 +14,9 @@ struct HistoryView: View {
         case removed = "Removed"
         case failed = "Failed"
         case simulated = "Simulated"
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     private struct Notice: Identifiable {
@@ -195,7 +197,9 @@ private struct HistoryRow: View {
     }
 
     private var badge: (label: String, icon: String, color: Color) {
-        if entry.dryRun { return ("Simulated", "eye", .blue) }
+        if entry.dryRun {
+            return ("Simulated", "eye", .blue)
+        }
         switch entry.outcome {
         case .success:
             return entry.mode == .permanent && !entry.path.isEmpty
@@ -214,7 +218,9 @@ private struct HistoryRow: View {
     private var detail: String {
         // An entry without a path (a maintenance task) is titled by its
         // action, so the second line carries only what it did.
-        if entry.path.isEmpty { return entry.detail ?? "" }
+        if entry.path.isEmpty {
+            return entry.detail ?? ""
+        }
         let folder = URL(fileURLWithPath: entry.path).deletingLastPathComponent().path
         if entry.outcome == .failed, let reason = entry.detail, !reason.isEmpty {
             return "\(Self.actionLabel(entry.action)) · \(reason)"

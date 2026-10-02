@@ -114,15 +114,21 @@ public final class ScanEverythingCoordinator: ObservableObject {
             if includeClean {
                 await self?.enter(.clean)
                 result.clean = await CleanScanner.scanAllConcurrently()
-                if Task.isCancelled { return nil }
+                if Task.isCancelled {
+                    return nil
+                }
             }
 
             var installedApps: [AppInventory.AppInfo] = []
             if includeApps || includeHealth {
                 await self?.enter(.apps)
                 installedApps = AppInventory.scan()
-                if includeApps { result.apps = installedApps }
-                if Task.isCancelled { return nil }
+                if includeApps {
+                    result.apps = installedApps
+                }
+                if Task.isCancelled {
+                    return nil
+                }
             }
 
             if includeFiles {
@@ -130,7 +136,9 @@ public final class ScanEverythingCoordinator: ObservableObject {
                 let report = DuplicateFinder.walkReport { count in
                     Task { await self?.detail("\(count.formatted()) files") }
                 }
-                if Task.isCancelled { return nil }
+                if Task.isCancelled {
+                    return nil
+                }
                 result.skippedCloudOnly = report.skippedCloudOnly
 
                 await self?.enter(.duplicates)
@@ -138,7 +146,9 @@ public final class ScanEverythingCoordinator: ObservableObject {
                     guard hashed % 8 == 0 || hashed == total else { return }
                     Task { await self?.detail("\(hashed.formatted()) of \(total.formatted()) candidates") }
                 }
-                if Task.isCancelled { return nil }
+                if Task.isCancelled {
+                    return nil
+                }
                 result.large = DuplicateFinder.findLargeFiles(allFiles: report.files)
             }
 
@@ -157,13 +167,17 @@ public final class ScanEverythingCoordinator: ObservableObject {
                 } catch {
                     result.healthError = error.localizedDescription
                 }
-                if Task.isCancelled { return nil }
+                if Task.isCancelled {
+                    return nil
+                }
             }
 
             if includeDeveloper {
                 await self?.enter(.developer)
                 result.purge = ProjectArtifactScanner.scan()
-                if Task.isCancelled { return nil }
+                if Task.isCancelled {
+                    return nil
+                }
             }
             return result
         }
@@ -172,8 +186,12 @@ public final class ScanEverythingCoordinator: ObservableObject {
         scanTask = nil
 
         if let result {
-            if includeClean { cleanPlans = result.clean }
-            if includeApps { apps = result.apps }
+            if includeClean {
+                cleanPlans = result.clean
+            }
+            if includeApps {
+                apps = result.apps
+            }
             if includeFiles {
                 duplicateGroups = result.duplicates
                 largeFiles = result.large
@@ -185,7 +203,8 @@ public final class ScanEverythingCoordinator: ObservableObject {
             }
             purgeArtifacts = includeDeveloper ? result.purge : nil
             lastScanAt = Date()
-            Log.scan.info("full scan finished: \(self.combinedItemCount) items, \(self.combinedReclaimableBytes) bytes reclaimable")
+            let (items, bytes) = (combinedItemCount, combinedReclaimableBytes)
+            Log.scan.info("full scan finished: \(items) items, \(bytes) bytes reclaimable")
         } else {
             Log.scan.info("full scan cancelled")
         }

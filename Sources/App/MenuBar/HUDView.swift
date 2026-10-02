@@ -158,7 +158,6 @@ struct HUDView: View {
 
     /// Connection + local IP, tappable to open the full Network screen, with a
     /// one-tap copy for the IP address itself (a frequent "what's my IP" reach).
-    @ViewBuilder
     private func networkRow(_ net: NetworkInfo) -> some View {
         HStack(spacing: 8) {
             Button {
@@ -206,9 +205,9 @@ struct HUDView: View {
 
     private func networkSymbol(_ net: NetworkInfo) -> String {
         switch net.connectionName {
-        case "Wi-Fi": return "wifi"
-        case "Ethernet": return "cable.connector"
-        default: return "network.slash"
+        case "Wi-Fi": "wifi"
+        case "Ethernet": "cable.connector"
+        default: "network.slash"
         }
     }
 
@@ -271,7 +270,9 @@ struct HUDView: View {
                 ? "Freed \(ByteSizeFormatter.format(result.freedBytes)) — \(result.failed) item(s) couldn't be deleted"
                 : "Freed \(ByteSizeFormatter.format(result.freedBytes))"
             ScanEverythingCoordinator.shared.removeCleanItems(ids: result.removedIDs)
-            if !result.removedIDs.isEmpty { AnalyzeScanSession.shared.markStale() }
+            if !result.removedIDs.isEmpty {
+                AnalyzeScanSession.shared.markStale()
+            }
         }
     }
 

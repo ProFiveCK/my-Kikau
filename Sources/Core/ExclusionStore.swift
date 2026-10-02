@@ -8,7 +8,10 @@ public final class ExclusionStore: @unchecked Sendable {
     public static let shared = ExclusionStore()
 
     private let injectedDefaults: UserDefaults?
-    private var defaults: UserDefaults { injectedDefaults ?? AppDefaults.store }
+    private var defaults: UserDefaults {
+        injectedDefaults ?? AppDefaults.store
+    }
+
     private let lock = NSLock()
     private var cached: [String]?
     private var cachedAt = Date.distantPast
@@ -16,7 +19,7 @@ public final class ExclusionStore: @unchecked Sendable {
     private static let cacheLifetime: TimeInterval = 30
 
     public init(defaults: UserDefaults? = nil) {
-        self.injectedDefaults = defaults
+        injectedDefaults = defaults
     }
 
     /// Exclusions the user added. Editable.
@@ -46,7 +49,9 @@ public final class ExclusionStore: @unchecked Sendable {
     public var normalisedPaths: [String] {
         lock.lock()
         defer { lock.unlock() }
-        if let cached, Date().timeIntervalSince(cachedAt) < Self.cacheLifetime { return cached }
+        if let cached, Date().timeIntervalSince(cachedAt) < Self.cacheLifetime {
+            return cached
+        }
         let all = (userPaths + managedPaths).map {
             PathProtection.normalise(URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath).standardizedFileURL.path)
         }

@@ -18,7 +18,10 @@ import Core
 /// Results are suggestions for the user to tick, never pre-selected.
 public enum OrphanFinder {
     public struct Orphan: Identifiable, Hashable, Sendable {
-        public var id: String { url.path }
+        public var id: String {
+            url.path
+        }
+
         public let url: URL
         public let bundleID: String
         public let lastModified: Date
@@ -28,10 +31,10 @@ public enum OrphanFinder {
     /// deliberately absent.
     static let searchSubdirectories = [
         "Application Support", "Caches", "Preferences", "Saved Application State",
-        "HTTPStorages", "WebKit", "Logs"
+        "HTTPStorages", "WebKit", "Logs",
     ]
 
-    public static let minimumAge: TimeInterval = 90 * 86_400
+    public static let minimumAge: TimeInterval = 90 * 86400
 
     /// - Parameters:
     ///   - installedBundleIDs: identifiers of installed apps and their
@@ -50,7 +53,9 @@ public enum OrphanFinder {
         var orphans: [Orphan] = []
 
         for subdirectory in searchSubdirectories {
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                break
+            }
             let dir = home.appendingPathComponent("Library/\(subdirectory)")
             guard let entries = try? fm.contentsOfDirectory(
                 at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]
@@ -77,7 +82,8 @@ public enum OrphanFinder {
     static func bundleID(fromEntryName name: String) -> String? {
         var candidate = name
         for ext in LeftoverFinder.leftoverExtensions.sorted(by: { $0.count > $1.count })
-        where candidate.hasSuffix("." + ext) {
+            where candidate.hasSuffix("." + ext)
+        {
             candidate.removeLast(ext.count + 1)
             break
         }
@@ -99,7 +105,9 @@ public enum OrphanFinder {
             let other = id.lowercased()
             // Installed, or a component of something installed (an app's
             // helper, plug-in or per-feature store).
-            if lowered == other || lowered.hasPrefix(other + ".") { return false }
+            if lowered == other || lowered.hasPrefix(other + ".") {
+                return false
+            }
         }
         return true
     }
@@ -108,11 +116,15 @@ public enum OrphanFinder {
     static func allInstalledBundleIDs() -> Set<String> {
         var ids = Set<String>()
         for app in AppInventory.appBundleURLs() {
-            if let id = Bundle(url: app)?.bundleIdentifier { ids.insert(id) }
+            if let id = Bundle(url: app)?.bundleIdentifier {
+                ids.insert(id)
+            }
             ids.formUnion(LeftoverFinder.embeddedBundleIDs(appURL: app))
         }
         for running in NSWorkspace.shared.runningApplications {
-            if let id = running.bundleIdentifier { ids.insert(id) }
+            if let id = running.bundleIdentifier {
+                ids.insert(id)
+            }
         }
         return ids
     }
@@ -127,7 +139,8 @@ public enum OrphanFinder {
         ) {
             for child in children {
                 if let date = try? child.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                   date > latest {
+                   date > latest
+                {
                     latest = date
                 }
             }

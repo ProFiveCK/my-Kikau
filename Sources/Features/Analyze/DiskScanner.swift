@@ -39,9 +39,13 @@ public enum DiskScanner {
             lock.lock()
             let now = Date()
             let due = now.timeIntervalSince(lastReport) >= 0.2
-            if due { lastReport = now }
+            if due {
+                lastReport = now
+            }
             lock.unlock()
-            if due { onProgress(path) }
+            if due {
+                onProgress(path)
+            }
         }
     }
 
@@ -58,8 +62,8 @@ public enum DiskScanner {
 
         public init() {}
 
-        // Keys are normalised: the same folder can be spelled with or without
-        // the `/private` prefix depending on which API produced the URL.
+        /// Keys are normalised: the same folder can be spelled with or without
+        /// the `/private` prefix depending on which API produced the URL.
         func size(for path: String) -> Int64? {
             let key = PathProtection.normalise(path)
             lock.lock()
@@ -96,7 +100,7 @@ public enum DiskScanner {
 
     private static let walkKeys: [URLResourceKey] = [
         .isDirectoryKey, .isSymbolicLinkKey, .isVolumeKey, .isRegularFileKey,
-        .totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey
+        .totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey,
     ]
 
     /// Represents a scanned entry (file or directory) with its allocated disk size.
@@ -113,9 +117,9 @@ public enum DiskScanner {
         public let isNavigable: Bool
 
         public init(url: URL, sizeBytes: Int64, isDirectory: Bool, childCount: Int = 0, isNavigable: Bool? = nil) {
-            self.id = url.path
+            id = url.path
             self.url = url
-            self.name = url.lastPathComponent
+            name = url.lastPathComponent
             self.sizeBytes = sizeBytes
             self.isDirectory = isDirectory
             self.childCount = childCount
@@ -124,13 +128,13 @@ public enum DiskScanner {
 
         /// A non-navigable, computed row (Free space, "macOS System", "Hidden Items").
         init(syntheticName name: String, parent: URL, sizeBytes: Int64, childCount: Int = 0) {
-            self.id = "synthetic://\(name)"
-            self.url = parent.appendingPathComponent(name)
+            id = "synthetic://\(name)"
+            url = parent.appendingPathComponent(name)
             self.name = name
             self.sizeBytes = sizeBytes
-            self.isDirectory = false
+            isDirectory = false
             self.childCount = childCount
-            self.isNavigable = false
+            isNavigable = false
         }
     }
 
@@ -155,7 +159,7 @@ public enum DiskScanner {
         "/Users",
         "/Library",
         "/opt",
-        "/usr/local"
+        "/usr/local",
     ]
 
     /// Reads the startup volume's name and capacity, or `nil` if unavailable.
@@ -165,7 +169,7 @@ public enum DiskScanner {
             .volumeNameKey,
             .volumeTotalCapacityKey,
             .volumeAvailableCapacityForImportantUsageKey,
-            .volumeAvailableCapacityKey
+            .volumeAvailableCapacityKey,
         ]) else { return nil }
         let total = Int64(values.volumeTotalCapacity ?? 0)
         guard total > 0 else { return nil }
@@ -198,7 +202,9 @@ public enum DiskScanner {
         let sizes = concurrentMap(roots) { path in
             measure(URL(fileURLWithPath: path), token: token, cache: cache)
         }
-        if token?.isCancelled == true { return [] }
+        if token?.isCancelled == true {
+            return []
+        }
         var measured: [Entry] = []
         var accounted: Int64 = 0
         for (index, path) in roots.enumerated() where sizes[index] > 0 {
@@ -259,15 +265,16 @@ public enum DiskScanner {
         var hiddenTotal: Int64 = 0
         var hiddenCount = 0
         for entry in entries {
-            if token?.isCancelled == true { return [] }
+            if token?.isCancelled == true {
+                return []
+            }
             let values = try? entry.resourceValues(forKeys: Set(walkKeys))
             let isDir = values?.isDirectory == true && values?.isSymbolicLink != true
-            let size: Int64
-            if isDir {
+            let size: Int64 = if isDir {
                 // Already measured as part of a parent walk? Then this is free.
-                size = cache.size(for: entry.path) ?? measure(entry, token: token, cache: cache)
+                cache.size(for: entry.path) ?? measure(entry, token: token, cache: cache)
             } else {
-                size = fileSize(values) ?? allocatedSize(entry)
+                fileSize(values) ?? allocatedSize(entry)
             }
             if entry.lastPathComponent.hasPrefix(".") && !includeHidden {
                 hiddenTotal += size
@@ -303,7 +310,9 @@ public enum DiskScanner {
     /// mounted volume (a network share or disk image under the folder is not
     /// part of *this* disk's usage).
     static func measure(_ url: URL, token: Token?, cache: SizeCache?) -> Int64 {
-        if token?.isCancelled == true { return 0 }
+        if token?.isCancelled == true {
+            return 0
+        }
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: url, includingPropertiesForKeys: walkKeys, options: []
         ) else {
@@ -314,9 +323,13 @@ public enum DiskScanner {
         var total: Int64 = 0
         for entry in entries {
             guard let values = try? entry.resourceValues(forKeys: Set(walkKeys)) else { continue }
-            if values.isSymbolicLink == true { continue }
+            if values.isSymbolicLink == true {
+                continue
+            }
             if values.isDirectory == true {
-                if values.isVolume == true { continue }
+                if values.isVolume == true {
+                    continue
+                }
                 total += measure(entry, token: token, cache: cache)
             } else if let size = fileSize(values) {
                 total += size
@@ -339,7 +352,8 @@ public enum DiskScanner {
             return Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0)
         }
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-           let size = attrs[.size] as? Int64 {
+           let size = attrs[.size] as? Int64
+        {
             return size
         }
         return 0
@@ -351,7 +365,9 @@ public enum DiskScanner {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: url, includingPropertiesForKeys: nil, options: []
         ) else { return 0 }
-        if includeHidden { return entries.count }
+        if includeHidden {
+            return entries.count
+        }
         return entries.filter { !$0.lastPathComponent.hasPrefix(".") }.count
     }
 
@@ -371,7 +387,9 @@ public enum DiskScanner {
         var visited = 0
         for case let fileURL as URL in enumerator {
             visited += 1
-            if visited % 512 == 0, token?.isCancelled == true { return [] }
+            if visited % 512 == 0, token?.isCancelled == true {
+                return []
+            }
             guard let size = fileSize(try? fileURL.resourceValues(forKeys: Set(keys))), size > floor else { continue }
             top.append(Entry(url: fileURL, sizeBytes: size, isDirectory: false))
             if top.count >= limit * 2 {

@@ -87,7 +87,7 @@ struct AppTeardownTests {
         let plist = agentsDir.appendingPathComponent("com.unrelated.helper.plist")
         writePlist(plist, [
             "Label": "com.unrelated.helper",
-            "ProgramArguments": [appPath + "/Contents/MacOS/helper"]
+            "ProgramArguments": [appPath + "/Contents/MacOS/helper"],
         ])
 
         let app = makeAppInfo(url: URL(fileURLWithPath: appPath), bundleID: "com.mycompany.myapp")

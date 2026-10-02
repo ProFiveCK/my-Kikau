@@ -13,8 +13,13 @@ public final class DeletionActivity: ObservableObject {
 
     private init() {}
 
-    func begin() { isRunning = true }
-    func end() { isRunning = false }
+    func begin() {
+        isRunning = true
+    }
+
+    func end() {
+        isRunning = false
+    }
 }
 
 /// The one place a deletion plan is reviewed, confirmed, run and reported.
@@ -96,9 +101,9 @@ public struct PlanReviewView: View {
             switch stage {
             case .review:
                 reviewStage
-            case .running(let completed, let total, let path):
+            case let .running(completed, total, path):
                 runningStage(completed: completed, total: total, path: path)
-            case .finished(let result, let notes):
+            case let .finished(result, notes):
                 ResultStage(result: result, notes: notes, onDone: { onClose(result) })
             }
         }
@@ -107,7 +112,9 @@ public struct PlanReviewView: View {
     }
 
     private var isRunning: Bool {
-        if case .running = stage { return true }
+        if case .running = stage {
+            return true
+        }
         return false
     }
 
@@ -115,7 +122,7 @@ public struct PlanReviewView: View {
 
     private var groups: [(category: SafeFileDeleter.Category, items: [SafeFileDeleter.Item])] {
         let order: [SafeFileDeleter.Category] = [
-            .app, .leftover, .cache, .log, .artifact, .duplicate, .largeFile, .installer, .trash
+            .app, .leftover, .cache, .log, .artifact, .duplicate, .largeFile, .installer, .trash,
         ]
         let byCategory = Dictionary(grouping: plan.items, by: \.category)
         return order.compactMap { category in
@@ -225,8 +232,12 @@ public struct PlanReviewView: View {
     private var primaryLabel: String {
         let count = selection.count
         let noun = "\(count) Item\(count == 1 ? "" : "s")"
-        if permanentCount == count, count > 0 { return "Delete \(noun) Permanently" }
-        if permanentCount > 0 { return "Remove \(noun)" }
+        if permanentCount == count, count > 0 {
+            return "Delete \(noun) Permanently"
+        }
+        if permanentCount > 0 {
+            return "Remove \(noun)"
+        }
         return "Move \(noun) to Trash"
     }
 
@@ -234,7 +245,11 @@ public struct PlanReviewView: View {
         Binding(
             get: { selection.contains(id) },
             set: { isOn in
-                if isOn { selection.insert(id) } else { selection.remove(id) }
+                if isOn {
+                    selection.insert(id)
+                } else {
+                    selection.remove(id)
+                }
             }
         )
     }
@@ -286,13 +301,12 @@ public struct PlanReviewView: View {
         runTask = Task {
             defer { DeletionActivity.shared.end() }
             let notes = await prepare?(simulate, selected) ?? []
-            let result: SafeFileDeleter.ExecutionResult
-            if Task.isCancelled {
-                result = SafeFileDeleter.ExecutionResult(
+            let result: SafeFileDeleter.ExecutionResult = if Task.isCancelled {
+                SafeFileDeleter.ExecutionResult(
                     freedBytes: 0, succeeded: 0, failed: 0, skipped: 0, errors: [], cancelled: true, dryRun: simulate
                 )
             } else {
-                result = await deleter.executeAsync(chosen, mode: .trash, dryRun: simulate, action: action) { progress in
+                await deleter.executeAsync(chosen, mode: .trash, dryRun: simulate, action: action) { progress in
                     Task { @MainActor in
                         guard isRunning else { return }
                         stage = .running(completed: progress.completed, total: progress.total, path: progress.currentPath)
@@ -312,15 +326,24 @@ private struct GroupHeader: View {
     let items: [SafeFileDeleter.Item]
     @Binding var selection: Set<String>
 
-    private var ids: Set<String> { Set(items.map(\.id)) }
-    private var selectedCount: Int { ids.intersection(selection).count }
+    private var ids: Set<String> {
+        Set(items.map(\.id))
+    }
+
+    private var selectedCount: Int {
+        ids.intersection(selection).count
+    }
 
     var body: some View {
         HStack {
             Toggle(isOn: Binding(
                 get: { selectedCount == items.count },
                 set: { isOn in
-                    if isOn { selection.formUnion(ids) } else { selection.subtract(ids) }
+                    if isOn {
+                        selection.formUnion(ids)
+                    } else {
+                        selection.subtract(ids)
+                    }
                 }
             )) {
                 Text("\(title) (\(selectedCount)/\(items.count))")
@@ -448,29 +471,49 @@ private struct ResultStage: View {
     let onDone: () -> Void
 
     private var headline: String {
-        if result.dryRun { return "Simulation complete — nothing was changed" }
-        if result.cancelled { return "Stopped" }
-        if result.failed > 0 && result.succeeded == 0 { return "Nothing could be removed" }
-        if result.failed > 0 { return "Finished with \(result.failed) problem\(result.failed == 1 ? "" : "s")" }
+        if result.dryRun {
+            return "Simulation complete — nothing was changed"
+        }
+        if result.cancelled {
+            return "Stopped"
+        }
+        if result.failed > 0, result.succeeded == 0 {
+            return "Nothing could be removed"
+        }
+        if result.failed > 0 {
+            return "Finished with \(result.failed) problem\(result.failed == 1 ? "" : "s")"
+        }
         return "Done"
     }
 
     private var symbol: (name: String, color: Color) {
-        if result.dryRun { return ("eye.circle.fill", .blue) }
-        if result.failed > 0 { return ("exclamationmark.triangle.fill", .orange) }
-        if result.cancelled { return ("stop.circle.fill", .secondary) }
+        if result.dryRun {
+            return ("eye.circle.fill", .blue)
+        }
+        if result.failed > 0 {
+            return ("exclamationmark.triangle.fill", .orange)
+        }
+        if result.cancelled {
+            return ("stop.circle.fill", .secondary)
+        }
         return ("checkmark.circle.fill", .green)
     }
 
     private var summary: String {
         let size = ByteSizeFormatter.format(result.freedBytes)
         let items = "\(result.succeeded) item\(result.succeeded == 1 ? "" : "s")"
-        if result.dryRun { return "\(items) would be removed, freeing about \(size)." }
-        if result.succeeded == 0 { return "No space was freed." }
+        if result.dryRun {
+            return "\(items) would be removed, freeing about \(size)."
+        }
+        if result.succeeded == 0 {
+            return "No space was freed."
+        }
         if result.recoverable == result.succeeded {
             return "\(items) moved to the Trash — \(size). Empty the Trash to reclaim the space, or put anything back from History."
         }
-        if result.recoverable == 0 { return "\(items) deleted — \(size) freed." }
+        if result.recoverable == 0 {
+            return "\(items) deleted — \(size) freed."
+        }
         return "\(items) removed — \(size). \(result.recoverable) went to the Trash and can be put back."
     }
 

@@ -14,10 +14,14 @@ struct PurgeView: View {
 
     private let tint = ContentView.SidebarItem.purge.tint
 
-    private var artifacts: [ProjectArtifactScanner.Artifact] { coordinator.purgeArtifacts ?? [] }
+    private var artifacts: [ProjectArtifactScanner.Artifact] {
+        coordinator.purgeArtifacts ?? []
+    }
 
     private var subtitle: String {
-        if model.isScanning { return "Looking through your project folders…" }
+        if model.isScanning {
+            return "Looking through your project folders…"
+        }
         guard coordinator.purgeArtifacts != nil else { return "Dependencies and build output that the next build recreates" }
         let total = artifacts.reduce(Int64(0)) { $0 + $1.sizeBytes }
         return artifacts.isEmpty ? "No build artifacts found" : "\(artifacts.count) folders · \(ByteSizeFormatter.format(total))"
@@ -66,7 +70,11 @@ struct PurgeView: View {
                     ArtifactRow(artifact: artifact, isSelected: Binding(
                         get: { selectedArtifacts.contains(artifact.id) },
                         set: { isOn in
-                            if isOn { selectedArtifacts.insert(artifact.id) } else { selectedArtifacts.remove(artifact.id) }
+                            if isOn {
+                                selectedArtifacts.insert(artifact.id)
+                            } else {
+                                selectedArtifacts.remove(artifact.id)
+                            }
                         }
                     ))
                 }
@@ -107,7 +115,9 @@ struct PurgeView: View {
                 if let result, !result.dryRun {
                     coordinator.removePurgeArtifacts(ids: result.removedIDs)
                     selectedArtifacts.subtract(result.removedIDs)
-                    if !result.removedIDs.isEmpty { AnalyzeScanSession.shared.markStale() }
+                    if !result.removedIDs.isEmpty {
+                        AnalyzeScanSession.shared.markStale()
+                    }
                 }
                 review = nil
             }

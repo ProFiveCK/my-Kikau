@@ -15,7 +15,10 @@ public enum StartupItems {
     }
 
     public struct Item: Identifiable, Hashable, Sendable {
-        public var id: String { url.path }
+        public var id: String {
+            url.path
+        }
+
         public let url: URL
         public let label: String
         /// The executable launchd starts, when the plist names one.
@@ -33,14 +36,16 @@ public enum StartupItems {
             return URL(fileURLWithPath: String(program[..<range.lowerBound])).lastPathComponent
         }
 
-        public var isRemovable: Bool { scope == .user && !isProtected }
+        public var isRemovable: Bool {
+            scope == .user && !isProtected
+        }
     }
 
     public static func scan(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [Item] {
         let locations: [(URL, Scope)] = [
             (home.appendingPathComponent("Library/LaunchAgents"), .user),
             (URL(fileURLWithPath: "/Library/LaunchAgents"), .systemAgent),
-            (URL(fileURLWithPath: "/Library/LaunchDaemons"), .systemDaemon)
+            (URL(fileURLWithPath: "/Library/LaunchDaemons"), .systemDaemon),
         ]
         var items: [Item] = []
         for (directory, scope) in locations {
@@ -58,11 +63,10 @@ public enum StartupItems {
         let dict = (NSDictionary(contentsOf: url) as? [String: Any]) ?? [:]
         let label = (dict["Label"] as? String) ?? url.deletingPathExtension().lastPathComponent
         let program = (dict["Program"] as? String) ?? (dict["ProgramArguments"] as? [String])?.first
-        let missing: Bool
-        if let program, program.hasPrefix("/"), !program.hasPrefix("/Volumes/") {
-            missing = !FileManager.default.fileExists(atPath: program)
+        let missing: Bool = if let program, program.hasPrefix("/"), !program.hasPrefix("/Volumes/") {
+            !FileManager.default.fileExists(atPath: program)
         } else {
-            missing = false
+            false
         }
         let protection = PathProtection.shared
         return Item(

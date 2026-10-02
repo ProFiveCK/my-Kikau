@@ -1,6 +1,6 @@
 import Foundation
 #if canImport(SwiftUI)
-import SwiftUI
+    import SwiftUI
 #endif
 
 /// Canonical outcome for a maintenance task run.
@@ -21,9 +21,9 @@ public enum MaintenanceOutcome: Codable, Hashable, Sendable {
     /// Human-readable detail message, if any.
     public var detail: String? {
         switch self {
-        case .applied(let d), .unchanged(let d), .skipped(let d),
-             .unavailable(let d), .attention(let d), .failed(let d):
-            return d
+        case let .applied(d), let .unchanged(d), let .skipped(d),
+             let .unavailable(d), let .attention(d), let .failed(d):
+            d
         }
     }
 
@@ -52,16 +52,16 @@ public enum MaintenanceOutcome: Codable, Hashable, Sendable {
     }
 
     #if canImport(SwiftUI)
-    /// Color for UI rendering.
-    public var color: Color {
-        switch self {
-        case .applied: .green
-        case .unchanged: .secondary
-        case .skipped: .blue
-        case .unavailable: .gray
-        case .attention: .orange
-        case .failed: .red
+        /// Color for UI rendering.
+        public var color: Color {
+            switch self {
+            case .applied: .green
+            case .unchanged: .secondary
+            case .skipped: .blue
+            case .unavailable: .gray
+            case .attention: .orange
+            case .failed: .red
+            }
         }
-    }
     #endif
 }

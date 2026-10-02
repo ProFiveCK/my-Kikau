@@ -29,7 +29,9 @@ public final class OperationLog: @unchecked Sendable {
         let executable = (CommandLine.arguments.first as NSString?)?.lastPathComponent ?? ""
         let isOwnProcess = Bundle.main.bundleIdentifier == AppDefaults.appDomain
             || ["myKikau", "mykikau-cli"].contains(executable)
-        if isOwnProcess { return nil }
+        if isOwnProcess {
+            return nil
+        }
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("myKikau-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
         return dir.appendingPathComponent("operations.log")
@@ -59,7 +61,9 @@ public final class OperationLog: @unchecked Sendable {
     /// administrator forces logging on (`ManagedPolicy.forceOperationLog`).
     public var enabled: Bool {
         get {
-            if persistsEnabled, ManagedPolicy.shared.forceOperationLog { return true }
+            if persistsEnabled, ManagedPolicy.shared.forceOperationLog {
+                return true
+            }
             stateLock.lock()
             defer { stateLock.unlock() }
             return storedEnabled
@@ -75,7 +79,9 @@ public final class OperationLog: @unchecked Sendable {
     }
 
     /// The log file's location on disk — used by "Reveal Log File".
-    public var fileURL: URL { logURL }
+    public var fileURL: URL {
+        logURL
+    }
 
     public convenience init(logURL: URL? = nil, enabled: Bool = true) {
         self.init(logURL: logURL, enabled: enabled, persistsEnabled: false)
@@ -90,8 +96,8 @@ public final class OperationLog: @unchecked Sendable {
                 .appendingPathComponent("Logs/myKikau", isDirectory: true)
             self.logURL = logsDir.appendingPathComponent("operations.log")
         }
-        self.totalsURL = self.logURL.deletingPathExtension().appendingPathExtension("totals.json")
-        self.storedEnabled = enabled
+        totalsURL = self.logURL.deletingPathExtension().appendingPathExtension("totals.json")
+        storedEnabled = enabled
         self.persistsEnabled = persistsEnabled
         self.maxFileBytes = maxFileBytes
     }
@@ -109,7 +115,10 @@ public final class OperationLog: @unchecked Sendable {
     }
 
     public struct Entry: Codable, Identifiable, Sendable {
-        public var id: String { "\(timestamp.timeIntervalSince1970)-\(action)-\(path)" }
+        public var id: String {
+            "\(timestamp.timeIntervalSince1970)-\(action)-\(path)"
+        }
+
         public let timestamp: Date
         public let action: String
         public let path: String
@@ -181,7 +190,9 @@ public final class OperationLog: @unchecked Sendable {
         /// Entries are missing from the start or the end of the file.
         public var truncated: Bool = false
 
-        public var isIntact: Bool { firstBrokenLine == nil && !truncated }
+        public var isIntact: Bool {
+            firstBrokenLine == nil && !truncated
+        }
     }
 
     // MARK: - Writing
@@ -230,13 +241,17 @@ public final class OperationLog: @unchecked Sendable {
 
         var totals = loadTotals(excludingLastLine: true)
         totals.operations += 1
-        if entry.outcome == .success, !entry.dryRun { totals.freedBytes += entry.sizeBytes }
+        if entry.outcome == .success, !entry.dryRun {
+            totals.freedBytes += entry.sizeBytes
+        }
         totals.lastHash = lastLineHash
         saveTotals(totals)
     }
 
     private func currentLastLineHash() -> String? {
-        if lastLineHashLoaded { return lastLineHash }
+        if lastLineHashLoaded {
+            return lastLineHash
+        }
         lastLineHashLoaded = true
         lastLineHash = tailLines(of: logURL, limit: 1).last.map(Self.hash)
         return lastLineHash
@@ -340,7 +355,9 @@ public final class OperationLog: @unchecked Sendable {
             }
             if let recorded = storedTotals()?.lastHash {
                 let actual = lines.last.map(Self.hash)
-                if actual != recorded { truncated = true }
+                if actual != recorded {
+                    truncated = true
+                }
             }
             return ChainStatus(verified: verified, unchained: unchained, firstBrokenLine: nil, truncated: truncated)
         }
@@ -356,7 +373,7 @@ public final class OperationLog: @unchecked Sendable {
     public func export(to destination: URL, format: ExportFormat) throws {
         let entries: [Entry] = queue.sync {
             let decoder = Self.makeDecoder()
-            let files = (1...Self.rotatedFilesKept).reversed().map(rotatedURL) + [logURL]
+            let files = (1 ... Self.rotatedFilesKept).reversed().map(rotatedURL) + [logURL]
             return files.flatMap { tailLines(of: $0, limit: .max) }
                 .compactMap { try? decoder.decode(Entry.self, from: $0) }
         }
@@ -364,7 +381,7 @@ public final class OperationLog: @unchecked Sendable {
         case .jsonl:
             var data = Data()
             for entry in entries {
-                data.append(try encoder.encode(entry))
+                try data.append(encoder.encode(entry))
                 data.append(0x0A)
             }
             try data.write(to: destination, options: .atomic)
@@ -375,7 +392,7 @@ public final class OperationLog: @unchecked Sendable {
                 let fields = [
                     formatter.string(from: entry.timestamp), entry.action, entry.outcome.rawValue,
                     entry.mode.rawValue, String(entry.dryRun), String(entry.sizeBytes),
-                    entry.path, entry.trashedPath ?? "", entry.detail ?? ""
+                    entry.path, entry.trashedPath ?? "", entry.detail ?? "",
                 ]
                 text += fields.map(Self.csvEscape).joined(separator: ",") + "\n"
             }
@@ -386,12 +403,14 @@ public final class OperationLog: @unchecked Sendable {
     /// Clears the log, its rotated files and the running totals. Does nothing
     /// while an administrator policy forces logging on.
     public func clear() {
-        if persistsEnabled, ManagedPolicy.shared.forceOperationLog { return }
+        if persistsEnabled, ManagedPolicy.shared.forceOperationLog {
+            return
+        }
         queue.sync {
             let fm = FileManager.default
             try? fm.removeItem(at: logURL)
             try? fm.removeItem(at: totalsURL)
-            for index in 1...Self.rotatedFilesKept {
+            for index in 1 ... Self.rotatedFilesKept {
                 try? fm.removeItem(at: rotatedURL(index))
             }
             lastLineHash = nil
@@ -416,12 +435,16 @@ public final class OperationLog: @unchecked Sendable {
         }
         let decoder = Self.makeDecoder()
         var lines = tailLines(of: logURL, limit: .max)
-        if excludingLastLine, !lines.isEmpty { lines.removeLast() }
+        if excludingLastLine, !lines.isEmpty {
+            lines.removeLast()
+        }
         var totals = Totals()
         for line in lines {
             guard let entry = try? decoder.decode(Entry.self, from: line) else { continue }
             totals.operations += 1
-            if entry.outcome == .success, !entry.dryRun { totals.freedBytes += entry.sizeBytes }
+            if entry.outcome == .success, !entry.dryRun {
+                totals.freedBytes += entry.sizeBytes
+            }
         }
         return totals
     }
@@ -451,7 +474,9 @@ public final class OperationLog: @unchecked Sendable {
             buffer = chunk + buffer
             // Two spare newlines: one may be the terminator of a line that
             // lies before the buffer, and the oldest fragment may be partial.
-            if limit != .max, newlines > limit + 1 { break }
+            if limit != .max, newlines > limit + 1 {
+                break
+            }
         }
         var lines = buffer.split(separator: 0x0A).map { Data($0) }
         // If the read stopped mid-file, the first fragment is partial —

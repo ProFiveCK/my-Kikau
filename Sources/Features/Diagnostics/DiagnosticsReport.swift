@@ -63,14 +63,20 @@ public enum DiagnosticsReport {
         section("Operation log")
         row("Operations recorded", "\(totals.operations)")
         row("Freed to date", ByteSizeFormatter.format(totals.freedBytes))
-        row("Integrity", chain.isIntact
-            ? "intact (\(chain.verified) verified, \(chain.unchained) unchained)"
-            : (chain.firstBrokenLine.map { "BROKEN at entry \($0)" } ?? "entries missing from the start or end"))
+        row(
+            "Integrity",
+            chain.isIntact
+                ? "intact (\(chain.verified) verified, \(chain.unchained) unchained)"
+                : (chain.firstBrokenLine.map { "BROKEN at entry \($0)" } ?? "entries missing from the start or end")
+        )
         let recent = log.recent(limit: 500)
         let byOutcome = Dictionary(grouping: recent, by: \.outcome).mapValues(\.count)
-        row("Last 500 entries", OperationLog.Outcome.allCases
-            .map { "\($0.rawValue) \(byOutcome[$0] ?? 0)" }
-            .joined(separator: ", "))
+        row(
+            "Last 500 entries",
+            OperationLog.Outcome.allCases
+                .map { "\($0.rawValue) \(byOutcome[$0] ?? 0)" }
+                .joined(separator: ", ")
+        )
 
         return lines.joined(separator: "\n") + "\n"
     }

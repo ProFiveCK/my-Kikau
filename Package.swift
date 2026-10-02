@@ -1,15 +1,15 @@
 // swift-tools-version: 5.10
 import PackageDescription
 
-// Complete data-race checking on every source target, so a new violation
-// shows up as a warning now rather than as a wall of errors when the package
-// moves to the Swift 6 language mode.
+/// Complete data-race checking on every source target, so a new violation
+/// shows up as a warning now rather than as a wall of errors when the package
+/// moves to the Swift 6 language mode.
 let strictConcurrency: [SwiftSetting] = [.enableExperimentalFeature("StrictConcurrency")]
 
 let package = Package(
     name: "myKikau",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v14),
     ],
     products: [
         .executable(name: "myKikau", targets: ["App"]),
@@ -20,7 +20,7 @@ let package = Package(
         // Auto-update framework for direct (non-App-Store) distribution.
         // Floor pinned to the 2.9 line (current stable as of writing); SPM will
         // resolve the newest compatible 2.x release.
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
     ],
     targets: [
         .executableTarget(
@@ -62,6 +62,6 @@ let package = Package(
             name: "myKikauTests",
             dependencies: ["Core", "Features"],
             path: "Tests/myKikauTests"
-        )
+        ),
     ]
 )

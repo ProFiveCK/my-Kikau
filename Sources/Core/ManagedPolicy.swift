@@ -5,7 +5,7 @@ import Foundation
 /// at the app's domain at startup so both honour the same policy and exclusions.
 public enum AppDefaults {
     public static let appDomain = "com.profiveck.myKikau"
-    nonisolated(unsafe) public static var store: UserDefaults = .standard
+    public nonisolated(unsafe) static var store: UserDefaults = .standard
 }
 
 /// Administrator policy, delivered by an MDM configuration profile for the
@@ -30,7 +30,9 @@ public struct ManagedPolicy {
     /// Tests inject plain (unforced) values through a throwaway suite.
     private let requireForced: Bool
 
-    public static var shared: ManagedPolicy { ManagedPolicy(defaults: AppDefaults.store) }
+    public static var shared: ManagedPolicy {
+        ManagedPolicy(defaults: AppDefaults.store)
+    }
 
     public init(defaults: UserDefaults = AppDefaults.store, requireForced: Bool = true) {
         self.defaults = defaults
@@ -38,14 +40,16 @@ public struct ManagedPolicy {
     }
 
     private func managed(_ key: String) -> Any? {
-        if requireForced, !defaults.objectIsForced(forKey: key) { return nil }
+        if requireForced, !defaults.objectIsForced(forKey: key) {
+            return nil
+        }
         return defaults.object(forKey: key)
     }
 
     /// True when at least one policy key is being enforced on this Mac.
     public var isManaged: Bool {
         [Key.disabledFeatures, Key.protectedPaths, Key.protectedBundlePrefixes, Key.forceOperationLog,
-         Key.disableAutomaticUpdates, Key.disablePrivilegedTools, Key.scheduledScanIntervalHours]
+         Key.disableAutomaticUpdates, Key.disablePrivilegedTools, Key.scheduledScanIntervalHours,]
             .contains { managed($0) != nil }
     }
 

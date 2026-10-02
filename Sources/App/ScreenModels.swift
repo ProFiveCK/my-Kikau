@@ -3,12 +3,12 @@ import Foundation
 import Core
 import Features
 
-/// Per-screen scan state. These are long-lived singletons rather than view
-/// `@State`, because the detail pane is rebuilt on every sidebar change: a
-/// scan started on one screen keeps running — and stays cancellable — while
-/// the user looks at another, and its results land in
-/// `ScanEverythingCoordinator`, where both the screen and the dashboard read
-/// them.
+// Per-screen scan state. These are long-lived singletons rather than view
+// `@State`, because the detail pane is rebuilt on every sidebar change: a
+// scan started on one screen keeps running — and stays cancellable — while
+// the user looks at another, and its results land in
+// `ScanEverythingCoordinator`, where both the screen and the dashboard read
+// them.
 
 @MainActor
 final class CleanModel: ObservableObject {
@@ -21,7 +21,9 @@ final class CleanModel: ObservableObject {
 
     private init() {}
 
-    var sectionCount: Int { CleanScanner.Section.allCases.count }
+    var sectionCount: Int {
+        CleanScanner.Section.allCases.count
+    }
 
     func scan() {
         guard !isScanning else { return }
@@ -88,7 +90,9 @@ final class FilesModel: ObservableObject {
             let report = DuplicateFinder.walkReport { count in
                 Task { @MainActor in FilesModel.shared.progressDetail = "\(count.formatted()) files" }
             }
-            if Task.isCancelled { return nil }
+            if Task.isCancelled {
+                return nil
+            }
             await MainActor.run {
                 FilesModel.shared.progressTitle = "Comparing files"
                 FilesModel.shared.progressDetail = nil
@@ -100,7 +104,9 @@ final class FilesModel: ObservableObject {
                     FilesModel.shared.progressDetail = "\(hashed.formatted()) of \(total.formatted()) candidates"
                 }
             }
-            if Task.isCancelled { return nil }
+            if Task.isCancelled {
+                return nil
+            }
             return (duplicates, DuplicateFinder.findLargeFiles(allFiles: report.files), report.skippedCloudOnly)
         }
         task = Task {
@@ -162,7 +168,9 @@ enum AppIconCache {
 
     static func icon(for url: URL) -> NSImage {
         let key = url.path as NSString
-        if let cached = cache.object(forKey: key) { return cached }
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
         let icon = NSWorkspace.shared.icon(forFile: url.path)
         cache.setObject(icon, forKey: key)
         return icon

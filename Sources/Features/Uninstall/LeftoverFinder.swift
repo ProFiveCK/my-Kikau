@@ -25,7 +25,7 @@ public enum LeftoverFinder {
         "Containers",
         "Group Containers",
         "Application Scripts",
-        "Cookies"
+        "Cookies",
     ]
 
     /// System-level launch agent/daemon locations. Removing anything here
@@ -33,7 +33,7 @@ public enum LeftoverFinder {
     public static let launchPaths: [String] = [
         "/Library/LaunchDaemons",
         "/Library/LaunchAgents",
-        "/Library/PrivilegedHelperTools"
+        "/Library/PrivilegedHelperTools",
     ]
 
     /// User-level launch agent locations.
@@ -47,7 +47,7 @@ public enum LeftoverFinder {
     /// different bundle.
     static let leftoverExtensions: Set<String> = [
         "plist", "savedState", "binarycookies", "json", "db", "sqlite", "log",
-        "lockfile", "plist.lockfile", "sfl2", "sfl3"
+        "lockfile", "plist.lockfile", "sfl2", "sfl3",
     ]
 
     /// Sub-bundle locations inside an `.app` whose identifiers count as the
@@ -58,7 +58,7 @@ public enum LeftoverFinder {
         ("Contents/PlugIns", ["appex", "plugin"]),
         ("Contents/Helpers", ["app"]),
         ("Contents/Frameworks", ["app"]),
-        ("Contents/Library/LaunchServices", ["app"])
+        ("Contents/Library/LaunchServices", ["app"]),
     ]
 
     /// A bundle ID is usable as leftover evidence only if it's a real
@@ -115,7 +115,7 @@ public enum LeftoverFinder {
     public static func findLeftovers(
         bundleID: String,
         home: URL,
-        deleter: SafeFileDeleter = .shared,
+        deleter _: SafeFileDeleter = .shared,
         embeddedBundleIDs: [String] = []
     ) -> [URL] {
         let ids = ([bundleID] + embeddedBundleIDs).filter(isUsableBundleID)
@@ -124,7 +124,9 @@ public enum LeftoverFinder {
         var results: [URL] = []
         var seen = Set<String>()
         func add(_ url: URL) {
-            if seen.insert(url.path).inserted { results.append(url) }
+            if seen.insert(url.path).inserted {
+                results.append(url)
+            }
         }
         let fm = FileManager.default
 
@@ -213,20 +215,19 @@ public enum LeftoverFinder {
     ) -> (appPlan: SafeFileDeleter.Plan, leftoverPlan: SafeFileDeleter.Plan) {
         let appPlan = deleter.preview([app.url], category: .app)
 
-        let leftovers: [URL]
-        if !AppInventory.otherCopies(of: app).isEmpty {
+        let leftovers: [URL] = if !AppInventory.otherCopies(of: app).isEmpty {
             // Another copy of this app is installed elsewhere and uses the
             // same settings and data. They aren't leftovers.
-            leftovers = []
+            []
         } else if let bundleID = app.bundleID {
-            leftovers = findLeftovers(
+            findLeftovers(
                 bundleID: bundleID,
                 home: home,
                 deleter: deleter,
                 embeddedBundleIDs: embeddedBundleIDs(appURL: app.url)
             )
         } else {
-            leftovers = []
+            []
         }
         let leftoverPlan = deleter.preview(leftovers, category: .leftover)
         return (appPlan, leftoverPlan)
@@ -240,12 +241,16 @@ public enum LeftoverFinder {
     ///   like `ABCDEFGHIJ.<bundleID>` is just a different identifier.
     static func matchesBundleID(_ name: String, bundleID: String, allowGroupForms: Bool = true) -> Bool {
         guard !bundleID.isEmpty else { return false }
-        if isIDOrIDWithExtension(name, bundleID: bundleID) { return true }
+        if isIDOrIDWithExtension(name, bundleID: bundleID) {
+            return true
+        }
         guard allowGroupForms else { return false }
         // Group containers: "group.<bundleID>", "<TeamID>.<bundleID>",
         // "<TeamID>.group.<bundleID>".
         var candidate = PathProtection.strippingTeamID(name)
-        if candidate.hasPrefix("group.") { candidate.removeFirst("group.".count) }
+        if candidate.hasPrefix("group.") {
+            candidate.removeFirst("group.".count)
+        }
         return candidate != name && candidate == bundleID
     }
 
@@ -262,7 +267,9 @@ public enum LeftoverFinder {
     }
 
     private static func isIDOrIDWithExtension(_ name: String, bundleID: String) -> Bool {
-        if name == bundleID { return true }
+        if name == bundleID {
+            return true
+        }
         guard name.hasPrefix(bundleID + ".") else { return false }
         return leftoverExtensions.contains(String(name.dropFirst(bundleID.count + 1)))
     }

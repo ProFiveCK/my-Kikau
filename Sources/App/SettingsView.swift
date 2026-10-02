@@ -42,7 +42,9 @@ private struct GeneralSettings: View {
     @State private var launchAtLogin = LaunchAtLoginService.isEnabled
     @State private var launchAtLoginError: String?
 
-    private var managedInterval: Int? { ManagedPolicy.shared.scheduledScanIntervalHours }
+    private var managedInterval: Int? {
+        ManagedPolicy.shared.scheduledScanIntervalHours
+    }
 
     var body: some View {
         Form {
@@ -72,7 +74,9 @@ private struct GeneralSettings: View {
                     }
                 }
                 .disabled(managedInterval != nil)
-                if managedInterval != nil { ManagedNote() }
+                if managedInterval != nil {
+                    ManagedNote()
+                }
 
                 Picker("Notify me when it finds", selection: $notifyThresholdMB) {
                     Text("1 GB or more").tag(1000)
@@ -90,7 +94,9 @@ private struct GeneralSettings: View {
         .fixedSize(horizontal: false, vertical: true)
         .onAppear { launchAtLogin = LaunchAtLoginService.isEnabled }
         .onChange(of: scanIntervalHours) { _, hours in
-            if hours > 0 { BackgroundScanScheduler.shared.requestNotificationPermission() }
+            if hours > 0 {
+                BackgroundScanScheduler.shared.requestNotificationPermission()
+            }
             BackgroundScanScheduler.shared.reschedule()
         }
     }
@@ -107,7 +113,7 @@ private struct GeneralSettings: View {
                 switch LaunchAtLoginService.setEnabled(newValue) {
                 case .success:
                     launchAtLoginError = nil
-                case .failure(let error):
+                case let .failure(error):
                     launchAtLogin = !newValue
                     launchAtLoginError = error.localizedDescription
                 }
@@ -123,8 +129,13 @@ private struct SafetySettings: View {
     @State private var selection: String?
     @State private var logEnabled = OperationLog.shared.enabled
 
-    private var managedPaths: [String] { ExclusionStore.shared.managedPaths }
-    private var logForced: Bool { ManagedPolicy.shared.forceOperationLog }
+    private var managedPaths: [String] {
+        ExclusionStore.shared.managedPaths
+    }
+
+    private var logForced: Bool {
+        ManagedPolicy.shared.forceOperationLog
+    }
 
     var body: some View {
         Form {
@@ -142,7 +153,7 @@ private struct SafetySettings: View {
                             .truncationMode(.middle)
                             .help(path)
                     }
-                    if managedPaths.isEmpty && userPaths.isEmpty {
+                    if managedPaths.isEmpty, userPaths.isEmpty {
                         Text("Nothing excluded")
                             .foregroundStyle(.secondary)
                     }
@@ -165,8 +176,8 @@ private struct SafetySettings: View {
                     "Files and folders listed here — and everything inside them — are skipped by every scan and can never be removed "
                         + "by myKikau. System folders, keychains, mail and security software are always protected."
                 )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Section("Operation Log") {
@@ -178,7 +189,9 @@ private struct SafetySettings: View {
                     }
                 ))
                 .disabled(logForced)
-                if logForced { ManagedNote() }
+                if logForced {
+                    ManagedNote()
+                }
                 Text("The log powers History, Put Back and “freed to date”. It stays on this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -279,7 +292,9 @@ private struct AdvancedSettings: View {
     @AppStorage(AppStorageKey.developerToolsEnabled) private var developerTools = false
     @EnvironmentObject private var updaterViewModel: UpdaterViewModel
 
-    private var policy: ManagedPolicy { ManagedPolicy.shared }
+    private var policy: ManagedPolicy {
+        ManagedPolicy.shared
+    }
 
     var body: some View {
         Form {
@@ -289,7 +304,9 @@ private struct AdvancedSettings: View {
                 Text("Adds Project Purge to the sidebar: finds node_modules, build output and virtual environments in your project folders.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if policy.isFeatureDisabled("purge") { ManagedNote() }
+                if policy.isFeatureDisabled("purge") {
+                    ManagedNote()
+                }
             }
 
             Section("Updates") {
@@ -298,7 +315,9 @@ private struct AdvancedSettings: View {
                     set: { updaterViewModel.automaticallyChecksForUpdates = $0 }
                 ))
                 .disabled(policy.disableAutomaticUpdates)
-                if policy.disableAutomaticUpdates { ManagedNote() }
+                if policy.disableAutomaticUpdates {
+                    ManagedNote()
+                }
             }
 
             if policy.isManaged {

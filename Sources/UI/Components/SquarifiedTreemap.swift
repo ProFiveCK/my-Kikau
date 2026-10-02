@@ -83,13 +83,21 @@ public enum SquarifiedTreemap {
         if layoutVertically {
             let stripWidth = CGFloat(min(thickness, Double(rect.width)))
             rowRect = CGRect(x: rect.minX, y: rect.minY, width: stripWidth, height: rect.height)
-            remainderRect = CGRect(x: rect.minX + stripWidth, y: rect.minY,
-                                    width: max(0, rect.width - stripWidth), height: rect.height)
+            remainderRect = CGRect(
+                x: rect.minX + stripWidth,
+                y: rect.minY,
+                width: max(0, rect.width - stripWidth),
+                height: rect.height
+            )
         } else {
             let stripHeight = CGFloat(min(thickness, Double(rect.height)))
             rowRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: stripHeight)
-            remainderRect = CGRect(x: rect.minX, y: rect.minY + stripHeight,
-                                    width: rect.width, height: max(0, rect.height - stripHeight))
+            remainderRect = CGRect(
+                x: rect.minX,
+                y: rect.minY + stripHeight,
+                width: rect.width,
+                height: max(0, rect.height - stripHeight)
+            )
         }
 
         var offset: CGFloat = 0

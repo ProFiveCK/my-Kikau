@@ -3,7 +3,6 @@ import Darwin
 
 /// Per-interface network throughput collector.
 public enum NetworkMonitor {
-
     /// Interface name prefixes that are not real network traffic and should be ignored.
     static let noisePrefixes = ["lo", "awdl", "utun", "llw", "bridge", "gif", "stf", "xhc", "anpi", "ap"]
 
@@ -38,11 +37,10 @@ public enum NetworkMonitor {
             current[name] = (rx: rx, tx: tx)
         }
 
-        let elapsed: Double
-        if let lastAt = box.lastAt, nowTs > lastAt {
-            elapsed = nowTs - lastAt
+        let elapsed: Double = if let lastAt = box.lastAt, nowTs > lastAt {
+            nowTs - lastAt
         } else {
-            elapsed = 0
+            0
         }
 
         // First sample primes state and returns empty.
@@ -172,7 +170,6 @@ public enum NetworkMonitor {
         box.cachedIPs = newCache
         box.lastIPAt = now
     }
-
 }
 
 /// Mutable box holding prev-sample state for network rate collection.

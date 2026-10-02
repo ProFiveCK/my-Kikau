@@ -339,7 +339,7 @@ struct StatusMetricsTests {
         // and a new battery can exceed its design capacity (clamped to 100).
         let nested: [String: Any] = [
             "CycleCount": 84, "MaxCapacity": 100,
-            "BatteryData": ["DesignCapacity": 8579, "NominalChargeCapacity": 8984]
+            "BatteryData": ["DesignCapacity": 8579, "NominalChargeCapacity": 8984],
         ]
         #expect(SmartBattery.health(from: nested) == SmartBattery.Health(cycleCount: 84, capacityPercent: 100))
 
@@ -354,7 +354,7 @@ struct StatusMetricsTests {
             "AdapterDetails": ["Watts": 96],
             "PowerTelemetryData": ["SystemPowerIn": 24_500, "BatteryPower": -12_000],
             "Voltage": 12_600,
-            "InstantAmperage": -1500
+            "InstantAmperage": -1500,
         ]
         let thermal = ThermalMonitor.status(fromBatteryProperties: properties)
         #expect(abs(thermal.batteryTemp - 30.55) < 0.001)

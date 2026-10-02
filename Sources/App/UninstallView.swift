@@ -17,13 +17,13 @@ struct UninstallView: View {
     @State private var searchText = ""
     @State private var sortOption: SortOption = .size
     @State private var filter: Filter = .all
-    // Explicit focus control for the search field. Without this, clicking
-    // into the field could silently fail to accept keystrokes: macOS's
-    // NavigationSplitView sidebar is a `List(selection:)`, and AppKit can
-    // leave/return first-responder status there instead of transferring it
-    // to the TextField on click — a known SwiftUI-on-macOS quirk. Binding
-    // `.focused()` and setting it explicitly on tap forces the transfer
-    // rather than relying on SwiftUI's automatic click-to-focus.
+    /// Explicit focus control for the search field. Without this, clicking
+    /// into the field could silently fail to accept keystrokes: macOS's
+    /// NavigationSplitView sidebar is a `List(selection:)`, and AppKit can
+    /// leave/return first-responder status there instead of transferring it
+    /// to the TextField on click — a known SwiftUI-on-macOS quirk. Binding
+    /// `.focused()` and setting it explicitly on tap forces the transfer
+    /// rather than relying on SwiftUI's automatic click-to-focus.
     @FocusState private var searchFieldFocused: Bool
 
     /// One or more apps whose removal plan is open in the review sheet: the
@@ -52,7 +52,9 @@ struct UninstallView: View {
         case size = "Size"
         case name = "Name"
         case lastUsed = "Last Used"
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     private enum Filter: String, CaseIterable, Identifiable {
@@ -60,14 +62,18 @@ struct UninstallView: View {
         case unused = "Unused 3+ Months"
         case large = "Larger Than 500 MB"
         case appStore = "From the App Store"
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     private static let largeAppBytes: Int64 = 500_000_000
 
     private let tint = ContentView.SidebarItem.uninstall.tint
 
-    private var apps: [AppInventory.AppInfo] { coordinator.apps ?? [] }
+    private var apps: [AppInventory.AppInfo] {
+        coordinator.apps ?? []
+    }
 
     /// Ticked apps that still exist and can be uninstalled.
     private var selectedApps: [AppInventory.AppInfo] {
@@ -75,7 +81,9 @@ struct UninstallView: View {
     }
 
     private var subtitle: String {
-        if model.isScanning { return "Listing installed apps…" }
+        if model.isScanning {
+            return "Listing installed apps…"
+        }
         guard coordinator.apps != nil else { return "Remove apps together with the files they leave behind" }
         let total = apps.reduce(Int64(0)) { $0 + $1.sizeBytes }
         return "\(apps.count) apps · \(ByteSizeFormatter.format(total)) total"
@@ -129,7 +137,7 @@ struct UninstallView: View {
                 filterBar
             }
 
-            if model.isScanning && apps.isEmpty {
+            if model.isScanning, apps.isEmpty {
                 ScanProgressBar("Measuring installed apps")
                     .padding(.horizontal)
                 Spacer()
@@ -160,7 +168,11 @@ struct UninstallView: View {
                         isSelected: Binding(
                             get: { selectedAppIDs.contains(app.id) },
                             set: { isOn in
-                                if isOn { selectedAppIDs.insert(app.id) } else { selectedAppIDs.remove(app.id) }
+                                if isOn {
+                                    selectedAppIDs.insert(app.id)
+                                } else {
+                                    selectedAppIDs.remove(app.id)
+                                }
                             }
                         ),
                         busy: preparing,
@@ -203,7 +215,9 @@ struct UninstallView: View {
                             coordinator.removeApp(id: app.id)
                             selectedAppIDs.remove(app.id)
                         }
-                        if !result.removedIDs.isEmpty { AnalyzeScanSession.shared.markStale() }
+                        if !result.removedIDs.isEmpty {
+                            AnalyzeScanSession.shared.markStale()
+                        }
                     }
                     pending = nil
                 }
@@ -225,7 +239,11 @@ struct UninstallView: View {
         }
         .confirmationDialog(
             quitPromptTitle,
-            isPresented: Binding(get: { quitPrompt != nil }, set: { if !$0 { quitPrompt = nil } }),
+            isPresented: Binding(get: { quitPrompt != nil }, set: {
+                if !$0 {
+                    quitPrompt = nil
+                }
+            }),
             titleVisibility: .visible
         ) {
             if let apps = quitPrompt {
@@ -345,7 +363,7 @@ struct UninstallView: View {
                 }
             }
             // Give them a few seconds to save and exit.
-            for _ in 0..<25 where targets.contains(where: AppInventory.isRunning) {
+            for _ in 0 ..< 25 where targets.contains(where: AppInventory.isRunning) {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             let stillOpen = targets.filter(AppInventory.isRunning)
@@ -414,9 +432,15 @@ struct UninstallView: View {
             }
         }
         let verb = simulate ? "would be" : "were"
-        if loginItems > 0 { notes.insert("\(loginItems) “Open at Login” entr\(loginItems == 1 ? "y" : "ies") \(verb) removed", at: 0) }
-        if helpers > 0 { notes.insert("\(helpers) login helper(s) \(verb) stopped", at: 0) }
-        if agents > 0 { notes.insert("\(agents) background agent(s) \(verb) stopped", at: 0) }
+        if loginItems > 0 {
+            notes.insert("\(loginItems) “Open at Login” entr\(loginItems == 1 ? "y" : "ies") \(verb) removed", at: 0)
+        }
+        if helpers > 0 {
+            notes.insert("\(helpers) login helper(s) \(verb) stopped", at: 0)
+        }
+        if agents > 0 {
+            notes.insert("\(agents) background agent(s) \(verb) stopped", at: 0)
+        }
         if !item.systemLevelItems.isEmpty {
             let names = item.systemLevelItems.map(\.lastPathComponent).joined(separator: ", ")
             notes.append("Left in place (needs an administrator): \(names)")
@@ -457,7 +481,9 @@ private struct AppRow: View {
     let busy: Bool
     let onUninstall: () -> Void
 
-    private var protectionReason: String? { AppInventory.protectionReason(app) }
+    private var protectionReason: String? {
+        AppInventory.protectionReason(app)
+    }
 
     var body: some View {
         let protected = protectionReason != nil
@@ -495,7 +521,7 @@ private struct AppRow: View {
                     if app.isAppStore {
                         Text("App Store").foregroundStyle(.secondary)
                     }
-                    if app.requiresAdministrator && !protected {
+                    if app.requiresAdministrator, !protected {
                         Text("Installed for all users").foregroundStyle(.secondary)
                     }
                 }

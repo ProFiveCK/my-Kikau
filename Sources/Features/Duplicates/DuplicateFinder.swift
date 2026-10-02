@@ -19,7 +19,7 @@ public enum DuplicateFinder {
         public let modified: Date?
 
         public init(url: URL, sizeBytes: Int64, modified: Date?) {
-            self.id = url.path
+            id = url.path
             self.url = url
             self.sizeBytes = sizeBytes
             self.modified = modified
@@ -30,9 +30,9 @@ public enum DuplicateFinder {
     /// (most recently modified unless the user picks another); the rest are
     /// the reclaimable copies.
     public struct DuplicateGroup: Identifiable, Sendable {
-        public let id: String  // content hash
+        public let id: String // content hash
         public let files: [FileEntry]
-        public let sizeBytes: Int64  // size of a single copy
+        public let sizeBytes: Int64 // size of a single copy
 
         public init(id: String, files: [FileEntry], sizeBytes: Int64) {
             self.id = id
@@ -40,8 +40,13 @@ public enum DuplicateFinder {
             self.sizeBytes = sizeBytes
         }
 
-        public var keeper: FileEntry? { files.first }
-        public var reclaimableBytes: Int64 { sizeBytes * Int64(max(0, files.count - 1)) }
+        public var keeper: FileEntry? {
+            files.first
+        }
+
+        public var reclaimableBytes: Int64 {
+            sizeBytes * Int64(max(0, files.count - 1))
+        }
 
         /// The same group with a different file chosen as the one to keep.
         public func keeping(_ fileID: String) -> DuplicateGroup {
@@ -69,12 +74,12 @@ public enum DuplicateFinder {
 
     /// Directories scanned by default, relative to the home directory.
     public static let defaultScanPaths: [String] = [
-        "Downloads", "Documents", "Desktop", "Pictures", "Movies"
+        "Downloads", "Documents", "Desktop", "Pictures", "Movies",
     ]
 
     /// Files smaller than this are never hashed — not worth the dedup UI
     /// attention, and skipping them keeps large home folders fast to scan.
-    private static let minDuplicateSize: Int64 = 1_000_000  // 1 MB
+    private static let minDuplicateSize: Int64 = 1_000_000 // 1 MB
 
     public static let defaultLargeFileThresholdMB = 100
 
@@ -118,7 +123,7 @@ public enum DuplicateFinder {
         let keys: [URLResourceKey] = [
             .fileSizeKey, .isRegularFileKey, .contentModificationDateKey,
             .fileResourceIdentifierKey,
-            .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey
+            .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey,
         ]
         var report = WalkReport()
         var seenIdentifiers = Set<AnyHashable>()
@@ -132,7 +137,9 @@ public enum DuplicateFinder {
             for case let url as URL in enumerator {
                 visited += 1
                 if visited % 256 == 0 {
-                    if Task.isCancelled { return report }
+                    if Task.isCancelled {
+                        return report
+                    }
                     onProgress?(visited)
                 }
                 guard let values = try? url.resourceValues(forKeys: Set(keys)),
@@ -142,7 +149,8 @@ public enum DuplicateFinder {
                     continue
                 }
                 if let identifier = values.fileResourceIdentifier as? NSObject,
-                   !seenIdentifiers.insert(AnyHashable(identifier)).inserted {
+                   !seenIdentifiers.insert(AnyHashable(identifier)).inserted
+                {
                     continue
                 }
                 report.files.append(FileEntry(url: url, sizeBytes: Int64(size), modified: values.contentModificationDate))
@@ -153,7 +161,8 @@ public enum DuplicateFinder {
 
     private static func isCloudOnly(_ values: URLResourceValues, path: String, size: Int64) -> Bool {
         if values.isUbiquitousItem == true,
-           let status = values.ubiquitousItemDownloadingStatus, status != .current {
+           let status = values.ubiquitousItemDownloadingStatus, status != .current
+        {
             return true
         }
         // File Provider placeholders (iCloud Drive, OneDrive, Dropbox…) carry
@@ -181,7 +190,9 @@ public enum DuplicateFinder {
         let candidates = files.filter { $0.sizeBytes >= minDuplicateSize }
 
         var bySize: [Int64: [FileEntry]] = [:]
-        for f in candidates { bySize[f.sizeBytes, default: []].append(f) }
+        for f in candidates {
+            bySize[f.sizeBytes, default: []].append(f)
+        }
         let sizeBuckets = bySize.filter { $0.value.count > 1 }
         let total = sizeBuckets.values.reduce(0) { $0 + $1.count }
         var hashed = 0
@@ -190,7 +201,9 @@ public enum DuplicateFinder {
         for (size, sameSize) in sizeBuckets {
             var byPartial: [String: [FileEntry]] = [:]
             for f in sameSize {
-                if Task.isCancelled { return [] }
+                if Task.isCancelled {
+                    return []
+                }
                 hashed += 1
                 onProgress?(hashed, total)
                 guard let partial = partialHash(f.url, size: size) else { continue }
@@ -202,7 +215,9 @@ public enum DuplicateFinder {
                 // hashed in full by the partial pass.
                 let fullyCovered = size <= Int64(partialHashBytes * 2)
                 for f in samePartial {
-                    if Task.isCancelled { return [] }
+                    if Task.isCancelled {
+                        return []
+                    }
                     guard let hash = fullyCovered ? partialHash(f.url, size: size) : contentHash(f.url) else { continue }
                     byHash[hash, default: []].append(f)
                 }
@@ -299,7 +314,9 @@ public enum DuplicateFinder {
             guard let chunk, !chunk.isEmpty else { break }
             hasher.update(data: chunk)
             count += 1
-            if count % 64 == 0, Task.isCancelled { return nil }
+            if count % 64 == 0, Task.isCancelled {
+                return nil
+            }
         }
         return hex(hasher.finalize())
     }

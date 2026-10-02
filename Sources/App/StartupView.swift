@@ -54,7 +54,11 @@ struct StartupView: View {
                                         StartupRow(item: item, isSelected: Binding(
                                             get: { selection.contains(item.id) },
                                             set: { isOn in
-                                                if isOn { selection.insert(item.id) } else { selection.remove(item.id) }
+                                                if isOn {
+                                                    selection.insert(item.id)
+                                                } else {
+                                                    selection.remove(item.id)
+                                                }
                                             }
                                         ))
                                     }
@@ -115,7 +119,9 @@ struct StartupView: View {
                 prepare: { simulate, selectedIDs in
                     guard !simulate else { return [] }
                     let toStop = (items ?? []).filter { selectedIDs.contains($0.id) }
-                    for item in toStop { await StartupItems.stop(item) }
+                    for item in toStop {
+                        await StartupItems.stop(item)
+                    }
                     return toStop.isEmpty ? [] : ["\(toStop.count) item(s) stopped"]
                 },
                 onClose: { result in
@@ -127,7 +133,11 @@ struct StartupView: View {
                 }
             )
         }
-        .task { if items == nil { load() } }
+        .task {
+            if items == nil {
+                load()
+            }
+        }
     }
 
     private func header(for scope: StartupItems.Scope) -> String {
@@ -155,8 +165,12 @@ private struct StartupRow: View {
 
     private var detail: String {
         var parts: [String] = []
-        if let owner = item.owningAppName { parts.append(owner) }
-        if let program = item.program { parts.append(program) }
+        if let owner = item.owningAppName {
+            parts.append(owner)
+        }
+        if let program = item.program {
+            parts.append(program)
+        }
         return parts.isEmpty ? item.url.lastPathComponent : parts.joined(separator: " · ")
     }
 

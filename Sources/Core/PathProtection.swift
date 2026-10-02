@@ -39,21 +39,21 @@ public struct PathProtection: Sendable {
         "/sbin",
         "/etc",
         "/var/db",
-        "/cores"
+        "/cores",
     ]
 
     /// Containers that must never be deleted themselves; their contents are
     /// judged individually.
     private static let protectedContainers: Set<String> = [
         "/", "/Users", "/Users/Shared", "/Applications", "/Applications/Utilities", "/Library",
-        "/Volumes", "/opt", "/var", "/var/folders", "/tmp", "/private"
+        "/Volumes", "/opt", "/var", "/var/folders", "/tmp", "/private",
     ]
 
     /// Home-relative containers that must never be deleted themselves.
     private static let protectedHomeContainers: [String] = [
         "", "Library", "Library/Application Support", "Library/Caches", "Library/Preferences",
         "Library/Containers", "Library/Group Containers", "Library/Logs", "Library/LaunchAgents",
-        "Documents", "Desktop", "Downloads", "Pictures", "Movies", "Music", "Applications", ".Trash"
+        "Documents", "Desktop", "Downloads", "Pictures", "Movies", "Music", "Applications", ".Trash",
     ]
 
     /// Home-relative subtrees holding credentials or irreplaceable user data.
@@ -65,7 +65,7 @@ public struct PathProtection: Sendable {
         "Library/Application Support/com.apple.TCC",
         "Library/Logs/myKikau",
         ".ssh",
-        ".gnupg"
+        ".gnupg",
     ]
 
     /// Critical system bundle IDs protected from uninstallation.
@@ -101,7 +101,7 @@ public struct PathProtection: Sendable {
         "wifi*", "network*", "tcc", "notification*", "accessibility*",
         "universalaccess*", "HIToolbox*", "textinput*", "TextInput*",
         "keyboard*", "Keyboard*", "inputsource*", "InputSource*",
-        "keylayout*", "KeyLayout*", "GlobalPreferences", ".GlobalPreferences"
+        "keylayout*", "KeyLayout*", "GlobalPreferences", ".GlobalPreferences",
     ]
 
     /// Endpoint security / EDR / MDM bundle prefixes. Anything these agents
@@ -117,7 +117,7 @@ public struct PathProtection: Sendable {
         "com.trendmicro.", "com.symantec.", "com.broadcom.", "com.mcafee.", "com.trellix.",
         "com.bitdefender.", "com.malwarebytes.", "com.elastic.", "co.elastic.",
         "com.tanium.", "com.zscaler.", "com.netskope.", "com.fortinet.", "com.checkpoint.",
-        "com.cybereason.", "com.fireeye.", "com.rapid7.", "com.qualys.", "com.tenable."
+        "com.cybereason.", "com.fireeye.", "com.rapid7.", "com.qualys.", "com.tenable.",
     ]
 
     private static let endpointPrefixesLowercased = endpointSecurityBundlePrefixes.map { $0.lowercased() }
@@ -127,7 +127,9 @@ public struct PathProtection: Sendable {
     /// Returns true if the given URL points to a protected path.
     public func shouldProtect(_ url: URL) -> Bool {
         let standardised = Self.normalise(url.standardizedFileURL.path)
-        if isProtected(standardised) { return true }
+        if isProtected(standardised) {
+            return true
+        }
         let resolved = Self.normalise(url.resolvingSymlinksInPath().path)
         return resolved != standardised && isProtected(resolved)
     }
@@ -142,7 +144,9 @@ public struct PathProtection: Sendable {
     /// *contains* one — removing a folder removes everything in it, so a
     /// folder holding an excluded or protected item can't be removed whole.
     private func isProtected(_ path: String) -> Bool {
-        if path.isEmpty || Self.protectedContainers.contains(path) { return true }
+        if path.isEmpty || Self.protectedContainers.contains(path) {
+            return true
+        }
         for prefix in Self.protectedSubtrees where Self.overlaps(path, prefix) {
             return true
         }
@@ -175,7 +179,9 @@ public struct PathProtection: Sendable {
             at: url, includingPropertiesForKeys: [.isDirectoryKey], options: []
         ) else { return false }
         for child in children.prefix(2000) {
-            if hasEndpointSecurityComponent("/" + child.lastPathComponent) { return true }
+            if hasEndpointSecurityComponent("/" + child.lastPathComponent) {
+                return true
+            }
             guard (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
                   let grandchildren = try? fileManager.contentsOfDirectory(atPath: child.path) else { continue }
             if grandchildren.prefix(2000).contains(where: { hasEndpointSecurityComponent("/" + $0) }) {
@@ -215,7 +221,7 @@ public struct PathProtection: Sendable {
         guard let dot = name.firstIndex(of: "."), name.distance(from: name.startIndex, to: dot) == 10 else {
             return name
         }
-        let team = name[name.startIndex..<dot]
+        let team = name[name.startIndex ..< dot]
         guard team.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }) else { return name }
         return String(name[name.index(after: dot)...])
     }
@@ -225,7 +231,9 @@ public struct PathProtection: Sendable {
     /// same directories — Foundation strips the prefix inconsistently).
     public static func normalise(_ path: String) -> String {
         var result = path
-        while result.count > 1, result.hasSuffix("/") { result.removeLast() }
+        while result.count > 1, result.hasSuffix("/") {
+            result.removeLast()
+        }
         for alias in ["/var", "/tmp", "/etc"] {
             let aliased = "/private" + alias
             if result == aliased || result.hasPrefix(aliased + "/") {
@@ -269,14 +277,20 @@ public struct PathProtection: Sendable {
         var current = value.startIndex
         for (i, part) in parts.enumerated() {
             if i == 0 {
-                if !value.hasPrefix(part) { return false }
+                if !value.hasPrefix(part) {
+                    return false
+                }
                 current = value.index(value.startIndex, offsetBy: part.count)
             } else if i == parts.count - 1 {
-                if !value.hasSuffix(part) { return false }
+                if !value.hasSuffix(part) {
+                    return false
+                }
                 let remaining = value.distance(from: current, to: value.endIndex)
-                if remaining < part.count { return false }
+                if remaining < part.count {
+                    return false
+                }
             } else {
-                if let range = value.range(of: part, range: current..<value.endIndex) {
+                if let range = value.range(of: part, range: current ..< value.endIndex) {
                     current = range.upperBound
                 } else {
                     return false
