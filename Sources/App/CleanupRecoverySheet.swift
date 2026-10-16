@@ -73,8 +73,10 @@ struct CleanupRecoverySheet: View {
                 } else {
                     Button(results == nil ? "Cancel" : "Done") { onDone(); dismiss() }
                     if results == nil {
-                        Button("Restore \(chosen.count) Files") { restore() }
-                            .buttonStyle(.borderedProminent).disabled(chosen.isEmpty || loading || work.isBusy)
+                        Button { restore() } label: {
+                            Text("Restore \(chosen.count) \(chosen.count == 1 ? "File" : "Files")").foregroundStyle(CareTheme.onAccent)
+                        }
+                        .buttonStyle(.borderedProminent).disabled(chosen.isEmpty || loading || work.isBusy)
                     }
                 }
             }
