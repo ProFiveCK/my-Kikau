@@ -113,7 +113,8 @@ public enum CleanScanner {
         for section: Section,
         home: URL? = nil,
         runningBundleIDs: Set<String>? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        coverage: ScanCoverageRecorder? = nil
     ) -> [URL] {
         let resolvedHome = home ?? FileManager.default.homeDirectoryForCurrentUser
         // What's running only says something about the real home folder; an
@@ -121,7 +122,7 @@ public enum CleanScanner {
         let running = runningBundleIDs ?? (home == nil ? currentRunningBundleIDs() : [])
         let inUse = Set(cacheOwners.filter { running.contains($0.bundleID) }
             .map { resolvedHome.appendingPathComponent($0.pathSuffix).path })
-        return candidateTargets(for: section, home: home, running: running, now: now)
+        return candidateTargets(for: section, home: home, running: running, now: now, coverage: coverage)
             .filter { !inUse.contains($0.path) }
     }
 
@@ -146,8 +147,12 @@ public enum CleanScanner {
         for section: Section,
         home: URL?,
         running: Set<String>,
-        now: Date
+        now: Date,
+        coverage: ScanCoverageRecorder? = nil
     ) -> [URL] {
+        func contents(of dir: URL, keys: [URLResourceKey]? = nil, includeHidden: Bool = false) -> [URL] {
+            Self.contents(of: dir, keys: keys, includeHidden: includeHidden, coverage: coverage)
+        }
         let injectedHome = home
         let home = home ?? FileManager.default.homeDirectoryForCurrentUser
         switch section {
@@ -267,15 +272,20 @@ public enum CleanScanner {
     }
 
     /// Scans a section and returns a deletion plan.
-    public static func scan(_ section: Section, deleter: SafeFileDeleter = .shared, home: URL? = nil) -> SafeFileDeleter.Plan {
-        let targets = targets(for: section, home: home)
+    public static func scan(
+        _ section: Section,
+        deleter: SafeFileDeleter = .shared,
+        home: URL? = nil,
+        coverage: ScanCoverageRecorder? = nil
+    ) -> SafeFileDeleter.Plan {
+        let targets = targets(for: section, home: home, coverage: coverage)
         let category: SafeFileDeleter.Category = switch section {
         case .trash: .trash
         case .recentItems: .leftover
         case .systemLogs: .log
         default: .cache
         }
-        return deleter.preview(targets, category: category)
+        return deleter.preview(targets, category: category, coverage: coverage)
     }
 
     /// Scans all sections, one after another, and returns a dictionary of
@@ -298,11 +308,12 @@ public enum CleanScanner {
     public static func scanAllConcurrently(
         deleter: SafeFileDeleter = .shared,
         home: URL? = nil,
+        coverage: ScanCoverageRecorder? = nil,
         onSection: (@Sendable (Section) -> Void)? = nil
     ) async -> [Section: SafeFileDeleter.Plan] {
         await withTaskGroup(of: (Section, SafeFileDeleter.Plan).self) { group in
             for section in Section.allCases {
-                group.addTask { (section, scan(section, deleter: deleter, home: home)) }
+                group.addTask { (section, scan(section, deleter: deleter, home: home, coverage: coverage)) }
             }
             var plans: [Section: SafeFileDeleter.Plan] = [:]
             for await (section, plan) in group {
@@ -338,17 +349,16 @@ public enum CleanScanner {
 
     /// Returns the immediate contents of a directory as URLs.
     private static func contents(
-        of dir: URL,
-        keys: [URLResourceKey]? = nil,
-        includeHidden: Bool = false
+        of dir: URL, keys: [URLResourceKey]? = nil, includeHidden: Bool = false,
+        coverage: ScanCoverageRecorder? = nil
     ) -> [URL] {
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: dir,
-            includingPropertiesForKeys: keys,
-            options: includeHidden ? [] : [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-        return entries
+        do {
+            let entries = try FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: keys,
+                options: includeHidden ? [] : [.skipsHiddenFiles]
+            )
+            coverage?.checked(dir)
+            return entries
+        } catch { coverage?.failed(dir, error: error); return [] }
     }
 }

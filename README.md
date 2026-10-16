@@ -10,13 +10,19 @@ Built for macOS 14+ (Sonoma), fully native Swift. One external dependency: [Spar
 - **Uninstall** — app inventory, plus each app's leftovers matched by exact bundle ID, in one review sheet; uninstall several at once, find files left by apps removed earlier, and check for newer versions of installed apps
 - **Analyse** — disk space explorer with a donut chart, squarified treemap, and sorted list views, folder-by-folder drill-down
 - **Files** — content-hash-verified duplicates (you choose which copy to keep), a large-files mode, and similar-photo detection using on-device image analysis, across Downloads/Documents/Desktop/Pictures/Movies and any folders you add
-- **Status** — live CPU / memory / disk / network / battery-health / thermal dashboard + menu bar HUD, with a one-click, cancellable "Scan Everything"
+- **Overview / Care hub** — scan, then review cleanup, applications, files and system care from one shared set of results; live CPU / memory / disk / network / battery / thermal monitoring is available from Live activity and the menu bar
 - **Optimise** — 9 bounded, no-sudo maintenance tasks (LaunchServices repair, Finder cache, broken config/plist repair, stale launch agents, etc.), each listing the exact files it will touch
 - **Startup** — launch agents and daemons that start in the background; remove your own, see the system-wide ones
-- **History** — everything myKikau has done, with Put Back for anything it moved to the Trash
+- **History** — everything myKikau has done, with per-file Put Back; Trash moves and permanent removals have separate historical totals, while Overview reports current available storage
 - **Project Purge** — build artifacts (`node_modules`, `target`, `build`, `dist`, `venv`); off by default, enabled with Settings → Advanced → Developer tools
 
-Background scans and low-disk notifications are optional (Settings → General).
+Scheduled scans are optional (Settings → General). Scans and file changes share one activity guard; cancellation retains ownership until the worker stops. Scan coverage distinguishes checked locations, missing optional folders, cloud-only files and read failures. App update checks report available, up to date, unsupported and failed results separately.
+
+Maintenance inspections produce recommendations, never “Applied” results. Failed, unavailable and skipped checks are shown separately from successful checks. The full scan includes maintenance and startup discovery, so opening those screens uses the results already found.
+
+Older mixed “freed” totals are retained as unclassified historical activity, rather than converted into inaccurate permanent-removal totals. The Care hub offers **Quick scan** (everyday cleanup and startup) and **Full scan** (also applications, duplicate/large files and system care); similar-photo comparison stays on demand in My files. Each area retains its own checked time. Scheduled scans use Quick scan and notify only about its cleanup results.
+
+**History → Cleanup sessions → Review & Restore** previews the exact recorded files from a cleanup, including unavailable and permanently removed items. Restore checks the Trash file identity, protection rules and destination again, skips conflicts, and never overwrites. It restores files, not settings or app services. Sessions share the existing local operation log, including retained rotations; with logging off, no new recovery history is stored. Earlier ungrouped records keep individual Put Back.
 
 ## Safety Design
 

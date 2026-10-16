@@ -11,13 +11,21 @@ public final class DeletionActivity: ObservableObject {
     public static let shared = DeletionActivity()
     @Published public private(set) var isRunning = false
 
+    private var lease: UUID?
     private init() {}
 
-    func begin() {
+    func begin() -> Bool {
+        guard let lease = WorkCoordinator.shared.begin("Moving reviewed files", kind: .deletion) else { return false }
+        self.lease = lease
         isRunning = true
+        return true
     }
 
     func end() {
+        if let lease {
+            WorkCoordinator.shared.finish(lease)
+        }
+        lease = nil
         isRunning = false
     }
 }
@@ -58,6 +66,7 @@ public struct PlanReviewView: View {
         case finished(SafeFileDeleter.ExecutionResult, notes: [String])
     }
 
+    @ObservedObject private var activity = WorkCoordinator.shared
     @State private var stage: Stage = .review
     @State private var selection: Set<String>
     @State private var confirmingPermanent = false
@@ -158,7 +167,7 @@ public struct PlanReviewView: View {
                 Button("Select All") { selection = Set(plan.items.map(\.id)) }
                     .disabled(selection.count == plan.items.count)
                 Button("Select None") { selection = [] }
-                    .disabled(selection.isEmpty)
+                    .disabled(selection.isEmpty || activity.isBusy)
             }
             .controlSize(.small)
             .padding()
@@ -202,7 +211,10 @@ public struct PlanReviewView: View {
             }
 
             Divider()
-
+            if let current = activity.activity {
+                Text("\(current.title) is running. Finish or cancel it before changing files.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+            }
             HStack {
                 Text("\(selection.count) of \(plan.items.count) selected · \(ByteSizeFormatter.format(selectedBytes))")
                     .font(.subheadline)
@@ -213,7 +225,7 @@ public struct PlanReviewView: View {
                     Button("Simulate — Change Nothing") { run(simulate: true) }
                 }
                 .fixedSize()
-                .disabled(selection.isEmpty)
+                .disabled(selection.isEmpty || activity.isBusy)
                 .help("Runs through the plan and records it in the log without touching any file")
                 Button("Cancel") { onClose(nil) }
                     .keyboardShortcut(.cancelAction)
@@ -227,7 +239,7 @@ public struct PlanReviewView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(permanentCount > 0 ? .red : .accentColor)
                 .keyboardShortcut(.defaultAction)
-                .disabled(selection.isEmpty)
+                .disabled(selection.isEmpty || activity.isBusy)
             }
             .padding()
         }
@@ -310,8 +322,8 @@ public struct PlanReviewView: View {
     private func run(simulate: Bool) {
         let selected = selection
         let chosen = plan.keeping(selected)
+        guard DeletionActivity.shared.begin() else { return }
         stage = .running(completed: 0, total: 0, path: "")
-        DeletionActivity.shared.begin()
         runTask = Task {
             defer { DeletionActivity.shared.end() }
             let notes = await prepare?(simulate, selected) ?? []
@@ -544,7 +556,13 @@ private struct ResultStage: View {
         let size = ByteSizeFormatter.format(result.freedBytes)
         let items = "\(result.succeeded) item\(result.succeeded == 1 ? "" : "s")"
         if result.dryRun {
-            return "\(items) would be removed, freeing about \(size)."
+            if result.recoverable == result.succeeded {
+                return "\(items) would move to the Trash — \(size). Space is reclaimed only after the Trash is emptied."
+            }
+            if result.recoverable == 0 {
+                return "\(items) would be permanently deleted from the Trash — \(size)."
+            }
+            return "\(items) would be removed — \(size). Some would move to Trash; items already in Trash would be deleted permanently."
         }
         if result.succeeded == 0 {
             return "No space was freed."
@@ -627,9 +645,11 @@ private struct ResultStage: View {
                             .disabled(elevating)
                             .help("Asks for an administrator password, then removes these through the myKikau helper")
                     } else {
-                        Text("Items owned by another user can be dragged to the Trash in Finder, which will ask for an administrator password.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text(
+                            "Items owned by another user can be dragged to the Trash in Finder, which will ask for an administrator password."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
@@ -644,10 +664,11 @@ private struct ResultStage: View {
     /// Hands the items that needed an administrator to the helper, then
     /// folds what it removed into the result.
     private func runElevated() {
-        guard let elevate else { return }
+        guard let elevate, DeletionActivity.shared.begin() else { return }
         let paths = needingAdministrator.map(\.path)
         elevating = true
         Task {
+            defer { DeletionActivity.shared.end() }
             let outcome = await elevate(paths)
             let freed = outcome.removed.reduce(Int64(0)) { $0 + (sizes[$1] ?? 0) }
             let remaining = result.failures.compactMap { failure -> SafeFileDeleter.Failure? in

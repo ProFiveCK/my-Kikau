@@ -173,10 +173,10 @@ struct MaintenanceRunnerTests {
         let runner = MaintenanceRunner(home: home, deleter: deleter)
         let result = await runner.run(taskID: "saved_state", dryRun: true)
 
-        if case .applied = result.outcome {
+        if case .recommended = result.outcome {
             // expected
         } else {
-            Issue.record("Expected .applied (dry-run) for saved_state, got \(result.outcome)")
+            Issue.record("Expected .recommended (dry-run) for saved_state, got \(result.outcome)")
         }
         // Dry-run must not delete.
         #expect(FileManager.default.fileExists(atPath: old.path))
@@ -233,10 +233,10 @@ struct MaintenanceRunnerTests {
         let runner = MaintenanceRunner(home: home, deleter: deleter)
         let result = await runner.run(taskID: "launch_agents", dryRun: true)
 
-        if case .applied = result.outcome {
+        if case .recommended = result.outcome {
             // expected — would remove the broken one
         } else {
-            Issue.record("Expected .applied for launch_agents with a broken plist, got \(result.outcome)")
+            Issue.record("Expected .recommended for launch_agents with a broken plist, got \(result.outcome)")
         }
         // Dry-run must not delete either plist.
         #expect(FileManager.default.fileExists(atPath: brokenPlist.path))
@@ -334,7 +334,7 @@ struct MaintenanceRunnerTests {
         let runner = MaintenanceRunner(home: home)
         let result = await runner.run(taskID: "broken_configs", dryRun: true)
 
-        if case .applied = result.outcome {
+        if case .recommended = result.outcome {
             // expected
         } else {
             Issue.record("Expected .applied, got \(result.outcome)")

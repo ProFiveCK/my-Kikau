@@ -85,7 +85,7 @@ private struct GeneralSettings: View {
                     Text("10 GB or more").tag(10000)
                 }
                 .disabled((managedInterval ?? scanIntervalHours) == 0)
-                Text("A background scan only measures. Nothing is removed until you review it.")
+                Text("Background Quick scans check everyday cleanup and startup items. Nothing is removed until you review it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

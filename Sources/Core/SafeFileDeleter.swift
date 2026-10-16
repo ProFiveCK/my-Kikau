@@ -149,6 +149,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
     /// Result of executing a plan.
     public struct ExecutionResult: Sendable {
+        /// Bytes handled by this operation; Trash moves do not free disk space.
         public let freedBytes: Int64
         public let succeeded: Int
         public let failed: Int
@@ -157,7 +158,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
         public let failures: [Failure]
         /// IDs (paths) of the items that were actually removed.
         public let removedIDs: Set<String>
-        /// Number of removed items that went to the Trash and can be put back.
+        /// Items moved (or, in a simulation, that would move) to the Trash.
         public let recoverable: Int
         public let cancelled: Bool
         public let dryRun: Bool
@@ -189,7 +190,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
     /// Phase 1: Build a plan from candidate targets. No mutation occurs.
     /// Protected paths and missing files are separated out (never deleted).
-    public func preview(_ targets: [URL], category: Category) -> Plan {
+    public func preview(_ targets: [URL], category: Category, coverage: ScanCoverageRecorder? = nil) -> Plan {
         var items: [Item] = []
         var protectedItems: [Item] = []
         var missingItems: [Item] = []
@@ -206,10 +207,15 @@ public final class SafeFileDeleter: @unchecked Sendable {
                 continue
             }
             guard fileManager.fileExists(atPath: url.path) else {
+                if let coverage {
+                    do { _ = try fileManager.attributesOfItem(atPath: url.path) }
+                    catch { coverage.failed(url, error: error) }
+                }
                 missingItems.append(Item(url: url, sizeBytes: 0, category: category, protected: false))
                 continue
             }
-            let size = directorySize(url)
+            let size = directorySize(url, coverage: coverage)
+            coverage?.checked(url)
             items.append(Item(url: url, sizeBytes: size, category: category, protected: false))
         }
 
@@ -224,6 +230,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
         mode: Mode,
         dryRun: Bool,
         action: String,
+        sessionID: UUID = UUID(),
         progress: ((Progress) -> Void)? = nil,
         isCancelled: () -> Bool = { false }
     ) -> ExecutionResult {
@@ -248,7 +255,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
             // a caller that passed `protected: false`. Re-check right here.
             if protection.shouldProtect(item.url) {
                 opLog.append(.init(
-                    action: action, path: item.url.path,
+                    sessionID: sessionID, action: action, path: item.url.path,
                     sizeBytes: 0, mode: .init(mode),
                     outcome: .skipped, dryRun: dryRun, detail: "Protected path"
                 ))
@@ -265,11 +272,14 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
             if dryRun {
                 opLog.append(.init(
-                    action: action, path: item.url.path,
+                    sessionID: sessionID, action: action, path: item.url.path,
                     sizeBytes: item.sizeBytes, mode: .init(effectiveMode),
                     outcome: .dryRun, dryRun: true
                 ))
                 freed += item.sizeBytes
+                if effectiveMode == .trash {
+                    recoverable += 1
+                }
                 succeeded += 1
                 continue
             }
@@ -287,7 +297,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
                     try fileManager.removeItem(at: item.url)
                 }
                 opLog.append(.init(
-                    action: action, path: item.url.path,
+                    sessionID: sessionID, action: action, path: item.url.path,
                     sizeBytes: item.sizeBytes, mode: .init(effectiveMode),
                     outcome: .success, dryRun: false,
                     trashedPath: trashedPath, trashedFileNumber: trashedFileNumber
@@ -298,13 +308,16 @@ public final class SafeFileDeleter: @unchecked Sendable {
             } catch {
                 let failure = Self.failure(for: item.url, error: error, fileManager: fileManager)
                 opLog.append(.init(
-                    action: action, path: item.url.path,
+                    sessionID: sessionID, action: action, path: item.url.path,
                     sizeBytes: item.sizeBytes, mode: .init(effectiveMode),
                     outcome: .failed, dryRun: false, detail: failure.reason
                 ))
                 failed += 1
                 failures.append(failure)
-                Log.deletion.error("\(action, privacy: .public): could not remove \(item.url.path, privacy: .private): \(failure.reason, privacy: .public)")
+                Log.deletion
+                    .error(
+                        "\(action, privacy: .public): could not remove \(item.url.path, privacy: .private): \(failure.reason, privacy: .public)"
+                    )
                 errors.append("\(item.url.path): \(failure.reason)")
             }
         }
@@ -312,7 +325,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
         for item in plan.protectedItems {
             opLog.append(.init(
-                action: action, path: item.url.path,
+                sessionID: sessionID, action: action, path: item.url.path,
                 sizeBytes: 0, mode: .init(mode),
                 outcome: .skipped, dryRun: dryRun, detail: "Protected path"
             ))
@@ -357,22 +370,18 @@ public final class SafeFileDeleter: @unchecked Sendable {
     /// - Parameter fileNumber: the item's file number recorded when it was
     ///   trashed. When given, the item now at `trashedPath` must be that same
     ///   item — not something else that was trashed under the same name later.
-    public func putBack(trashedPath: String, originalPath: String, fileNumber expected: UInt64? = nil) throws {
+    public func putBack(
+        trashedPath: String, originalPath: String, fileNumber expected: UInt64? = nil, sessionID: UUID? = nil
+    ) throws {
         let trashed = URL(fileURLWithPath: trashedPath)
         let original = URL(fileURLWithPath: originalPath)
-        guard Self.isInsideTrash(trashed), fileManager.fileExists(atPath: trashed.path) else {
-            throw PutBackError.noLongerInTrash
-        }
-        if let expected, fileNumber(atPath: trashed.path) != expected {
-            throw PutBackError.noLongerInTrash
-        }
-        guard !fileManager.fileExists(atPath: original.path) else {
-            throw PutBackError.originalLocationOccupied
+        if let problem = putBackProblem(trashedPath: trashedPath, originalPath: originalPath, fileNumber: expected) {
+            throw problem
         }
         try fileManager.createDirectory(at: original.deletingLastPathComponent(), withIntermediateDirectories: true)
         try fileManager.moveItem(at: trashed, to: original)
         opLog.append(.init(
-            action: "putBack", path: original.path,
+            sessionID: sessionID, action: "putBack", path: original.path,
             sizeBytes: 0, mode: .trash, outcome: .success, dryRun: false
         ))
     }
@@ -380,24 +389,33 @@ public final class SafeFileDeleter: @unchecked Sendable {
     public enum PutBackError: LocalizedError {
         case noLongerInTrash
         case originalLocationOccupied
+        case protectedLocation
 
         public var errorDescription: String? {
             switch self {
             case .noLongerInTrash: "This item is no longer in the Trash."
             case .originalLocationOccupied: "Something else now exists at the original location."
+            case .protectedLocation: "The original location is protected or excluded."
             }
         }
     }
 
     /// Whether Put Back can still restore the item an entry describes.
     public func canPutBack(trashedPath: String, originalPath: String, fileNumber expected: UInt64? = nil) -> Bool {
-        guard fileManager.fileExists(atPath: trashedPath), !fileManager.fileExists(atPath: originalPath) else {
-            return false
+        putBackProblem(trashedPath: trashedPath, originalPath: originalPath, fileNumber: expected) == nil
+    }
+
+    public func putBackProblem(trashedPath: String, originalPath: String, fileNumber expected: UInt64? = nil) -> PutBackError? {
+        let trashed = URL(fileURLWithPath: trashedPath)
+        guard !protection.shouldProtect(URL(fileURLWithPath: originalPath)) else { return .protectedLocation }
+        guard Self.isInsideTrash(trashed),
+              Self.isInsideTrash(trashed.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(trashed.lastPathComponent)),
+              fileManager.fileExists(atPath: trashedPath) else { return .noLongerInTrash }
+        if let expected, fileNumber(atPath: trashedPath) != expected {
+            return .noLongerInTrash
         }
-        if let expected {
-            return fileNumber(atPath: trashedPath) == expected
-        }
-        return true
+        guard (try? fileManager.attributesOfItem(atPath: originalPath)) == nil else { return .originalLocationOccupied }
+        return nil
     }
 
     private func fileNumber(atPath path: String) -> UInt64? {
@@ -435,8 +453,12 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
     /// How much disk the item takes (allocated size, hidden files included).
     /// See `FileSizing`.
-    public func directorySize(_ url: URL) -> Int64 {
-        FileSizing.allocatedSize(of: url, fileManager: fileManager)
+    public func directorySize(
+        _ url: URL,
+        coverage: ScanCoverageRecorder? = nil,
+        shouldContinue: () -> Bool = { !Task.isCancelled }
+    ) -> Int64 {
+        FileSizing.allocatedSize(of: url, fileManager: fileManager, coverage: coverage, shouldContinue: shouldContinue)
     }
 }
 

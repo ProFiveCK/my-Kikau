@@ -2,9 +2,9 @@ import Foundation
 
 /// The one way myKikau measures how much disk an item takes.
 ///
-/// Allocated size, not logical length: that is what removing the item gives
-/// back, and what Finder's "size on disk" shows. Sparse files and APFS
-/// clones therefore don't claim space that was never used. Hidden files are
+/// Uses allocated size where available, rather than logical file length.
+/// This is an estimate: shared APFS blocks and snapshots can change actual
+/// free-space gains. Hidden files are
 /// included; symbolic links are not followed; other mounted volumes under
 /// the folder are not entered.
 public enum FileSizing {
@@ -26,9 +26,12 @@ public enum FileSizing {
     public static func allocatedSize(
         of url: URL,
         fileManager: FileManager = .default,
+        coverage: ScanCoverageRecorder? = nil,
         shouldContinue: () -> Bool = { !Task.isCancelled }
     ) -> Int64 {
-        guard let values = try? url.resourceValues(forKeys: keys) else { return 0 }
+        let values: URLResourceValues
+        do { values = try url.resourceValues(forKeys: keys) }
+        catch { coverage?.failed(url, error: error); return 0 }
         if values.isSymbolicLink == true {
             return 0
         }
@@ -37,8 +40,12 @@ public enum FileSizing {
         }
 
         guard let enumerator = fileManager.enumerator(
-            at: url, includingPropertiesForKeys: Array(keys), options: []
-        ) else { return 0 }
+            at: url, includingPropertiesForKeys: Array(keys), options: [],
+            errorHandler: { path, error in coverage?.failed(path, error: error); return true }
+        ) else {
+            coverage?.record(url, kind: .unavailable, detail: "The folder could not be enumerated.")
+            return 0
+        }
         var total: Int64 = 0
         var visited = 0
         for case let child as URL in enumerator {
@@ -46,7 +53,9 @@ public enum FileSizing {
             if visited % 512 == 0, !shouldContinue() {
                 break
             }
-            guard let childValues = try? child.resourceValues(forKeys: keys) else { continue }
+            let childValues: URLResourceValues
+            do { childValues = try child.resourceValues(forKeys: keys) }
+            catch { coverage?.failed(child, error: error); continue }
             if childValues.isSymbolicLink == true {
                 continue
             }

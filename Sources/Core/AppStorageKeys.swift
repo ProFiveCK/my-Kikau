@@ -15,9 +15,12 @@ public enum AppStorageKey {
     public static let analyzeLastPreloadAt = "myKikau.analyzeLastPreloadAt"
     /// Paths the user has told myKikau never to delete (Settings → Exclusions).
     public static let userExclusions = "myKikau.userExclusions"
+    /// Exact informational privacy observations acknowledged by the user.
+    public static let networkPrivacyIgnoredFindings = "myKikau.networkPrivacyIgnoredFindings"
     /// Whether file operations are written to the operation log.
     public static let operationLogEnabled = "myKikau.operationLogEnabled"
     /// Last sidebar screen, restored on launch.
+    public static let careScanMode = "myKikau.careScanMode"
     public static let lastSidebarSelection = "myKikau.lastSidebarSelection"
     /// Shows developer-oriented features (the project build-artifact purge).
     public static let developerToolsEnabled = "myKikau.developerToolsEnabled"

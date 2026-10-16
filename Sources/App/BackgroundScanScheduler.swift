@@ -4,7 +4,7 @@ import UserNotifications
 import Core
 import Features
 
-/// Runs the full scan on a schedule while myKikau is running (it lives in the
+/// Runs a quick scan on a schedule while myKikau is running (it lives in the
 /// menu bar, so that's most of the time) and posts a notification when
 /// there's enough to reclaim to be worth a look, or when the startup disk is
 /// nearly full.
@@ -64,18 +64,21 @@ final class BackgroundScanScheduler: NSObject, UNUserNotificationCenterDelegate 
         let hours = intervalHours
         guard hours > 0 else { return }
         let coordinator = ScanEverythingCoordinator.shared
-        guard !coordinator.isScanning else { return }
+        guard !WorkCoordinator.shared.isBusy else { return }
         let last = defaults.object(forKey: AppStorageKey.lastScheduledScanAt) as? Date ?? .distantPast
         // Also counts a scan the user ran by hand.
         let mostRecent = max(last, coordinator.lastScanAt ?? .distantPast)
         guard Date().timeIntervalSince(mostRecent) >= Double(hours) * 3600 else { return }
 
         defaults.set(Date(), forKey: AppStorageKey.lastScheduledScanAt)
-        await coordinator.scanEverything()
+        let previousScan = coordinator.lastScanAt
+        let previousCleanup = coordinator.scannedAt[.clean]
+        await coordinator.scanEverything(mode: .quick)
+        guard coordinator.lastScanAt != previousScan, coordinator.scannedAt[.clean] != previousCleanup else { return }
 
         let stored = defaults.integer(forKey: AppStorageKey.notifyReclaimableThresholdMB)
         let thresholdMB = stored > 0 ? stored : 2000
-        let reclaimable = coordinator.combinedReclaimableBytes
+        let reclaimable = coordinator.cleanPlans?.values.reduce(Int64(0)) { $0 + $1.totalReclaimable } ?? 0
         if reclaimable >= Int64(thresholdMB) * 1_000_000 {
             post(
                 id: "scan-result",

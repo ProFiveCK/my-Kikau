@@ -8,6 +8,8 @@ struct CleanView: View {
     @ObservedObject private var model = CleanModel.shared
     @State private var review: ReviewRequest?
 
+    @ObservedObject private var activity = WorkCoordinator.shared
+
     private let tint = ContentView.SidebarItem.clean.tint
 
     private var plans: [CleanScanner.Section: SafeFileDeleter.Plan] {
@@ -25,12 +27,14 @@ struct CleanView: View {
         guard coordinator.cleanPlans != nil else { return "Caches, logs, temporary files and the Trash" }
         return totalReclaimable > 0
             ? "\(ByteSizeFormatter.format(totalReclaimable)) can be reclaimed"
-            : "Nothing to clean right now"
+            :
+            (coordinator.coverage[.clean]?
+                .isPartial == true ? "No candidates in checked locations · partial scan" : "Nothing to clean right now")
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeader("System Cleanup", subtitle: subtitle, systemImage: ContentView.SidebarItem.clean.icon, tint: tint) {
+            ScreenHeader("Clean up", subtitle: subtitle, systemImage: ContentView.SidebarItem.clean.icon, tint: tint) {
                 if totalReclaimable > 0, !model.isScanning {
                     Button("Review All (\(ByteSizeFormatter.format(totalReclaimable)))") { reviewAll() }
                         .buttonStyle(.borderedProminent)
@@ -49,12 +53,17 @@ struct CleanView: View {
                 .padding([.horizontal, .bottom])
             }
 
+            if let coverage = coordinator.coverage[.clean] {
+                ScanCoverageView(coverage).padding(.horizontal).padding(.bottom, 8)
+            }
             if coordinator.cleanPlans == nil {
                 if !model.isScanning {
                     ContentUnavailableView {
                         Label("No Scan Yet", systemImage: "internaldrive")
                     } description: {
-                        Text("Find caches, logs, temporary files and Trash contents that are safe to remove. Nothing is removed until you review it.")
+                        Text(
+                            "Find caches, logs, temporary files and Trash contents that are safe to remove. Nothing is removed until you review it."
+                        )
                     } actions: {
                         Button("Scan") { model.scan() }
                             .buttonStyle(.borderedProminent)
@@ -65,7 +74,7 @@ struct CleanView: View {
                 }
             } else if totalReclaimable == 0 {
                 ContentUnavailableView(
-                    "Nothing to Clean",
+                    coordinator.coverage[.clean]?.isPartial == true ? "No Cleanup Candidates in Checked Locations" : "Nothing to Clean",
                     systemImage: "checkmark.circle",
                     description: Text("No removable caches, logs or Trash contents were found.")
                 )
@@ -113,7 +122,7 @@ struct CleanView: View {
         let button = Button(coordinator.cleanPlans == nil ? "Scan" : "Rescan") { model.scan() }
             .keyboardShortcut("r", modifiers: .command)
             .tint(tint)
-            .disabled(model.isScanning)
+            .disabled(activity.isBusy)
         if totalReclaimable > 0 {
             button.buttonStyle(.bordered)
         } else {

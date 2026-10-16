@@ -93,7 +93,7 @@ struct AboutView: View {
 
                 InfoCard(title: "This Install") {
                     InfoRow(label: "Operations logged", value: "\(operationCount)")
-                    InfoRow(label: "Total freed to date", value: ByteSizeFormatter.format(totalFreed))
+                    InfoRow(label: "Permanently removed", value: ByteSizeFormatter.format(totalFreed))
                     HStack {
                         Text("Activity")
                             .font(.subheadline)

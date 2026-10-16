@@ -32,6 +32,9 @@ public final class MaintenanceRunner {
     /// in `Result.output` so the user sees exactly which files a task touches
     /// before confirming it. Reset at the start of every `run`.
     private var details: [String] = []
+    private var reviewedPaths: Set<String>?
+    private var inspectionError: String?
+    public private(set) var networkPrivacyReport: NetworkPrivacyAuditor.Report?
     /// Most recent successful real run per action, read from the operation
     /// log once per scan instead of once per task.
     private var lastSuccessCache: [String: Date]?
@@ -56,10 +59,19 @@ public final class MaintenanceRunner {
     // MARK: - Public dispatch
 
     /// Runs a single task by ID.
-    public func run(taskID: String, dryRun: Bool) async -> Result {
+    public func run(taskID: String, dryRun: Bool, reviewedPaths: Set<String>? = nil) async -> Result {
         let start = Date()
         details = []
-        let outcome = await dispatch(taskID: taskID, dryRun: dryRun)
+        self.reviewedPaths = reviewedPaths
+        inspectionError = nil
+        let detected = await dispatch(taskID: taskID, dryRun: dryRun)
+        let outcome: MaintenanceOutcome = if let inspectionError {
+            .unavailable(inspectionError)
+        } else if dryRun, case let .applied(detail) = detected {
+            .recommended(detail)
+        } else {
+            detected
+        }
         let duration = Date().timeIntervalSince(start)
         let result = Result(outcome: outcome, output: details, durationSeconds: duration)
         logResult(taskID: taskID, result: result, dryRun: dryRun)
@@ -384,7 +396,7 @@ public final class MaintenanceRunner {
 
         let cutoff = Date().addingTimeInterval(-savedStateAgeDays * 86400)
         var targets: [URL] = []
-        if let entries = try? FileManager.default.contentsOfDirectory(
+        if let entries = inspectionDirectory(
             at: stateDir,
             includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
             options: [.skipsHiddenFiles]
@@ -403,6 +415,9 @@ public final class MaintenanceRunner {
         }
 
         // Route through SafeFileDeleter — never raw rm.
+        if let inspectionError {
+            return .unavailable(inspectionError)
+        }
         let plan = deleter.preview(targets, category: .leftover)
         guard !plan.items.isEmpty else {
             return .unchanged("No removable saved states older than \(Int(savedStateAgeDays)) days")
@@ -413,6 +428,9 @@ public final class MaintenanceRunner {
             return .applied("Would remove \(plan.items.count) old saved state(s)")
         }
 
+        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+            return .failed("The files changed after review. Scan and review this task again.")
+        }
         let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.saved_state")
         if result.failed > 0 {
             return .failed("Removed \(result.succeeded), failed \(result.failed) saved state(s)")
@@ -429,7 +447,7 @@ public final class MaintenanceRunner {
         }
 
         var corrupt: [URL] = []
-        if let entries = try? FileManager.default.contentsOfDirectory(
+        if let entries = inspectionDirectory(
             at: sflDir,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
@@ -449,11 +467,17 @@ public final class MaintenanceRunner {
             return .unchanged("Shared file lists all healthy")
         }
 
+        if let inspectionError {
+            return .unavailable(inspectionError)
+        }
         let plan = deleter.preview(corrupt, category: .leftover)
         guard !plan.items.isEmpty else { return .unchanged("Shared file lists all healthy") }
         details = plan.items.map(\.url.path)
         if dryRun {
             return .applied("Would repair \(plan.items.count) corrupted shared file list(s)")
+        }
+        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+            return .failed("The files changed after review. Scan and review this task again.")
         }
         let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.shared_file_lists")
         if result.failed > 0 {
@@ -471,7 +495,7 @@ public final class MaintenanceRunner {
         }
 
         var corrupt: [URL] = []
-        if let entries = try? FileManager.default.contentsOfDirectory(
+        if let entries = inspectionDirectory(
             at: prefsDir,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
@@ -502,11 +526,17 @@ public final class MaintenanceRunner {
             return .unchanged("All preference files valid")
         }
 
+        if let inspectionError {
+            return .unavailable(inspectionError)
+        }
         let plan = deleter.preview(corrupt, category: .leftover)
         guard !plan.items.isEmpty else { return .unchanged("All preference files valid") }
         details = plan.items.map(\.url.path)
         if dryRun {
             return .applied("Would repair \(plan.items.count) corrupted preference file(s)")
+        }
+        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+            return .failed("The files changed after review. Scan and review this task again.")
         }
         let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.broken_configs")
         if result.failed > 0 {
@@ -517,10 +547,21 @@ public final class MaintenanceRunner {
 
     /// True if the file parses as a property list (any format). Done
     /// in-process — no `plutil` subprocess per file.
+    private func inspectionDirectory(
+        at url: URL,
+        includingPropertiesForKeys keys: [URLResourceKey]?,
+        options: FileManager.DirectoryEnumerationOptions
+    ) -> [URL]? {
+        do { return try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: options) }
+        catch { inspectionError = "Couldn’t inspect \(url.path): \(error.localizedDescription)"; return nil }
+    }
+
     private func isValidPropertyList(_ url: URL) -> Bool {
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
-            // Unreadable isn't the same as corrupt — leave it alone.
-            return true
+        let data: Data
+        do { data = try Data(contentsOf: url, options: .mappedIfSafe) }
+        catch {
+            inspectionError = "Couldn’t read \(url.path): \(error.localizedDescription)"
+            return true // Unreadable is never evidence of corruption.
         }
         return (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) != nil
     }
@@ -534,7 +575,7 @@ public final class MaintenanceRunner {
         }
 
         var broken: [URL] = []
-        if let entries = try? FileManager.default.contentsOfDirectory(
+        if let entries = inspectionDirectory(
             at: agentsDir,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
@@ -553,6 +594,9 @@ public final class MaintenanceRunner {
             return .unchanged("Launch Agents all healthy")
         }
 
+        if let inspectionError {
+            return .unavailable(inspectionError)
+        }
         let plan = deleter.preview(broken, category: .leftover)
         guard !plan.items.isEmpty else { return .unchanged("Launch Agents all healthy") }
         details = plan.items.map(\.url.path)
@@ -561,10 +605,16 @@ public final class MaintenanceRunner {
         }
 
         // Unload before removing.
+        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+            return .failed("The files changed after review. Scan and review this task again.")
+        }
         for item in plan.items {
             _ = await runProcess("/bin/launchctl", arguments: ["bootout", "gui/\(getuid())", item.url.path], dryRun: false)
         }
 
+        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+            return .failed("The files changed after review. Scan and review this task again.")
+        }
         let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.launch_agents")
         if result.failed > 0 {
             return .failed("Removed \(result.succeeded), failed \(result.failed) Launch Agent(s)")
@@ -582,7 +632,15 @@ public final class MaintenanceRunner {
         if plist.lastPathComponent.hasPrefix("com.apple.") {
             return false
         }
-        guard let dict = NSDictionary(contentsOf: plist) as? [String: Any] else { return false }
+        let dict: [String: Any]
+        do {
+            let data = try Data(contentsOf: plist)
+            guard let parsed = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+                inspectionError = "Couldn’t inspect the launch agent at \(plist.path)"
+                return false
+            }
+            dict = parsed
+        } catch { inspectionError = "Couldn’t inspect \(plist.path): \(error.localizedDescription)"; return false }
         if let label = dict["Label"] as? String, label.hasPrefix("com.apple.") {
             return false
         }
@@ -598,20 +656,21 @@ public final class MaintenanceRunner {
             let report = try NetworkPrivacyAuditor.inspect(
                 installedApplications: NetworkPrivacyAuditor.discoverInstalledApplications()
             )
+            networkPrivacyReport = report
             return networkPrivacyOutcome(for: report)
         } catch {
             return .unavailable("Local Network privacy store could not be inspected: \(error.localizedDescription)")
         }
     }
 
-    func networkPrivacyOutcome(for report: NetworkPrivacyAuditor.Report) -> MaintenanceOutcome {
-        guard !report.findings.isEmpty else {
-            return .unchanged("Local Network privacy records are healthy")
+    public func networkPrivacyOutcome(for report: NetworkPrivacyAuditor.Report) -> MaintenanceOutcome {
+        if report.issueCount > 0 {
+            return .attention(report.summary)
         }
-        let count = report.findings.count
-        return .attention(
-            "\(count) issue\(count == 1 ? "" : "s") found in Local Network privacy records — guided repair available"
-        )
+        if report.informationalCount > 0 {
+            return .information(report.summary)
+        }
+        return .unchanged(report.summary)
     }
 
     // MARK: - Staleness gating (for tasks with no real "would this change anything" check)
@@ -660,8 +719,10 @@ public final class MaintenanceRunner {
 
     private func mapOutcome(_ outcome: MaintenanceOutcome, dryRun: Bool) -> (OperationLog.Outcome, Int64) {
         switch outcome {
+        case .recommended: (.dryRun, 0)
         case .applied: (dryRun ? .dryRun : .success, 0)
         case .unchanged: (.skipped, 0)
+        case .information: (.skipped, 0)
         case .skipped: (.skipped, 0)
         case .unavailable: (.skipped, 0)
         case .attention: (.skipped, 0)

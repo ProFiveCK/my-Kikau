@@ -21,15 +21,25 @@ struct DuplicatesView: View {
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
     @ObservedObject private var model = FilesModel.shared
     @State private var mode: Mode = .duplicates
-    @State private var selectedLargeFiles: Set<String> = []
+    private var selectedLargeFiles: Set<String> {
+        get { model.selectedLargeFiles }
+        nonmutating set { model.selectedLargeFiles = newValue }
+    }
+
     @State private var review: ReviewRequest?
     @State private var staleNotice = false
-    @State private var selectedSimilar: Set<String> = []
+    private var selectedSimilar: Set<String> {
+        get { model.selectedSimilar }
+        nonmutating set { model.selectedSimilar = newValue }
+    }
+
     /// Non-empty means macOS hasn't granted access to one of the folders this
     /// feature scans — the most likely explanation for "Duplicates always
     /// finds nothing" on a Mac that obviously has files there (see
     /// ProtectedFolderAccessCheck).
     @State private var deniedFolders: [String] = ProtectedFolderAccessCheck.deniedFolders()
+
+    @ObservedObject private var activity = WorkCoordinator.shared
 
     private let tint = ContentView.SidebarItem.duplicates.tint
 
@@ -63,7 +73,9 @@ struct DuplicatesView: View {
         switch mode {
         case .duplicates:
             return duplicateGroups.isEmpty
-                ? "No duplicates found"
+                ?
+                (coordinator.coverage[.files]?
+                    .isPartial == true ? "No duplicates in the files checked · partial scan" : "No duplicates found")
                 : "\(duplicateGroups.count) set\(duplicateGroups.count == 1 ? "" : "s") of duplicates · \(ByteSizeFormatter.format(totalDuplicateReclaimable)) reclaimable"
         case .largeFiles:
             let threshold = ByteSizeFormatter.formatRounded(DuplicateFinder.largeFileThreshold)
@@ -97,7 +109,7 @@ struct DuplicatesView: View {
                 .keyboardShortcut("r", modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
-                .disabled(model.isScanning)
+                .disabled(activity.isBusy)
             }
 
             if !deniedFolders.isEmpty {
@@ -116,6 +128,14 @@ struct DuplicatesView: View {
                 .padding([.horizontal, .bottom])
             }
 
+            if let coverage = mode == .similar ? model.similarCoverage : coordinator
+                .coverage[.files]
+            {
+                ScanCoverageView(coverage).padding(.horizontal).padding(
+                    .bottom,
+                    8
+                )
+            }
             if mode == .similar {
                 similarList
             } else if !hasScanned {
@@ -125,7 +145,9 @@ struct DuplicatesView: View {
                     ContentUnavailableView {
                         Label("No Scan Yet", systemImage: "doc.on.doc")
                     } description: {
-                        Text("Looks through Downloads, Documents, Desktop, Pictures and Movies for files with identical content and for oversized files. Add more folders in Settings.")
+                        Text(
+                            "Looks through Downloads, Documents, Desktop, Pictures and Movies for files with identical content and for oversized files. Add more folders in Settings."
+                        )
                     } actions: {
                         Button("Scan") { model.scan() }
                             .buttonStyle(.borderedProminent)
@@ -172,7 +194,9 @@ struct DuplicatesView: View {
         .alert("These Files Have Changed", isPresented: $staleNotice) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("The files were moved, removed or edited after the scan, so nothing was queued for removal. Scan again for an up-to-date list.")
+            Text(
+                "The files were moved, removed or edited after the scan, so nothing was queued for removal. Scan again for an up-to-date list."
+            )
         }
         .onAppear {
             if let pendingMode = AppNavigation.shared.pendingDuplicatesMode {
@@ -219,7 +243,9 @@ struct DuplicatesView: View {
                                 coordinator.setKeeper(groupID: group.id, fileID: file.id)
                             }
                         }
-                        Button("Remove \(group.files.count - 1) Other Cop\(group.files.count == 2 ? "y" : "ies")… (\(ByteSizeFormatter.format(group.reclaimableBytes)))") {
+                        Button(
+                            "Remove \(group.files.count - 1) Other Cop\(group.files.count == 2 ? "y" : "ies")… (\(ByteSizeFormatter.format(group.reclaimableBytes)))"
+                        ) {
                             openDuplicateReview(
                                 [group],
                                 subtitle: "Keeping \(group.keeper?.url.lastPathComponent ?? "one copy")."
@@ -291,9 +317,11 @@ struct DuplicatesView: View {
                         }
                     }
                     if report.skippedOverLimit > 0 {
-                        Text("\(report.skippedOverLimit.formatted()) smaller pictures weren't compared — only the \(SimilarImageFinder.maximumImages.formatted()) largest are.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text(
+                            "\(report.skippedOverLimit.formatted()) smaller pictures weren't compared — only the \(SimilarImageFinder.maximumImages.formatted()) largest are."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                 }
 
@@ -343,7 +371,9 @@ struct DuplicatesView: View {
             ContentUnavailableView(
                 "No Large Files Found",
                 systemImage: "checkmark.circle",
-                description: Text("Nothing over \(ByteSizeFormatter.formatRounded(DuplicateFinder.largeFileThreshold)) in your scanned folders. Change the size in Settings.")
+                description: Text(
+                    "Nothing over \(ByteSizeFormatter.formatRounded(DuplicateFinder.largeFileThreshold)) in your scanned folders. Change the size in Settings."
+                )
             )
         } else {
             List(largeFiles) { file in

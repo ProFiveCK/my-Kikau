@@ -41,7 +41,7 @@ public enum StartupItems {
         }
     }
 
-    public static func scan(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [Item] {
+    public static func scan(home: URL = FileManager.default.homeDirectoryForCurrentUser, coverage: ScanCoverageRecorder? = nil) -> [Item] {
         let locations: [(URL, Scope)] = [
             (home.appendingPathComponent("Library/LaunchAgents"), .user),
             (URL(fileURLWithPath: "/Library/LaunchAgents"), .systemAgent),
@@ -49,18 +49,34 @@ public enum StartupItems {
         ]
         var items: [Item] = []
         for (directory, scope) in locations {
-            guard let entries = try? FileManager.default.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-            ) else { continue }
+            let entries: [URL]
+            do {
+                entries = try FileManager.default.contentsOfDirectory(
+                    at: directory,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                )
+                coverage?.checked(directory)
+            } catch { coverage?.failed(directory, error: error); continue }
             for entry in entries where entry.pathExtension == "plist" {
-                items.append(item(at: entry, scope: scope))
+                items.append(item(at: entry, scope: scope, coverage: coverage))
             }
         }
         return items.sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
     }
 
-    static func item(at url: URL, scope: Scope) -> Item {
-        let dict = (NSDictionary(contentsOf: url) as? [String: Any]) ?? [:]
+    static func item(at url: URL, scope: Scope, coverage: ScanCoverageRecorder? = nil) -> Item {
+        var dict: [String: Any] = [:]
+        do {
+            let data = try Data(contentsOf: url)
+            if let parsed = try PropertyListSerialization
+                .propertyList(from: data, options: [], format: nil) as? [String: Any]
+            {
+                dict = parsed
+            } else {
+                coverage?.record(url, kind: .unavailable, detail: "The startup configuration could not be read.")
+            }
+        } catch { coverage?.failed(url, error: error) }
         let label = (dict["Label"] as? String) ?? url.deletingPathExtension().lastPathComponent
         let program = (dict["Program"] as? String) ?? (dict["ProgramArguments"] as? [String])?.first
         let missing: Bool = if let program, program.hasPrefix("/"), !program.hasPrefix("/Volumes/") {

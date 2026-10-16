@@ -12,6 +12,8 @@ struct PurgeView: View {
     @State private var selectedArtifacts: Set<String> = []
     @State private var review: ReviewRequest?
 
+    @ObservedObject private var activity = WorkCoordinator.shared
+
     private let tint = ContentView.SidebarItem.purge.tint
 
     private var artifacts: [ProjectArtifactScanner.Artifact] {
@@ -37,7 +39,7 @@ struct PurgeView: View {
                 .keyboardShortcut("r", modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
-                .disabled(model.isScanning)
+                .disabled(activity.isBusy)
             }
 
             if model.isScanning {
@@ -52,7 +54,9 @@ struct PurgeView: View {
                     ContentUnavailableView {
                         Label("No Projects Scanned", systemImage: "hammer")
                     } description: {
-                        Text("Finds node_modules, build, target and similar folders. Projects you've worked on recently are flagged so you can leave them alone.")
+                        Text(
+                            "Finds node_modules, build, target and similar folders. Projects you've worked on recently are flagged so you can leave them alone."
+                        )
                     } actions: {
                         Button("Scan Projects") { model.scan() }
                             .buttonStyle(.borderedProminent)

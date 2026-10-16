@@ -13,7 +13,7 @@ public enum Theme {
 
     public enum Radius {
         public static let control: CGFloat = 8
-        public static let card: CGFloat = 10
+        public static let card: CGFloat = 15
         public static let panel: CGFloat = 12
     }
 }
@@ -21,7 +21,7 @@ public enum Theme {
 public extension View {
     /// The standard card surface used for list rows and summary panels.
     func cardSurface(radius: CGFloat = Theme.Radius.card) -> some View {
-        background(.quaternary, in: RoundedRectangle(cornerRadius: radius))
+        background(CareTheme.panel, in: RoundedRectangle(cornerRadius: radius))
     }
 
     /// A tinted icon badge: the rounded square behind a feature's symbol.
@@ -54,25 +54,25 @@ public struct ScreenHeader<Actions: View>: View {
         self.actions = actions()
     }
 
-    public var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            Image(systemName: systemImage)
-                .foregroundStyle(tint)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.title2.bold())
-                    .accessibilityAddTraits(.isHeader)
+    private var heading: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage).font(.system(size: 19, weight: .medium))
+                .foregroundStyle(tint).iconBadge(tint: tint, size: 40, radius: 12).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.system(size: 26, weight: .bold, design: .rounded)).tracking(-0.6).accessibilityAddTraits(.isHeader)
                 if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Spacer()
-            actions
         }
-        .padding()
+    }
+
+    public var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) { heading; Spacer(minLength: 12); actions }
+            VStack(alignment: .leading, spacing: 14) { heading; HStack { actions; Spacer(minLength: 0) } }
+        }
+        .padding(22)
     }
 }
 
@@ -117,4 +117,44 @@ public struct ScanProgressBar: View {
         .padding(Theme.Spacing.md)
         .cardSurface()
     }
+}
+
+/// Native surfaces shared by Care hub and the feature screens.
+public enum CareTheme {
+    private static func adaptive(_ light: NSColor, _ dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+        })
+    }
+
+    public static let ink = adaptive(
+        NSColor(red: 0.15, green: 0.13, blue: 0.21, alpha: 1),
+        NSColor(red: 0.97, green: 0.95, blue: 1.0, alpha: 1)
+    )
+    public static let secondaryInk = adaptive(
+        NSColor(red: 0.46, green: 0.43, blue: 0.50, alpha: 1),
+        NSColor(red: 0.72, green: 0.69, blue: 0.77, alpha: 1)
+    )
+    public static let onAccent = adaptive(.white, NSColor(red: 0.14, green: 0.09, blue: 0.25, alpha: 1))
+    public static let accent = adaptive(
+        NSColor(red: 0.45, green: 0.31, blue: 0.83, alpha: 1),
+        NSColor(red: 0.73, green: 0.61, blue: 0.97, alpha: 1)
+    )
+    public static let background = adaptive(
+        NSColor(red: 0.98, green: 0.97, blue: 0.99, alpha: 1),
+        NSColor(red: 0.13, green: 0.12, blue: 0.16, alpha: 1)
+    )
+    public static let sidebar = adaptive(
+        NSColor(red: 0.94, green: 0.93, blue: 0.97, alpha: 1),
+        NSColor(red: 0.16, green: 0.15, blue: 0.19, alpha: 1)
+    )
+    public static let panel = Color(nsColor: .controlBackgroundColor)
+    public static let lilac = adaptive(
+        NSColor(red: 0.90, green: 0.87, blue: 0.98, alpha: 1),
+        NSColor(red: 0.23, green: 0.19, blue: 0.32, alpha: 1)
+    )
+    public static let pink = adaptive(
+        NSColor(red: 0.96, green: 0.86, blue: 0.91, alpha: 1),
+        NSColor(red: 0.31, green: 0.19, blue: 0.28, alpha: 1)
+    )
 }

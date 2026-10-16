@@ -6,6 +6,12 @@ directly, and so a human knows exactly what's left for them at each point
 where the agent can't reach (website CMS, GitHub web UI, unless those get
 connected via MCP later).
 
+The current pipeline is fully scriptable on the release Mac when the existing
+keychain and Plesk credentials are available. In that environment, an agent
+can execute signing and deployment directly when the user authorizes a release.
+The live catalog is `/apps/`, rendered from `docs/pf-apps.php`; older WordPress
+fragment instructions below are superseded by the current scripts.
+
 Each step is tagged:
 - **[AGENT]** — doable directly with file/bash access to this repo. No login,
   no browser, no credentials beyond what's already in the local keychain.
@@ -165,22 +171,17 @@ Info.plist matches this location.
 
 ## 6. Update the website content **[AGENT]**
 
-`docs/WEBSITE_COPY.md` is the source of truth for the download page's copy, and
-`docs/wordpress-page.html` is the production WordPress fragment whose existing
-`.mk-*` layout and styling must be preserved. Before deploying, update only the
-release-specific text in those two files — version number, download size, and
-the latest-release bullets. `docs/download-page-mockup.html` is an alternate
-standalone design mockup and must never be uploaded to WordPress. Then run
-`scripts/prepare-deploy.sh` to copy `docs/wordpress-page.html` into
-`website-upload/<version>/wordpress-page.html`, and finally run
-`scripts/deploy-website.py` to push it live.
+`docs/WEBSITE_COPY.md` mirrors the live catalog copy. `docs/pf-apps.php` is the
+source deployed into the existing theme's `pf_apps()` function. Update release
+version, actual DMG size and feature text in both files before publishing.
+The existing page layout is preserved. Release notes are extracted from the
+`### Version <version>` section of `WEBSITE_COPY.md` for GitHub.
 
-The feature-highlight cards in the HTML must match `WEBSITE_COPY.md`'s
-feature bullet list — this is exactly what drifted and caused the stale
-"Purge" mismatch during 0.2.0. Keep the two in sync every time.
-
-The WordPress page update is handled automatically by `deploy-website.py`
-(step 5) — no manual WordPress admin work needed.
+`scripts/prepare-deploy.sh` stages the DMG, appcast and version-correct
+`pf-apps.php` under `website-upload/<version>/`. Then run
+`python3 scripts/deploy-website.py --version <version>` to upload through the
+Plesk API, back up the previous remote state and verify the public URLs.
+Do not upload `docs/download-page-mockup.html` or an obsolete WordPress fragment.
 
 ## 7. Publish a GitHub Release **[HUMAN — GitHub web UI, unless `gh` CLI + auth exists]**
 
@@ -205,9 +206,9 @@ MYKIKAU_SKIP_GIT_PUSH=1 scripts/prepare-deploy.sh
 Once steps 5–7 are done, an agent can confirm everything landed correctly
 without asking the human to check by hand:
 
-- Fetch `https://www.projectfive.co.ck/apps/mykikau/` — confirm the version
+- Fetch `https://www.projectfive.co.ck/apps/` — confirm the version
   number, download link, and release notes match what was just shipped
-- Fetch `https://www.projectfive.co.ck/apps/appcast.xml` — confirm it
+- Fetch `https://www.projectfive.co.ck/downloads/appcast.xml` — confirm it
   returns `200` with `Content-Type: application/xml` (a fetch tool that
   can't render XML as text is fine — the status + content-type alone confirm
   it's live, not a 404)

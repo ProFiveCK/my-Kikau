@@ -3,6 +3,40 @@ import Core
 @testable import Features
 import Foundation
 
+@Suite("Privacy acknowledgment safety")
+struct PrivacyAcknowledgmentSafetyTests {
+    @Test("ignoring information cannot hide current conflicting permissions or enable automatic repair")
+    func currentConflictsCannotBeIgnored() throws {
+        let suite = "myKikau.privacy-safety.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = NetworkPrivacyFindingStore(defaults: defaults)
+        let path = "/Applications/Example.app/Contents/MacOS/Example"
+        let denial = NetworkPrivacyAuditor.Rule(
+            signingIdentifier: "com.example.app", executablePath: path,
+            isDenied: true, preferenceWasSet: true
+        )
+        let installed = [NetworkPrivacyAuditor.InstalledApplication(bundleIdentifier: "com.example.app", executablePath: path)]
+        let before = NetworkPrivacyAuditor.audit(rules: [denial], installedApplications: installed, fileExists: { _ in true })
+        store.ignore(try #require(before.findings.first))
+
+        let allowance = NetworkPrivacyAuditor.Rule(
+            signingIdentifier: denial.signingIdentifier, executablePath: nil,
+            isDenied: false, preferenceWasSet: true
+        )
+        let after = NetworkPrivacyAuditor.audit(rules: [denial, allowance], installedApplications: installed, fileExists: { _ in true })
+        for finding in after.findings { store.ignore(finding) }
+        let visible = store.applyingIgnores(to: after)
+        #expect(visible.findings.map(\.kind) == [.conflictingPrivacyDecisions])
+        #expect(visible.issueCount == 1)
+        #expect(!visible.isHealthy)
+        #expect(visible.autoFixableCount == 0)
+        #expect(visible.requiresGuidedRepair)
+        #expect(visible.ignoredFindings.map(\.kind) == [.installedApplicationDenied])
+        #expect(visible.findings.first?.remediation == .guidedRecovery)
+    }
+}
+
 /// Regression tests for the safety review (docs/CODEBASE_REVIEW_2026-10.md).
 /// Each one pins a rule that was broken: a target that wasn't a cache, a
 /// matcher that wasn't exact, a deletion that trusted its input.
@@ -872,5 +906,114 @@ struct StartupItemsTests {
         // The plan drops anything that isn't removable, whatever is passed in.
         let plan = StartupItems.removalPlan(for: items, deleter: SafeFileDeleter())
         #expect(Set(plan.items.map(\.url.lastPathComponent)) == ["com.vendor.updater.plist", "com.vendor.inapp.plist"])
+    }
+}
+
+@Suite("Care foundation safety")
+struct CareFoundationSafetyTests {
+    @Test("A maintenance apply refuses files that were not in the reviewed scan")
+    func maintenanceRequiresReviewedPaths() async throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let states = home.appendingPathComponent("Library/Saved Application State")
+        let old = states.appendingPathComponent("com.fixture.old.savedState")
+        let added = states.appendingPathComponent("com.fixture.new.savedState")
+        for url in [old, added] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try Data("state".utf8).write(to: url.appendingPathComponent("state.txt"))
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-60 * 86400)], ofItemAtPath: url.path)
+        }
+        let log = OperationLog(logURL: home.appendingPathComponent("audit/operations.log"))
+        let result = await MaintenanceRunner(home: home, opLog: log).run(taskID: "saved_state", dryRun: false, reviewedPaths: [old.path])
+        if case .failed = result.outcome {} else { Issue.record("Unreviewed paths must stop the operation") }
+        #expect(FileManager.default.fileExists(atPath: old.path))
+        #expect(FileManager.default.fileExists(atPath: added.path))
+    }
+
+    @Test("An unreadable maintenance directory is unavailable, not healthy")
+    func unreadableMaintenance() async throws {
+        guard getuid() != 0 else { return }
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let states = home.appendingPathComponent("Library/Saved Application State")
+        try FileManager.default.createDirectory(at: states, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: states.path)
+            try? FileManager.default.removeItem(at: home)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: states.path)
+        let result = await MaintenanceRunner(home: home, opLog: OperationLog(logURL: home.appendingPathComponent("audit/operations.log"))).run(taskID: "saved_state", dryRun: true)
+        if case .unavailable = result.outcome {} else { Issue.record("Denied reads cannot be an all-clear: \(result.outcome)") }
+    }
+
+    @Test("Missing comparison inputs produce evidence rather than false duplicate matches")
+    func hashReadFailure() {
+        let c = ScanCoverageRecorder()
+        let url = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)/missing")
+        #expect(DuplicateFinder.contentHash(url, coverage: c) == nil)
+        #expect(c.snapshot.issues.count == 1)
+        #expect(c.snapshot.issues.first?.kind == .missing)
+    }
+}
+
+@Suite("Simulation accounting safety")
+struct SimulationAccountingSafetyTests {
+    @Test("Simulation reports a Trash move even when permanent removal is requested outside Trash")
+    func predictsEffectiveMode() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = OperationLog(logURL: dir.appendingPathComponent("audit/operations.log"))
+        let deleter = SafeFileDeleter(opLog: log)
+        let plan = SafeFileDeleter.Plan(items: [
+            .init(url: dir.appendingPathComponent("fixture"), sizeBytes: 100, category: .cache, protected: false)
+        ], protectedItems: [], missingItems: [])
+        let result = deleter.execute(plan, mode: .permanent, dryRun: true, action: "fixture")
+        #expect(result.dryRun)
+        #expect(result.recoverable == 1)
+        #expect(result.removedIDs.isEmpty)
+        #expect(log.totals().freedBytes == 0)
+        #expect(log.totals().trashedBytes == 0)
+    }
+}
+
+
+@Suite("Session recovery safety")
+struct SessionRecoverySafetyTests {
+    @Test("Restore rechecks exclusions and does not move into a newly protected destination")
+    func excludedDestination() throws {
+        let root = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent(".Trash/item")
+        touch(source)
+        let destination = root.appendingPathComponent("excluded/item")
+        let protection = PathProtection(home: root, exclusions: { [destination.deletingLastPathComponent().path] })
+        let deleter = SafeFileDeleter(protection: protection)
+        #expect(!deleter.canPutBack(trashedPath: source.path, originalPath: destination.path))
+        #expect(throws: SafeFileDeleter.PutBackError.protectedLocation) {
+            try deleter.putBack(trashedPath: source.path, originalPath: destination.path)
+        }
+        #expect(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    @Test("A forged Trash parent symlink cannot restore a file outside the Trash")
+    func trashParentSymlink() throws {
+        let root = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let outside = root.appendingPathComponent("outside")
+        touch(outside.appendingPathComponent("item"))
+        let trash = root.appendingPathComponent(".Trash")
+        try FileManager.default.createSymbolicLink(at: trash, withDestinationURL: outside)
+        let deleter = SafeFileDeleter()
+        #expect(!deleter.canPutBack(trashedPath: trash.appendingPathComponent("item").path, originalPath: root.appendingPathComponent("restored").path))
+        #expect(throws: SafeFileDeleter.PutBackError.noLongerInTrash) {
+            try deleter.putBack(trashedPath: trash.appendingPathComponent("item").path, originalPath: root.appendingPathComponent("restored").path)
+        }
+    }
+
+    @Test("Batch recovery requires a recorded identity, not just a matching Trash name")
+    func missingIdentity() {
+        let entry = OperationLog.Entry(action: "clean", path: "/tmp/restored", sizeBytes: 1, mode: .trash,
+                                       outcome: .success, dryRun: false, trashedPath: "/tmp/.Trash/item")
+        let session = CleanupSession(id: UUID(), entries: [entry])
+        #expect(CleanupRecovery.preview(session).first?.isAvailable == false)
     }
 }

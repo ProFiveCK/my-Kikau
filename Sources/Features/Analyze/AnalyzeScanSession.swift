@@ -8,6 +8,8 @@ import Core
 public final class AnalyzeScanSession: ObservableObject {
     public static let shared = AnalyzeScanSession()
 
+    @Published public private(set) var coverage = ScanCoverage()
+    private var cachedCoverage: [String: ScanCoverage] = [:]
     @Published public private(set) var entries: [DiskScanner.Entry] = []
     /// `nil` while showing the whole-disk overview (the root of the hierarchy);
     /// a real directory URL once the user has drilled in.
@@ -60,6 +62,7 @@ public final class AnalyzeScanSession: ObservableObject {
     }
 
     public func scan(_ directory: URL, useCache: Bool = true) {
+        guard !WorkCoordinator.shared.isBusy else { return }
         currentDir = directory
         isOverview = false
         scanToken += 1
@@ -68,10 +71,12 @@ public final class AnalyzeScanSession: ObservableObject {
         if useCache, let cached = cachedEntries[key] {
             activeWalk?.cancel()
             entries = cached
+            coverage = cachedCoverage[key] ?? ScanCoverage()
             lastScanAt = cachedScanDates[key]
             finishWalk()
             return
         }
+        guard let lease = WorkCoordinator.shared.begin("Measuring storage", cancel: { [weak self] in self?.cancelScan() }) else { return }
         isScanning = true
         if !useCache {
             // Re-measure this folder and everything beneath it.
@@ -93,10 +98,14 @@ public final class AnalyzeScanSession: ObservableObject {
         let includeHidden = showHidden
         let walk = beginWalk(token: token)
         Task.detached(priority: .userInitiated) {
-            let result = DiskScanner.scan(directory, includeHidden: includeHidden, token: walk)
+            let coverage = ScanCoverageRecorder()
+            let result = DiskScanner.scan(directory, includeHidden: includeHidden, token: walk, coverage: coverage)
             let scannedAt = Date()
             await MainActor.run {
+                defer { WorkCoordinator.shared.finish(lease) }
                 guard !walk.isCancelled else { return }
+                self.cachedCoverage[key] = coverage.snapshot
+                self.coverage = coverage.snapshot
                 self.cachedEntries[key] = result
                 self.cachedScanDates[key] = scannedAt
                 // A newer scan may have started while this walk ran — if so,
@@ -137,6 +146,7 @@ public final class AnalyzeScanSession: ObservableObject {
         DiskScanner.SizeCache.shared.removeAll()
         cachedEntries.removeAll()
         cachedScanDates.removeAll()
+        cachedCoverage.removeAll()
     }
 
     /// Stops the scan in progress. Whatever was on screen before stays.
@@ -150,6 +160,7 @@ public final class AnalyzeScanSession: ObservableObject {
     /// Scans the whole-disk overview — the root of the hierarchy: measured
     /// top-level folders plus computed "macOS System" and "Free" rows.
     public func scanVolumeOverview(useCache: Bool = true) {
+        guard !WorkCoordinator.shared.isBusy else { return }
         currentDir = nil
         isOverview = true
         scanToken += 1
@@ -157,6 +168,7 @@ public final class AnalyzeScanSession: ObservableObject {
         if useCache, let cached = cachedEntries[Self.overviewCacheKey] {
             activeWalk?.cancel()
             entries = cached
+            coverage = cachedCoverage[Self.overviewCacheKey] ?? ScanCoverage()
             lastScanAt = cachedScanDates[Self.overviewCacheKey]
             finishWalk()
             if let info = DiskScanner.startupVolumeInfo() {
@@ -164,6 +176,7 @@ public final class AnalyzeScanSession: ObservableObject {
             }
             return
         }
+        guard let lease = WorkCoordinator.shared.begin("Measuring storage", cancel: { [weak self] in self?.cancelScan() }) else { return }
         isScanning = true
         if !useCache {
             // A fresh overview re-measures everything, so every remembered
@@ -175,10 +188,14 @@ public final class AnalyzeScanSession: ObservableObject {
         let walk = beginWalk(token: token)
         Task.detached(priority: .userInitiated) {
             let info = DiskScanner.startupVolumeInfo()
-            let result = DiskScanner.volumeOverview(token: walk)
+            let coverage = ScanCoverageRecorder()
+            let result = DiskScanner.volumeOverview(token: walk, coverage: coverage)
             let scannedAt = Date()
             await MainActor.run {
+                defer { WorkCoordinator.shared.finish(lease) }
                 guard !walk.isCancelled else { return }
+                self.coverage = coverage.snapshot
+                self.cachedCoverage[Self.overviewCacheKey] = coverage.snapshot
                 self.cachedEntries[Self.overviewCacheKey] = result
                 self.cachedScanDates[Self.overviewCacheKey] = scannedAt
                 guard token == self.scanToken else { return }
@@ -234,6 +251,7 @@ public final class AnalyzeScanSession: ObservableObject {
         currentDir = nil
         isOverview = true
         entries = cached
+        coverage = cachedCoverage[Self.overviewCacheKey] ?? ScanCoverage()
         lastScanAt = cachedScanDates[Self.overviewCacheKey]
         if let info = DiskScanner.startupVolumeInfo() {
             volumeName = info.name
@@ -261,13 +279,18 @@ public final class AnalyzeScanSession: ObservableObject {
         if let lastPreload = defaults.object(forKey: AppStorageKey.analyzeLastPreloadAt) as? Date, lastPreload >= today {
             return
         }
+        let walk = DiskScanner.Token()
+        guard let lease = WorkCoordinator.shared.begin("Preparing storage overview", cancel: { walk.cancel() }) else { return }
         defaults.set(Date(), forKey: AppStorageKey.analyzeLastPreloadAt)
 
         Task.detached(priority: .utility) {
-            let result = DiskScanner.volumeOverview()
+            let coverage = ScanCoverageRecorder()
+            let result = DiskScanner.volumeOverview(token: walk, coverage: coverage)
             let scannedAt = Date()
             await MainActor.run {
-                guard !result.isEmpty else { return }
+                defer { WorkCoordinator.shared.finish(lease) }
+                guard !walk.isCancelled, !result.isEmpty else { return }
+                self.cachedCoverage[Self.overviewCacheKey] = coverage.snapshot
                 self.cachedEntries[Self.overviewCacheKey] = result
                 self.cachedScanDates[Self.overviewCacheKey] = scannedAt
             }

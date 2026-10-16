@@ -15,12 +15,35 @@ import UI
 struct OptimizeView: View {
     private enum ScanState { case notScanned, scanning, scanned }
 
-    @State private var scanState: ScanState = .notScanned
-    @State private var scanResults: [String: MaintenanceRunner.Result] = [:]
-    @State private var applyResults: [String: MaintenanceRunner.Result] = [:]
-    @State private var selectedTasks: Set<String> = []
-    @State private var applying = false
-    @State private var inFlight: Set<String> = []
+    @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
+    @ObservedObject private var model = MaintenanceModel.shared
+    @ObservedObject private var activity = WorkCoordinator.shared
+    private var scanState: ScanState {
+        model.isScanning || coordinator.isScanning ? .scanning : coordinator.maintenanceResults == nil ? .notScanned : .scanned
+    }
+
+    private var scanResults: [String: MaintenanceRunner.Result] {
+        get { coordinator.maintenanceResults ?? [:] }
+        nonmutating set { coordinator.setMaintenanceResults(newValue) }
+    }
+
+    private var applyResults: [String: MaintenanceRunner.Result] {
+        coordinator.maintenanceApplyResults
+    }
+
+    private var selectedTasks: Set<String> {
+        get { coordinator.selectedMaintenanceTasks }
+        nonmutating set { coordinator.selectedMaintenanceTasks = newValue }
+    }
+
+    private var applying: Bool {
+        model.applying
+    }
+
+    private var inFlight: Set<String> {
+        model.inFlight
+    }
+
     @State private var lastRuns: [String: MaintenanceRunStatus] = [:]
     @State private var guidedTask: MaintenanceCatalog.Task?
     @State private var confirmingFix = false
@@ -32,17 +55,26 @@ struct OptimizeView: View {
     }
 
     private var cleanTasks: [MaintenanceCatalog.Task] {
-        MaintenanceCatalog.tasks.filter { !isRecommended($0.id) }
+        MaintenanceCatalog.tasks.filter { scanResults[$0.id]?.outcome.isClear == true }
     }
 
-    private func isRecommended(_ taskID: String) -> Bool {
-        if case .applied = scanResults[taskID]?.outcome {
-            return true
-        }
-        if case .attention = scanResults[taskID]?.outcome {
+    private var informationalTasks: [MaintenanceCatalog.Task] {
+        MaintenanceCatalog.tasks.filter { isInformational($0.id) }
+    }
+
+    private func isInformational(_ taskID: String) -> Bool {
+        if case .information = scanResults[taskID]?.outcome {
             return true
         }
         return false
+    }
+
+    private var incompleteTasks: [MaintenanceCatalog.Task] {
+        MaintenanceCatalog.tasks.filter { scanResults[$0.id] == nil || scanResults[$0.id]?.outcome.isIncomplete == true }
+    }
+
+    private func isRecommended(_ taskID: String) -> Bool {
+        scanResults[taskID]?.outcome.needsAction == true
     }
 
     private var headerSubtitle: String {
@@ -52,9 +84,9 @@ struct OptimizeView: View {
         case .scanning:
             "Checking your Mac…"
         case .scanned:
-            recommendedTasks.isEmpty
-                ? "Nothing to fix — your Mac's maintenance is up to date"
-                : "\(recommendedTasks.count) issue\(recommendedTasks.count == 1 ? "" : "s") found"
+            !incompleteTasks.isEmpty
+                ? "\(recommendedTasks.count) recommendation\(recommendedTasks.count == 1 ? "" : "s") · \(incompleteTasks.count) check\(incompleteTasks.count == 1 ? "" : "s") incomplete"
+                : recommendedTasks.isEmpty ? "No maintenance changes recommended" : "\(recommendedTasks.count) recommendations to review"
         }
     }
 
@@ -72,40 +104,43 @@ struct OptimizeView: View {
                 Image(systemName: ContentView.SidebarItem.optimize.icon)
                     .foregroundStyle(tint)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Optimise").font(.title2).bold()
+                    Text("System care").font(.title2).bold()
                     Text(headerSubtitle)
                         .font(.caption)
                         .foregroundStyle(scanState == .scanned && !recommendedTasks.isEmpty ? tint : .secondary)
                 }
                 Spacer()
                 if scanState == .scanned, !selectedTasks.isEmpty {
-                    Button(applying ? "Fixing…" : "Fix \(selectedTasks.count) Issue\(selectedTasks.count == 1 ? "" : "s")…") {
+                    Button(applying ? "Applying…" : "Review \(selectedTasks.count) Recommendation\(selectedTasks.count == 1 ? "" : "s")…") {
                         confirmingFix = true
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(tint)
-                    .disabled(selectedTasks.isEmpty || applying)
+                    .disabled(selectedTasks.isEmpty || activity.isBusy)
                 }
                 if scanState == .scanned {
-                    Button(scanButtonTitle) { Task { await runScan() } }
+                    Button(scanButtonTitle) { model.scan() }
                         .keyboardShortcut("r", modifiers: .command)
                         .buttonStyle(.bordered)
                         .tint(tint)
-                        .disabled(scanState == .scanning || applying)
+                        .disabled(activity.isBusy)
                 } else {
-                    Button(scanButtonTitle) { Task { await runScan() } }
+                    Button(scanButtonTitle) { model.scan() }
                         .buttonStyle(.borderedProminent)
                         .tint(tint)
-                        .disabled(scanState == .scanning || applying)
+                        .disabled(activity.isBusy)
                 }
             }
             .padding()
 
-            Label("All tasks below are bounded and safe to run — myKikau only lists vetted maintenance operations, nothing that could break your Mac.", systemImage: "checkmark.shield")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+            Label(
+                "Review each recommendation before applying it. Privacy notes and incomplete checks are shown separately.",
+                systemImage: "checkmark.shield"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal)
+            .padding(.bottom, 8)
 
             switch scanState {
             case .notScanned:
@@ -120,7 +155,9 @@ struct OptimizeView: View {
             case .scanning:
                 VStack(spacing: 10) {
                     ProgressView()
-                    Text("Checking \(MaintenanceCatalog.tasks.count) maintenance tasks…")
+                    Text(coordinator
+                        .isScanning ? (coordinator.phase?.label ?? "Scanning your Mac…") :
+                        "Checking \(MaintenanceCatalog.tasks.count) maintenance tasks…")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -132,18 +169,29 @@ struct OptimizeView: View {
                             SummaryBanner(results: applyResults)
                         }
 
-                        if recommendedTasks.isEmpty {
+                        if recommendedTasks.isEmpty, incompleteTasks.isEmpty {
                             AllClearBanner()
-                        } else {
+                        } else if !recommendedTasks.isEmpty {
                             TaskSection(
                                 title: "Recommended",
-                                subtitle: "\(recommendedTasks.count) issue\(recommendedTasks.count == 1 ? "" : "s") found",
+                                subtitle: "\(recommendedTasks.count) recommendation\(recommendedTasks.count == 1 ? "" : "s")",
                                 color: tint
                             ) {
                                 taskGrid(recommendedTasks)
                             }
                         }
 
+                        if !informationalTasks.isEmpty {
+                            TaskSection(title: "Information", subtitle: "No repair needed", color: .blue) {
+                                taskGrid(informationalTasks)
+                            }
+                        }
+
+                        if !incompleteTasks.isEmpty {
+                            TaskSection(title: "Couldn’t complete", subtitle: "These checks are not an all-clear", color: .orange) {
+                                taskGrid(incompleteTasks)
+                            }
+                        }
                         if !cleanTasks.isEmpty {
                             TaskSection(title: "Already Optimised", subtitle: "No issues found", color: .secondary) {
                                 taskGrid(cleanTasks)
@@ -155,8 +203,16 @@ struct OptimizeView: View {
             }
         }
         .onAppear { reloadLastRuns() }
+        .onChange(of: model.applying) {
+            _, applying in if !applying {
+                reloadLastRuns()
+            }
+        }
         .sheet(item: $guidedTask) { task in
-            GuidedRepairSheet(task: task, result: scanResults[task.id])
+            NetworkPrivacyReviewSheet(initialReport: ScanEverythingCoordinator.shared.systemHealthReport) { report in
+                scanResults[task.id] = .init(outcome: MaintenanceRunner().networkPrivacyOutcome(for: report))
+                ScanEverythingCoordinator.shared.setSystemHealthReport(report)
+            }
         }
         .sheet(isPresented: $confirmingFix) {
             FixConfirmationSheet(
@@ -165,7 +221,7 @@ struct OptimizeView: View {
                 onCancel: { confirmingFix = false },
                 onConfirm: {
                     confirmingFix = false
-                    Task { await applySelected() }
+                    model.applySelected()
                 }
             )
         }
@@ -183,6 +239,8 @@ struct OptimizeView: View {
                 ) {
                     if task.kind == .guidedDiagnostic {
                         guidedTask = task
+                    } else if !isRecommended(task.id) {
+                        return
                     } else if selectedTasks.contains(task.id) {
                         selectedTasks.remove(task.id)
                     } else {
@@ -191,59 +249,6 @@ struct OptimizeView: View {
                 }
             }
         }
-    }
-
-    /// Runs every catalog task in dry-run mode — `MaintenanceRunner` already
-    /// reports `.applied("Would …")` when a task finds something to fix and
-    /// `.unchanged(...)` when it doesn't, so this dry-run pass doubles as the
-    /// scan/recommendation step with no separate detection logic needed.
-    private func runScan() async {
-        scanState = .scanning
-        scanResults = [:]
-        applyResults = [:]
-        selectedTasks = []
-        let runner = MaintenanceRunner()
-        for task in MaintenanceCatalog.tasks {
-            inFlight.insert(task.id)
-            let result = await runner.run(taskID: task.id, dryRun: true)
-            scanResults[task.id] = result
-            if case .applied = result.outcome, task.kind == .maintenance {
-                selectedTasks.insert(task.id)
-            }
-            inFlight.remove(task.id)
-        }
-        scanState = .scanned
-    }
-
-    private func applySelected() async {
-        applying = true
-        let runner = MaintenanceRunner()
-        let ids = MaintenanceCatalog.tasks.map(\.id).filter { selectedTasks.contains($0) }
-        for id in ids {
-            inFlight.insert(id)
-            let result = await runner.run(taskID: id, dryRun: false)
-            applyResults[id] = result
-            lastRuns[id] = MaintenanceRunStatus(
-                timestamp: Date(),
-                outcome: result.outcome.label,
-                detail: result.outcome.detail,
-                dryRun: false
-            )
-            inFlight.remove(id)
-        }
-        // Check each fixed task again, so what's on screen is the state now:
-        // a task that's no longer needed moves to "Already Optimised", and
-        // one that failed stays recommended.
-        for id in ids {
-            let recheck = await runner.run(taskID: id, dryRun: true)
-            scanResults[id] = recheck
-            if case .applied = recheck.outcome {
-                // Still something to do (the fix didn't take).
-            } else {
-                selectedTasks.remove(id)
-            }
-        }
-        applying = false
     }
 
     private func reloadLastRuns() {
@@ -278,7 +283,7 @@ private struct FixConfirmationSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Fix \(tasks.count) Issue\(tasks.count == 1 ? "" : "s")").font(.headline)
+                Text("Review \(tasks.count) Recommendation\(tasks.count == 1 ? "" : "s")").font(.headline)
                 Text(fileCount > 0
                     ? "\(fileCount) file\(fileCount == 1 ? "" : "s") will move to the Trash, where you can put them back. Everything else is a setting or cache macOS rebuilds."
                     : "These refresh settings and caches that macOS rebuilds on its own. No files are removed.")
@@ -341,182 +346,6 @@ private struct MaintenanceRunStatus: Hashable {
     let dryRun: Bool
 }
 
-private struct GuidedRepairSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let task: MaintenanceCatalog.Task
-    let result: MaintenanceRunner.Result?
-
-    @State private var report: NetworkPrivacyAuditor.Report?
-    @State private var inspectionError: String?
-    @State private var preparedRepair: NetworkPrivacyRepairAssistant.PreparedRepair?
-    @State private var preparationError: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "exclamationmark.shield.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(hasIssues ? .orange : .green)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(task.name).font(.title2.bold())
-                    Text(result?.outcome.detail ?? "Read-only system settings diagnostic")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-
-            if let report {
-                if report.findings.isEmpty {
-                    Label("Local Network privacy records are healthy", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(report.findings) { finding in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Label(finding.kind.displayName, systemImage: finding.severity.icon)
-                                            .font(.subheadline.bold())
-                                            .foregroundStyle(finding.severity.color)
-                                        Spacer()
-                                        Text("\(finding.affectedRecordCount) record\(finding.affectedRecordCount == 1 ? "" : "s")")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Text(finding.signingIdentifier)
-                                        .font(.caption.monospaced())
-                                    Text(finding.detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-                            }
-                        }
-                    }
-                    .frame(maxHeight: 260)
-
-                    Label(
-                        "macOS has no supported per-app reset. myKikau can prepare verified backups and exact Recovery instructions, "
-                            + "but it will never silently disable SIP or include this in Fix All.",
-                        systemImage: "lock.shield"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-            } else if let inspectionError {
-                Label(inspectionError, systemImage: "xmark.octagon.fill")
-                    .foregroundStyle(.red)
-            } else {
-                ProgressView("Inspecting Local Network privacy records…")
-            }
-
-            if let preparedRepair {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Guided repair package prepared", systemImage: "checkmark.seal.fill")
-                        .foregroundStyle(.green)
-                    Text(preparedRepair.directory.path)
-                        .font(.caption2.monospaced())
-                        .textSelection(.enabled)
-                    Button("Reveal Instructions") {
-                        NSWorkspace.shared.activateFileViewerSelecting([preparedRepair.instructionsURL])
-                    }
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-            }
-
-            if let preparationError {
-                Text(preparationError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            HStack {
-                Button("Open Local Network Settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_LocalNetwork") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                Spacer()
-                Button("Done") { dismiss() }
-                if hasIssues {
-                    Button(preparedRepair == nil ? "Prepare Guided Repair…" : "Prepare Another Backup…") {
-                        prepareRepair()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
-                }
-            }
-        }
-        .padding(20)
-        .frame(width: 620)
-        .frame(minHeight: 360)
-        .onAppear(perform: inspect)
-    }
-
-    private var hasIssues: Bool {
-        !(report?.findings.isEmpty ?? true)
-    }
-
-    private func inspect() {
-        do {
-            report = try NetworkPrivacyAuditor.inspect(
-                installedApplications: NetworkPrivacyAuditor.discoverInstalledApplications()
-            )
-            inspectionError = nil
-        } catch {
-            report = nil
-            inspectionError = error.localizedDescription
-        }
-    }
-
-    private func prepareRepair() {
-        do {
-            preparedRepair = try NetworkPrivacyRepairAssistant.prepare()
-            preparationError = nil
-            if let preparedRepair {
-                NSWorkspace.shared.activateFileViewerSelecting([preparedRepair.instructionsURL])
-            }
-        } catch {
-            preparationError = error.localizedDescription
-        }
-    }
-}
-
-private extension NetworkPrivacyAuditor.FindingKind {
-    var displayName: String {
-        switch self {
-        case .excessivePrivacyRecords: "Excessive privacy records"
-        case .installedApplicationDenied: "Installed app is denied"
-        case .conflictingPrivacyDecisions: "Conflicting allow/deny decisions"
-        case .stalePrivacyRecords: "Orphaned executable paths"
-        }
-    }
-}
-
-private extension NetworkPrivacyAuditor.Severity {
-    var icon: String {
-        switch self {
-        case .information: "info.circle.fill"
-        case .warning: "exclamationmark.circle.fill"
-        case .critical: "exclamationmark.triangle.fill"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .information: .blue
-        case .warning: .orange
-        case .critical: .red
-        }
-    }
-}
-
 /// Section grouping for the scanned state — "Recommended" vs. "Already
 /// Optimised" — with a small colored count badge instead of a plain heading,
 /// so the recommendation reads as a recommendation and not just a category label.
@@ -572,7 +401,7 @@ private struct MaintenanceTaskCard: View {
         case "prevent_dsstore", "launch_agents":
             ("Startup", "bolt.horizontal.circle", .green)
         case "network_privacy":
-            ("System", "checkmark.shield", .orange)
+            ("System", "info.circle", .blue)
         default:
             ("Maintenance", "checkmark.shield", .secondary)
         }
@@ -630,7 +459,7 @@ private struct MaintenanceTaskCard: View {
                         Label(lastRun.outcome, systemImage: "clock")
                             .foregroundStyle(.secondary)
                     } else {
-                        Label("Ready", systemImage: "play.circle")
+                        Label("Not checked", systemImage: "questionmark.circle")
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -640,9 +469,9 @@ private struct MaintenanceTaskCard: View {
                             .help("Safe — bounded, reversible, vetted for unattended use")
                     }
                     if task.kind == .guidedDiagnostic {
-                        Label("Guided", systemImage: "list.bullet.clipboard")
-                            .foregroundStyle(.orange)
-                            .help("Requires explicit guided steps; never included in Fix All")
+                        Label("Review", systemImage: "info.circle")
+                            .foregroundStyle(.blue)
+                            .help("Review privacy settings and ignore informational items; never included in Fix All")
                     }
                     if task.requiresSudo {
                         Image(systemName: "lock.fill")
@@ -653,10 +482,12 @@ private struct MaintenanceTaskCard: View {
                 .font(.caption)
 
                 if let lastRun {
-                    Text("Last run \(lastRun.timestamp.formatted(date: .abbreviated, time: .shortened))\(lastRun.dryRun ? " · dry run" : "")")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+                    Text(
+                        "Last run \(lastRun.timestamp.formatted(date: .abbreviated, time: .shortened))\(lastRun.dryRun ? " · dry run" : "")"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
                 } else {
                     Text("Never run")
                         .font(.caption2)
@@ -771,7 +602,7 @@ private struct SummaryBanner: View {
     /// Compare by case (ignoring associated detail).
     private func sameCase(_ a: MaintenanceOutcome, _ b: MaintenanceOutcome) -> Bool {
         switch (a, b) {
-        case (.applied, .applied), (.unchanged, .unchanged), (.failed, .failed):
+        case (.recommended, .recommended), (.applied, .applied), (.unchanged, .unchanged), (.failed, .failed):
             true
         default:
             false

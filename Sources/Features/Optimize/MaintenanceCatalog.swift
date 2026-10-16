@@ -120,7 +120,7 @@ public enum MaintenanceCatalog {
         Task(
             id: "network_privacy",
             name: "System Privacy Records",
-            summary: "Detect duplicate, conflicting, and orphaned Local Network app permissions",
+            summary: "Review Local Network permissions and historical records; ignore informational items",
             requiresSudo: false,
             safeForAuto: false,
             kind: .guidedDiagnostic

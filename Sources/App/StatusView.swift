@@ -10,72 +10,49 @@ struct StatusView: View {
     var onNavigate: (ContentView.SidebarItem) -> Void = { _ in }
 
     @ObservedObject private var metricsService = MetricsService.shared
-    @State private var totalFreed: Int64 = 0
-    @State private var hasFullDiskAccess = FullDiskAccessCheck.probe()
+    @State private var showingActivity = false
+    @State private var activityProcessSheet: ProcessSheet?
     @State private var freeingMemory = false
     @State private var memoryActionMessage: String?
     @State private var processSheet: ProcessSheet?
 
     var body: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Text("System Status").font(.title2).bold()
-                Spacer()
-                if totalFreed > 0 {
-                    Label(ByteSizeFormatter.format(totalFreed) + " freed to date", systemImage: "checkmark.seal")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding([.horizontal, .top])
-
-            if !hasFullDiskAccess {
-                FullDiskAccessBanner()
-                    .padding(.horizontal)
-            }
-
-            if let snap = metricsService.snapshot {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        HeroHealthCard(
-                            snapshot: snap,
-                            history: metricsService.history,
-                            onNavigate: onNavigate,
-                            freeingMemory: freeingMemory,
-                            memoryActionMessage: memoryActionMessage,
-                            onFreeMemory: freeInactiveMemory,
-                            onShowCPU: { processSheet = ProcessSheet(mode: .cpu) },
-                            onShowMemory: { processSheet = ProcessSheet(mode: .memory) }
-                        )
-
-                        FullSystemScanCard(onNavigate: onNavigate)
+        CareHubView(onNavigate: onNavigate, onShowActivity: { showingActivity = true })
+            .sheet(isPresented: $showingActivity) {
+                VStack(spacing: 0) {
+                    HStack { Text("Live activity").font(.title2.bold()); Spacer(); Button("Done") { showingActivity = false } }.padding()
+                    if let snap = metricsService.snapshot {
+                        ScrollView {
+                            HeroHealthCard(
+                                snapshot: snap,
+                                history: metricsService.history,
+                                onNavigate: { target in showingActivity = false; onNavigate(target) },
+                                freeingMemory: freeingMemory,
+                                memoryActionMessage: memoryActionMessage,
+                                onFreeMemory: freeInactiveMemory,
+                                onShowCPU: { activityProcessSheet = ProcessSheet(mode: .cpu) },
+                                onShowMemory: { activityProcessSheet = ProcessSheet(mode: .memory) }
+                            ).padding()
+                        }
+                    } else {
+                        ProgressView("Collecting metrics…").padding(60)
                     }
-                    .padding()
                 }
-            } else {
-                ProgressView("Collecting metrics...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(width: 720, height: 620)
+                .sheet(item: $activityProcessSheet) { ProcessListSheet(mode: $0.mode) }
             }
-        }
-        .onAppear {
-            metricsService.subscribe()
-            hasFullDiskAccess = FullDiskAccessCheck.probe()
-            Task {
-                totalFreed = await Task.detached { OperationLog.shared.totalFreed() }.value
+            .onAppear {
+                metricsService.subscribe()
             }
-        }
-        .onDisappear { metricsService.unsubscribe() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            hasFullDiskAccess = FullDiskAccessCheck.probe()
-        }
-        .onReceive(AppNavigation.shared.$pendingProcessMode) { pending in
-            guard let pending else { return }
-            processSheet = ProcessSheet(mode: pending)
-            AppNavigation.shared.pendingProcessMode = nil
-        }
-        .sheet(item: $processSheet) { sheet in
-            ProcessListSheet(mode: sheet.mode)
-        }
+            .onDisappear { metricsService.unsubscribe() }
+            .onReceive(AppNavigation.shared.$pendingProcessMode) { pending in
+                guard let pending else { return }
+                processSheet = ProcessSheet(mode: pending)
+                AppNavigation.shared.pendingProcessMode = nil
+            }
+            .sheet(item: $processSheet) { sheet in
+                ProcessListSheet(mode: sheet.mode)
+            }
     }
 
     private func freeInactiveMemory() {
@@ -97,262 +74,7 @@ private struct ProcessSheet: Identifiable {
     let mode: ProcessMonitor.SortMode
 }
 
-/// Full dashboard scan, the "Smart Care"-equivalent single entry point.
-/// Styled to match `HeroHealthCard`'s level of polish — an icon badge in the
-/// header, and (before the first scan) a preview grid of what it actually
-/// checks, so the card sells its own value instead of hiding behind one line
-/// of caption text.
-private struct FullSystemScanCard: View {
-    let onNavigate: (ContentView.SidebarItem) -> Void
-
-    @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
-
-    private static let categories: [ScanCategory] = [
-        ScanCategory(icon: "internaldrive", title: "Clean", subtitle: "Cache & junk files", tint: ContentView.SidebarItem.clean.tint),
-        ScanCategory(icon: "app.dashed", title: "Apps", subtitle: "Installed applications", tint: ContentView.SidebarItem.uninstall.tint),
-        ScanCategory(icon: "doc.on.doc", title: "Files", subtitle: "Duplicates & large files", tint: ContentView.SidebarItem.duplicates.tint),
-        ScanCategory(icon: "checkmark.shield", title: "System Health", subtitle: "Settings & app records", tint: ContentView.SidebarItem.optimize.tint),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "sparkle.magnifyingglass")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(
-                        LinearGradient(colors: [.accentColor, .accentColor.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        in: RoundedRectangle(cornerRadius: 10)
-                    )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Full System Scan").font(.headline)
-                    Text("One scan across storage, apps, files, and unhealthy system settings")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button(coordinator.hasResults ? "Rescan" : "Scan") {
-                    Task { await coordinator.scanEverything() }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(coordinator.isScanning)
-            }
-
-            if coordinator.isScanning {
-                ScanProgressBar(
-                    coordinator.phase?.label ?? "Starting…",
-                    detail: coordinator.progressDetail,
-                    fraction: coordinator.progress,
-                    onCancel: coordinator.cancelScan
-                )
-            } else if coordinator.hasResults {
-                Text("\(coordinator.combinedItemCount) items · \(ByteSizeFormatter.format(coordinator.combinedReclaimableBytes)) reclaimable")
-                    .font(.title3.bold())
-                    .foregroundStyle(coordinator.combinedReclaimableBytes > 0 ? Color.green : .secondary)
-                if coordinator.systemHealthIssueCount > 0 {
-                    Label(
-                        "\(coordinator.systemHealthIssueCount) system setting issue\(coordinator.systemHealthIssueCount == 1 ? "" : "s") need review",
-                        systemImage: "exclamationmark.shield.fill"
-                    )
-                    .font(.caption.bold())
-                    .foregroundStyle(.orange)
-                }
-                if let lastScanAt = coordinator.lastScanAt {
-                    Text("Last scanned \(lastScanAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
-                    if let cleanPlans = coordinator.cleanPlans {
-                        let cleanTotal = cleanPlans.values.reduce(Int64(0)) { $0 + $1.totalReclaimable }
-                        SummaryPill(
-                            icon: "internaldrive",
-                            title: "Clean",
-                            value: ByteSizeFormatter.format(cleanTotal),
-                            tint: ContentView.SidebarItem.clean.tint,
-                            action: { onNavigate(.clean) }
-                        )
-                    }
-                    if let apps = coordinator.apps {
-                        SummaryPill(
-                            icon: "app.dashed",
-                            title: "Apps",
-                            value: "\(apps.count) · \(ByteSizeFormatter.format(coordinator.appFootprintBytes))",
-                            tint: ContentView.SidebarItem.uninstall.tint,
-                            action: { onNavigate(.uninstall) }
-                        )
-                    }
-                    // One pill, not two: Duplicates and Large Files already
-                    // share a single scan pass and a single destination (the
-                    // Files tab's own segmented control still separates them
-                    // there, where that distinction is an actual decision to
-                    // make) — two dashboard tiles pointing at the same place
-                    // for one combined scan was redundant, not informative.
-                    if let duplicateGroups = coordinator.duplicateGroups {
-                        let largeFiles = coordinator.largeFiles ?? []
-                        let duplicateTotal = duplicateGroups.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
-                        let largeTotal = largeFiles.reduce(Int64(0)) { $0 + $1.sizeBytes }
-                        SummaryPill(
-                            icon: "doc.on.doc",
-                            title: "Files",
-                            value: "\(duplicateGroups.count + largeFiles.count) · \(ByteSizeFormatter.format(duplicateTotal + largeTotal))",
-                            tint: ContentView.SidebarItem.duplicates.tint,
-                            action: {
-                                // Land on whichever sub-mode actually has more
-                                // to reclaim, rather than always defaulting to
-                                // Duplicates now that there's one combined pill.
-                                AppNavigation.shared.pendingDuplicatesMode = largeTotal > duplicateTotal ? .largeFiles : .duplicates
-                                onNavigate(.duplicates)
-                            }
-                        )
-                    }
-                    if let report = coordinator.systemHealthReport {
-                        SummaryPill(
-                            icon: report.isHealthy ? "checkmark.shield.fill" : "exclamationmark.shield.fill",
-                            title: "System Health",
-                            value: report.isHealthy
-                                ? "Healthy"
-                                : "\(report.issueCount) issue\(report.issueCount == 1 ? "" : "s")",
-                            tint: report.isHealthy ? .green : .orange,
-                            action: { onNavigate(.optimize) }
-                        )
-                    } else if coordinator.systemHealthScanError != nil {
-                        SummaryPill(
-                            icon: "questionmark.diamond.fill",
-                            title: "System Health",
-                            value: "Check unavailable",
-                            tint: .secondary,
-                            action: { onNavigate(.optimize) }
-                        )
-                    }
-                    if let artifacts = coordinator.purgeArtifacts {
-                        SummaryPill(
-                            icon: "hammer",
-                            title: "Build Artifacts",
-                            value: "\(artifacts.count) · \(ByteSizeFormatter.format(artifacts.reduce(Int64(0)) { $0 + $1.sizeBytes }))",
-                            tint: ContentView.SidebarItem.purge.tint,
-                            action: { onNavigate(.purge) }
-                        )
-                    }
-                }
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
-                    ForEach(Self.categories) { category in
-                        ScanCategoryChip(category: category)
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-/// One of the things a Full System Scan checks, shown as a preview chip
-/// before the first scan runs so the card explains itself without the user
-/// having to press "Scan" first to find out.
-private struct ScanCategory: Identifiable {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let tint: Color
-    var id: String {
-        title
-    }
-}
-
-private struct ScanCategoryChip: View {
-    let category: ScanCategory
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: category.icon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(category.tint)
-                .frame(width: 30, height: 30)
-                .background(category.tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(category.title).font(.caption.bold())
-                Text(category.subtitle).font(.caption2).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-private struct SummaryPill: View {
-    let icon: String
-    let title: String
-    let value: String
-    let tint: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 28, height: 28)
-                    .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.caption.bold())
-                        .foregroundStyle(.primary)
-                    Text(value)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(tint.opacity(0.25), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(title): \(value)")
-        .accessibilityHint("Opens \(title)")
-    }
-}
-
-/// Persistent reminder for users who skipped granting access during onboarding.
-private struct FullDiskAccessBanner: View {
-    var body: some View {
-        HStack {
-            Label(
-                "Full Disk Access isn't granted — some cleanup and analysis features will under-report or fail.",
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .font(.caption)
-            .foregroundStyle(.orange)
-            Spacer()
-            Button("Open Settings…") {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-            .font(.caption)
-        }
-        .padding(8)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-/// Premium "hero" card modeled on CleanMyMac's dashboard widget: a dark
-/// gradient card with the headline health score up top and a grid of glass
-/// tiles for the numbers people actually glance at first — storage, memory,
-/// battery, CPU — each with a one-tap way to act where that makes sense.
-/// Everything below this (Scan Everything, Quick Actions, detailed per-metric
-/// cards) is still the system-styled, information-dense app; this is
-/// deliberately the one branded, designed moment at the top of the page.
+/// Detailed live monitoring, opened from Care hub’s Live activity action.
 private struct HeroHealthCard: View {
     let snapshot: MetricsSnapshot
     let history: [MetricsService.Sample]

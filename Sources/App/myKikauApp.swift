@@ -59,6 +59,7 @@ struct myKikauApp: App {
                     DockIconController.apply(showDockIcon: value)
                 }
         }
+        .defaultSize(width: 1060, height: 760)
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -236,13 +237,13 @@ struct ContentView: View {
         /// uses "Analyse"/"Optimise".
         var label: String {
             switch self {
-            case .status: String(localized: "Status")
-            case .clean: String(localized: "Clean")
-            case .uninstall: String(localized: "Apps")
-            case .analyze: String(localized: "Analyse")
-            case .duplicates: String(localized: "Files")
+            case .status: String(localized: "Overview")
+            case .clean: String(localized: "Clean up")
+            case .uninstall: String(localized: "Applications")
+            case .analyze: String(localized: "Storage")
+            case .duplicates: String(localized: "My files")
             case .network: String(localized: "Network")
-            case .optimize: String(localized: "Optimise")
+            case .optimize: String(localized: "System care")
             case .startup: String(localized: "Startup")
             case .purge: String(localized: "Purge")
             case .history: String(localized: "History")
@@ -298,7 +299,7 @@ struct ContentView: View {
 
         var icon: String {
             switch self {
-            case .status: "heart.text.square"
+            case .status: "sparkles"
             case .clean: "internaldrive"
             case .uninstall: "app.dashed"
             case .analyze: "chart.bar.doc.horizontal"
@@ -317,13 +318,13 @@ struct ContentView: View {
         /// on a screen from the dashboard feels like the same place.
         var tint: Color {
             switch self {
-            case .status: .accentColor
-            case .clean: .blue
+            case .status: CareTheme.accent
+            case .clean: CareTheme.accent
             case .uninstall: .purple
             case .analyze: .teal
             case .duplicates: .pink
             case .network: .indigo
-            case .optimize: .orange
+            case .optimize: CareTheme.accent
             case .startup: .green
             case .purge: .brown
             case .history: .mint
@@ -339,6 +340,7 @@ struct ContentView: View {
     @AppStorage(AppStorageKey.developerToolsEnabled) private var developerTools = false
     @ObservedObject private var navigation = AppNavigation.shared
     @ObservedObject private var deletionActivity = DeletionActivity.shared
+    @ObservedObject private var work = WorkCoordinator.shared
 
     private var visibleItems: [SidebarItem] {
         SidebarItem.visibleCases(developerTools: developerTools)
@@ -347,29 +349,62 @@ struct ContentView: View {
     var body: some View {
         let items = visibleItems
         NavigationSplitView {
-            List(selection: $selection) {
-                ForEach(SidebarItem.Group.allCases) { group in
-                    let groupItems = items.filter { $0.group == group }
-                    if !groupItems.isEmpty {
-                        Section {
-                            ForEach(groupItems) { item in
-                                SidebarRow(item: item, selected: selection == item)
-                                    .tag(item)
-                            }
-                        } header: {
-                            // The first and last groups need no caption;
-                            // skipping them keeps the list inside the window.
-                            if let title = group.title {
-                                Text(title)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 9) {
+                    Image(systemName: "sparkles").font(.system(size: 18, weight: .medium)).foregroundStyle(.white)
+                        .frame(width: 31, height: 35).background(CareTheme.accent, in: RoundedRectangle(cornerRadius: 11))
+                    Text("myKikau").foregroundStyle(CareTheme.ink).font(.system(size: 23, weight: .bold, design: .rounded)).tracking(-0.8)
+                }.padding(.horizontal, 18).padding(.top, 20).padding(.bottom, 14)
+                List {
+                    ForEach(SidebarItem.Group.allCases) { group in
+                        let groupItems = items.filter { $0.group == group }
+                        if !groupItems.isEmpty {
+                            Section {
+                                ForEach(groupItems) { item in
+                                    Button { selection = item } label: {
+                                        SidebarRow(item: item, selected: selection == item)
+                                            .padding(.horizontal, 8).padding(.vertical, 4)
+                                            .background(
+                                                selection == item ? CareTheme.lilac : .clear,
+                                                in: RoundedRectangle(cornerRadius: 10)
+                                            )
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityAddTraits(selection == item ? [.isSelected] : [])
+                                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                                    .listRowBackground(Color.clear)
+                                }
+                            } header: {
+                                // The first and last groups need no caption;
+                                // skipping them keeps the list inside the window.
+                                if let title = group.title {
+                                    Text(title).foregroundStyle(CareTheme.secondaryInk)
+                                }
                             }
                         }
                     }
                 }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .navigationTitle("")
+                // No switching screens while files are being removed.
+                .disabled(deletionActivity.isRunning)
+                Divider().padding(.horizontal, 14)
+                if let active = work.activity {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 7) { ProgressView().controlSize(.small); Text(active.title).font(.caption).lineLimit(2) }
+                        if work.canCancel {
+                            Button("Cancel", action: work.cancel).font(.caption)
+                        }
+                    }.padding(16)
+                } else {
+                    Label(Host.current().localizedName ?? "This Mac", systemImage: "laptopcomputer")
+                        .font(.caption).foregroundStyle(CareTheme.secondaryInk).lineLimit(2).padding(16)
+                }
             }
-            .navigationTitle("myKikau")
-            .frame(minWidth: 190)
-            // No switching screens while files are being removed.
-            .disabled(deletionActivity.isRunning)
+            .background(CareTheme.sidebar)
+            .navigationSplitViewColumnWidth(min: 190, ideal: 200, max: 230)
         } detail: {
             // A screen that's hidden (developer tools off, or disabled by
             // policy) falls back to Status — e.g. a stale stored selection.
@@ -391,7 +426,10 @@ struct ContentView: View {
             // A screen whose content doesn't fill the pane (an empty state)
             // keeps its header at the top instead of floating mid-window.
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(CareTheme.background)
         }
+        .tint(CareTheme.accent)
+        .accentColor(CareTheme.accent)
         .onAppear {
             if selection == nil {
                 selection = SidebarItem(rawValue: storedSelection) ?? .status
@@ -419,17 +457,19 @@ private struct SidebarRow: View {
     let selected: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             ZStack {
                 RoundedRectangle(cornerRadius: 7)
                     .fill(item.tint.opacity(selected ? 0.22 : 0.14))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 24, height: 24)
                 Image(systemName: item.icon)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(item.tint)
             }
             Text(item.label)
-                .font(.subheadline)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(CareTheme.ink)
+                .lineLimit(1)
             Spacer(minLength: 0)
         }
         .padding(.vertical, 3)

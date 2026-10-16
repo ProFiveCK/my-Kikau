@@ -183,21 +183,26 @@ public enum DiskScanner {
     /// "macOS System" remainder, and a "Free" row, so the set sums to the
     /// startup volume's total capacity. Every real directory keeps its URL so
     /// the existing drill-down (`scan(_:)`) works on it unchanged.
-    public static func volumeOverview(token: Token? = nil, cache: SizeCache = .shared) -> [Entry] {
+    public static func volumeOverview(token: Token? = nil, cache: SizeCache = .shared, coverage: ScanCoverageRecorder? = nil) -> [Entry] {
         guard let info = startupVolumeInfo() else {
             // No capacity info — degrade to a plain listing of "/".
-            return scan(URL(fileURLWithPath: "/"), token: token, cache: cache)
+            return scan(URL(fileURLWithPath: "/"), token: token, cache: cache, coverage: coverage)
         }
-        let fm = FileManager.default
         let root = URL(fileURLWithPath: "/")
         let roots = overviewRoots.filter { path in
-            var isDir: ObjCBool = false
-            return fm.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+            let url = URL(fileURLWithPath: path)
+            do {
+                let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+                if values.isDirectory == true {
+                    coverage?.checked(url); return true
+                }
+                return false
+            } catch { coverage?.failed(url, error: error); return false }
         }
         // Walk the roots concurrently — `/Users` and `/Library` alone are large
         // enough that doing them serially makes the overview feel broken.
         let sizes = concurrentMap(roots) { path in
-            measure(URL(fileURLWithPath: path), token: token, cache: cache)
+            measure(URL(fileURLWithPath: path), token: token, cache: cache, coverage: coverage)
         }
         if token?.isCancelled == true {
             return []
@@ -221,7 +226,7 @@ public enum DiskScanner {
         var results = measured
         if systemRemainder > 0 {
             results.append(Entry(
-                syntheticName: "macOS System",
+                syntheticName: "System & unmeasured",
                 parent: root,
                 sizeBytes: systemRemainder
             ))
@@ -248,16 +253,15 @@ public enum DiskScanner {
         _ directory: URL,
         includeHidden: Bool = true,
         token: Token? = nil,
-        cache: SizeCache = .shared
+        cache: SizeCache = .shared,
+        coverage: ScanCoverageRecorder? = nil
     ) -> [Entry] {
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: walkKeys,
-            options: []
-        ) else {
-            return []
-        }
+        let entries: [URL]
+        do {
+            entries = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: walkKeys, options: [])
+            coverage?.checked(directory)
+        } catch { coverage?.failed(directory, error: error); return [] }
         var results: [Entry] = []
         var hiddenTotal: Int64 = 0
         var hiddenCount = 0
@@ -265,11 +269,13 @@ public enum DiskScanner {
             if token?.isCancelled == true {
                 return []
             }
-            let values = try? entry.resourceValues(forKeys: Set(walkKeys))
-            let isDir = values?.isDirectory == true && values?.isSymbolicLink != true
+            let values: URLResourceValues
+            do { values = try entry.resourceValues(forKeys: Set(walkKeys)) }
+            catch { coverage?.failed(entry, error: error); continue }
+            let isDir = values.isDirectory == true && values.isSymbolicLink != true
             let size: Int64 = if isDir {
                 // Already measured as part of a parent walk? Then this is free.
-                cache.size(for: entry.path) ?? measure(entry, token: token, cache: cache)
+                cache.size(for: entry.path) ?? measure(entry, token: token, cache: cache, coverage: coverage)
             } else {
                 fileSize(values) ?? allocatedSize(entry)
             }
@@ -306,20 +312,24 @@ public enum DiskScanner {
     /// up. Never follows a symbolic link, and never descends into another
     /// mounted volume (a network share or disk image under the folder is not
     /// part of *this* disk's usage).
-    static func measure(_ url: URL, token: Token?, cache: SizeCache?) -> Int64 {
+    static func measure(_ url: URL, token: Token?, cache: SizeCache?, coverage: ScanCoverageRecorder? = nil) -> Int64 {
         if token?.isCancelled == true {
             return 0
         }
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: walkKeys, options: []
-        ) else {
-            // Not a directory (or unreadable): size of the item itself.
-            return allocatedSize(url)
-        }
+        let entries: [URL]
+        do {
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+            if values.isDirectory != true {
+                return allocatedSize(url)
+            }
+            entries = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: walkKeys, options: [])
+        } catch { coverage?.failed(url, error: error); return 0 }
         token?.report(url.path)
         var total: Int64 = 0
         for entry in entries {
-            guard let values = try? entry.resourceValues(forKeys: Set(walkKeys)) else { continue }
+            let values: URLResourceValues
+            do { values = try entry.resourceValues(forKeys: Set(walkKeys)) }
+            catch { coverage?.failed(entry, error: error); continue }
             if values.isSymbolicLink == true {
                 continue
             }
@@ -327,12 +337,12 @@ public enum DiskScanner {
                 if values.isVolume == true {
                     continue
                 }
-                total += measure(entry, token: token, cache: cache)
+                total += measure(entry, token: token, cache: cache, coverage: coverage)
             } else if let size = fileSize(values) {
                 total += size
             }
         }
-        if token?.isCancelled != true {
+        if token?.isCancelled != true, coverage?.snapshot.isPartial != true {
             cache?.record(url.path, total)
         }
         return total
