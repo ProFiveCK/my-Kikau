@@ -22,7 +22,7 @@
 - Signed & notarized by Apple
 - Open source (GPL-3.0)
 
-**Primary button:** Download myKikau 0.9.0
+**Primary button:** Download myKikau 0.9.1
 **Secondary button:** Release notes
 **Download note:** Automatic updates are delivered through Sparkle. Full Disk Access is requested and explained on first launch.
 
@@ -73,6 +73,11 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes
+
+### Version 0.9.1 — October 2026
+
+- The sidebar now displays myKikau’s original green-and-gold app icon.
+- Overview uses a home icon in place of the sparkle symbol.
 
 ### Version 0.9.0 — October 2026
 

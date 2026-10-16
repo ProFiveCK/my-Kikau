@@ -299,7 +299,7 @@ struct ContentView: View {
 
         var icon: String {
             switch self {
-            case .status: "sparkles"
+            case .status: "house"
             case .clean: "internaldrive"
             case .uninstall: "app.dashed"
             case .analyze: "chart.bar.doc.horizontal"
@@ -351,8 +351,12 @@ struct ContentView: View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 9) {
-                    Image(systemName: "sparkles").font(.system(size: 18, weight: .medium)).foregroundStyle(.white)
-                        .frame(width: 31, height: 35).background(CareTheme.accent, in: RoundedRectangle(cornerRadius: 11))
+                    Image(nsImage: NSApplication.shared.applicationIconImage)
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .accessibilityHidden(true)
                     Text("myKikau").foregroundStyle(CareTheme.ink).font(.system(size: 23, weight: .bold, design: .rounded)).tracking(-0.8)
                 }.padding(.horizontal, 18).padding(.top, 20).padding(.bottom, 14)
                 List {
