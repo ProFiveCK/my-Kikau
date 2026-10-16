@@ -62,28 +62,37 @@ public enum AppInventory {
     /// helper — is intentionally left alone; that's the outer app's business).
     ///
     /// Bundles are measured concurrently; sizing is the slow part.
-    public static func scan(deleter: SafeFileDeleter = .shared) -> [AppInfo] {
-        let bundles = appBundleURLs()
-        return concurrentMap(bundles) { inspect($0, deleter: deleter) }
-            .compactMap { $0 }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    public static func scan(
+        deleter: SafeFileDeleter = .shared,
+        coverage: ScanCoverageRecorder? = nil,
+        shouldContinue: @Sendable () -> Bool = { !Task.isCancelled }
+    ) -> [AppInfo] {
+        let bundles = appBundleURLs(coverage: coverage)
+        return concurrentMap(bundles) { url in
+            guard shouldContinue() else { return nil as AppInfo? }
+            return inspect(url, deleter: deleter, coverage: coverage, shouldContinue: shouldContinue)
+        }
+        .compactMap { $0 }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     /// Every `.app` bundle in the standard locations, without measuring them.
-    public static func appBundleURLs() -> [URL] {
+    public static func appBundleURLs(coverage: ScanCoverageRecorder? = nil) -> [URL] {
         let appDirs = [
             URL(fileURLWithPath: "/Applications"),
             FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"),
         ]
         var bundles: [URL] = []
         for dir in appDirs {
-            guard let entries = try? FileManager.default.contentsOfDirectory(
-                at: dir,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) else {
-                continue
-            }
+            let entries: [URL]
+            do {
+                entries = try FileManager.default.contentsOfDirectory(
+                    at: dir,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )
+                coverage?.checked(dir)
+            } catch { coverage?.failed(dir, error: error); continue }
             for entry in entries {
                 if entry.pathExtension == "app" {
                     bundles.append(entry)
@@ -91,11 +100,12 @@ public enum AppInventory {
                 }
                 let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 guard isDir else { continue }
-                guard let nested = try? FileManager.default.contentsOfDirectory(
+                let nested: [URL]
+                do { nested = try FileManager.default.contentsOfDirectory(
                     at: entry,
                     includingPropertiesForKeys: nil,
                     options: [.skipsHiddenFiles]
-                ) else { continue }
+                ) } catch { coverage?.failed(entry, error: error); continue }
                 bundles.append(contentsOf: nested.filter { $0.pathExtension == "app" })
             }
         }
@@ -114,7 +124,12 @@ public enum AppInventory {
     }
 
     /// Inspects a single .app bundle and extracts metadata.
-    public static func inspect(_ appURL: URL, deleter: SafeFileDeleter = .shared) -> AppInfo? {
+    public static func inspect(
+        _ appURL: URL,
+        deleter: SafeFileDeleter = .shared,
+        coverage: ScanCoverageRecorder? = nil,
+        shouldContinue: @Sendable () -> Bool = { !Task.isCancelled }
+    ) -> AppInfo? {
         let bundle = Bundle(path: appURL.path)
         let name = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
@@ -122,7 +137,7 @@ public enum AppInventory {
         let bundleID = bundle?.bundleIdentifier
         let version = bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
-        let size = deleter.directorySize(appURL)
+        let size = deleter.directorySize(appURL, coverage: coverage, shouldContinue: shouldContinue)
         let lastModified = try? appURL
             .resourceValues(forKeys: [.contentModificationDateKey])
             .contentModificationDate

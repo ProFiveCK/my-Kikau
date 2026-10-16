@@ -260,15 +260,20 @@ struct HUDView: View {
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
+        guard let lease = WorkCoordinator.shared.begin("Emptying Trash", kind: .deletion) else {
+            trashStatus = "Finish or cancel the current task first"
+            return
+        }
         trashStatus = "Emptying Trash…"
         Task {
+            defer { WorkCoordinator.shared.finish(lease) }
             // Off the main thread: a full Trash can take a while to delete.
             let result = await SafeFileDeleter.shared.executeAsync(
                 plan, mode: .permanent, dryRun: false, action: "menubar.emptyTrash"
             )
             trashStatus = result.failed > 0
-                ? "Freed \(ByteSizeFormatter.format(result.freedBytes)) — \(result.failed) item(s) couldn't be deleted"
-                : "Freed \(ByteSizeFormatter.format(result.freedBytes))"
+                ? "Deleted \(ByteSizeFormatter.format(result.freedBytes)) — \(result.failed) item(s) couldn't be deleted"
+                : "Deleted \(ByteSizeFormatter.format(result.freedBytes))"
             ScanEverythingCoordinator.shared.removeCleanItems(ids: result.removedIDs)
             if !result.removedIDs.isEmpty {
                 AnalyzeScanSession.shared.markStale()

@@ -25,6 +25,9 @@ struct HistoryView: View {
         let message: String
     }
 
+    @State private var sessions: [CleanupSession] = []
+    @State private var recovery: CleanupSession?
+    @ObservedObject private var work = WorkCoordinator.shared
     @State private var entries: [OperationLog.Entry] = []
     @State private var totals = OperationLog.Totals()
     @State private var loading = true
@@ -47,7 +50,7 @@ struct HistoryView: View {
     }
 
     private var subtitle: String {
-        "\(ByteSizeFormatter.format(totals.freedBytes)) freed to date · \(totals.operations.formatted()) operations logged"
+        "\(ByteSizeFormatter.format(totals.trashedBytes)) moved to Trash · \(ByteSizeFormatter.format(totals.freedBytes)) permanently removed"
     }
 
     var body: some View {
@@ -75,6 +78,10 @@ struct HistoryView: View {
                 .fixedSize()
             }
 
+            if totals.legacyProcessedBytes > 0 {
+                Text("Earlier activity used a combined counter. Separate totals start with this update; the original log is retained.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal).padding(.bottom, 8)
+            }
             if !loggingEnabled {
                 Label("The operation log is switched off in Settings — new activity isn't being recorded.", systemImage: "pause.circle")
                     .font(.caption)
@@ -97,6 +104,24 @@ struct HistoryView: View {
                 )
             } else {
                 List {
+                    if filter == .all || filter == .removed, !sessions.isEmpty {
+                        Section("Cleanup sessions") {
+                            ForEach(sessions) { session in
+                                HStack(spacing: 12) {
+                                    Image(systemName: "arrow.uturn.backward.circle").foregroundStyle(tint)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(HistoryRow.actionLabel(session.action)).fontWeight(.medium)
+                                        Text("\(session.date.formatted(date: .abbreviated, time: .shortened)) · \(session.entries.count) recorded items")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button("Review & Restore…") { recovery = session }.disabled(work.isBusy)
+                                }.padding(.vertical, 5)
+                            }
+                            Text("Most recent 20 cleanups from retained history. Older activity remains below and in the exported log.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     ForEach(groupedByDay(visible), id: \.day) { group in
                         Section(group.day.formatted(date: .complete, time: .omitted)) {
                             ForEach(group.entries) { entry in
@@ -113,6 +138,12 @@ struct HistoryView: View {
             }
         }
         .task { await reload() }
+        .sheet(item: $recovery) { session in CleanupRecoverySheet(session: session) { Task { await reload() } } }
+        .onChange(of: work.isBusy) {
+            _, busy in if !busy {
+                Task { await reload() }
+            }
+        }
         .alert(item: $notice) { notice in
             Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("OK")))
         }
@@ -127,23 +158,36 @@ struct HistoryView: View {
     private func reload() async {
         let limit = Self.entryLimit
         let loaded = await Task.detached(priority: .userInitiated) {
-            (OperationLog.shared.recent(limit: limit), OperationLog.shared.totals())
+            (OperationLog.shared.recent(limit: limit), OperationLog.shared.totals(), OperationLog.shared.cleanupSessions())
         }.value
         entries = loaded.0
         totals = loaded.1
+        sessions = loaded.2
         loggingEnabled = OperationLog.shared.enabled
         loading = false
     }
 
     private func putBack(_ entry: OperationLog.Entry) {
         guard let trashedPath = entry.trashedPath else { return }
-        do {
-            try SafeFileDeleter.shared.putBack(
-                trashedPath: trashedPath, originalPath: entry.path, fileNumber: entry.trashedFileNumber
-            )
-            Task { await reload() }
-        } catch {
-            notice = Notice(title: "Couldn't Put Back", message: error.localizedDescription)
+        guard let lease = WorkCoordinator.shared.begin("Putting a file back", kind: .deletion) else {
+            notice = Notice(title: "Another Task Is Running", message: "Finish or cancel the current task before restoring files.")
+            return
+        }
+        Task {
+            defer { WorkCoordinator.shared.finish(lease) }
+            let error = await Task.detached { () -> String? in
+                do {
+                    try SafeFileDeleter.shared.putBack(
+                        trashedPath: trashedPath, originalPath: entry.path,
+                        fileNumber: entry.trashedFileNumber, sessionID: entry.sessionID
+                    )
+                    return nil
+                } catch { return error.localizedDescription }
+            }.value
+            if let error {
+                notice = Notice(title: "Couldn't Put Back", message: error)
+            }
+            await reload()
         }
     }
 
@@ -245,6 +289,7 @@ private struct HistoryRow: View {
             Spacer()
             if canPutBack {
                 Button("Put Back", action: onPutBack)
+                    .disabled(WorkCoordinator.shared.isBusy)
                     .controlSize(.small)
                     .accessibilityLabel("Put back \(title)")
             }

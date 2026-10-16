@@ -23,6 +23,8 @@ struct AnalyzeView: View {
     /// empty here without any visible error — see ProtectedFolderAccessCheck.
     @State private var deniedFolders: [String] = ProtectedFolderAccessCheck.deniedFolders()
 
+    @ObservedObject private var activity = WorkCoordinator.shared
+
     private let tint = ContentView.SidebarItem.analyze.tint
 
     var body: some View {
@@ -71,7 +73,7 @@ struct AnalyzeView: View {
                 .keyboardShortcut("r", modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
-                .disabled(session.isScanning)
+                .disabled(activity.isBusy)
             }
             .padding()
 
@@ -90,6 +92,9 @@ struct AnalyzeView: View {
                     .padding(.bottom, 8)
             }
 
+            if session.lastScanAt != nil {
+                ScanCoverageView(session.coverage).padding(.horizontal).padding(.bottom, 8)
+            }
             if !session.entries.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     BreadcrumbBar(
@@ -328,7 +333,7 @@ private struct PieChartSection: View {
     private static func neutralColor(for name: String) -> Color {
         switch name {
         case "Free": Color(white: 0.82)
-        case "macOS System": Color(white: 0.55)
+        case "System & unmeasured": Color(white: 0.55)
         default: Color(white: 0.68) // "Hidden Items" and any other aggregate
         }
     }
@@ -456,7 +461,9 @@ private struct PieChartSection: View {
                                 PathMenu(url: entry.url)
                             }
                         }
-                        .accessibilityLabel("\(slice.name), \(ByteSizeFormatter.format(slice.sizeBytes)), \(percentString(slice.sizeBytes))")
+                        .accessibilityLabel(
+                            "\(slice.name), \(ByteSizeFormatter.format(slice.sizeBytes)), \(percentString(slice.sizeBytes))"
+                        )
                     }
                 }
             }

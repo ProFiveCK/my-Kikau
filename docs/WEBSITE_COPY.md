@@ -13,27 +13,27 @@
 **Section number:** 01
 **Eyebrow:** macOS utility
 **Title:** myKikau — Clean your Mac with confidence
-**Summary:** A native macOS maintenance app for safe cleanup, complete uninstalls, duplicate and large-file review, and a live system dashboard. It previews everything first and moves deletions to the Trash rather than destroying them.
+**Summary:** A native macOS maintenance app with a Care hub, Quick and Full scans, safe cleanup, app uninstall, duplicate and large-file review, and live system monitoring. It previews everything first and moves deletions to the Trash rather than destroying them.
 
 **Spec pills:**
 - macOS 14 Sonoma or later
 - Apple Silicon
-- 5.0 MB DMG
+- 5.5 MB DMG
 - Signed & notarized by Apple
 - Open source (GPL-3.0)
 
-**Primary button:** Download myKikau 0.8.0
+**Primary button:** Download myKikau 0.9.0
 **Secondary button:** Release notes
 **Download note:** Automatic updates are delivered through Sparkle. Full Disk Access is requested and explained on first launch.
 
 ### Feature cards
 
-- **Preview before delete.** Review file paths, sizes, and protected items — with a checkbox on every item — before anything moves to the Trash. Put anything back from History.
+- **Preview before delete.** Review file paths, sizes, and protected items — with a checkbox on every item — before anything moves to the Trash. Restore recorded files individually or by cleanup session from History while they remain in the Trash.
 - **Leftover-aware uninstall.** Removes the app bundle plus LaunchAgents, login items, and related files in your Library.
-- **Live system dashboard.** CPU, memory, disk, network, GPU, thermals, and battery metrics refreshed every two seconds.
+- **Live system dashboard.** Open Live activity from the Care hub for CPU, memory, disk, network, GPU, thermals, and battery metrics refreshed every two seconds.
 - **Duplicate and similar-photo finder.** Content-hash verification identifies real duplicates, and on-device image analysis groups pictures that look alike, before you decide what to remove.
 - **Large-file review.** Find big items across Downloads, Documents, Desktop, Pictures, and Movies.
-- **Local activity log.** Every action is written to ~/Library/Logs/myKikau/operations.log on your own machine.
+- **Local activity log.** When logging is enabled, file operations are recorded locally at ~/Library/Logs/myKikau/operations.log, with cleanup sessions for reviewed file recovery.
 
 ### Trust / safety split
 
@@ -64,7 +64,7 @@
 ## System requirements
 
 - macOS 14 (Sonoma) or later — Apple Silicon
-- ~3 MB disk space (installer download)
+- 5.5 MB installer download
 - Full Disk Access permission (requested on first launch; some features are limited without it)
 
 ## Open source
@@ -73,6 +73,15 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes
+
+### Version 0.9.0 — October 2026
+
+- **Care hub** — a new overview with cleanup, applications, files, system care, disk space and a separate Live activity panel, in light and dark appearances.
+- **Quick and Full scans** — everyday cleanup and startup checks, or thorough discovery including duplicate comparisons and system care. Each area shows when it was checked; similar-photo analysis remains on demand.
+- **Cleanup session recovery** — review the exact recorded files from a cleanup and restore selected files still in the Trash. Identity, protection and destination checks prevent restoring a replacement file or overwriting current work. Settings and app services are not restored.
+- **Privacy information** — normal denied Local Network permissions and stale application paths are informational. Ignore an exact observation persistently, or restore it to the list; changed records reappear.
+- **Clearer results** — separate Trash and permanent-removal totals, explicit unsupported/failed update checks, maintenance recommendations, and readable scan coverage and permission gaps.
+- **One task at a time** — shared cancellation and operation ownership prevent overlapping scans, cleanup and restore operations.
 
 ### Version 0.8.0 — October 2026
 

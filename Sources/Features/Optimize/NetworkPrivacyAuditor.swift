@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Audits macOS Local Network privacy rules without modifying Apple's
 /// Network Extension preference store.
@@ -67,6 +68,7 @@ public enum NetworkPrivacyAuditor {
         case automatic
         case guidedRecovery
         case manual
+        case none
     }
 
     public struct Finding: Identifiable, Hashable, Sendable {
@@ -76,6 +78,9 @@ public enum NetworkPrivacyAuditor {
         public let affectedRecordCount: Int
         public let remediation: Remediation
         public let detail: String
+        /// A stable digest of the exact records behind this finding. Ignoring
+        /// one observation must not hide new paths or changed decisions.
+        public let evidenceFingerprint: String
 
         public var id: String {
             "\(kind.rawValue):\(signingIdentifier)"
@@ -85,17 +90,39 @@ public enum NetworkPrivacyAuditor {
     public struct Report: Hashable, Sendable {
         public let findings: [Finding]
         public let inspectedRuleCount: Int
+        public var ignoredFindings: [Finding] = []
 
         public var autoFixableCount: Int {
             findings.count { $0.remediation == .automatic }
         }
 
         public var issueCount: Int {
-            findings.count
+            findings.count { $0.severity > .information }
+        }
+
+        public var informationalCount: Int {
+            findings.count { $0.severity == .information }
+        }
+
+        public var requiresGuidedRepair: Bool {
+            findings.contains { $0.severity > .information && $0.remediation == .guidedRecovery }
+        }
+
+        public var summary: String {
+            if issueCount > 0 {
+                return "\(issueCount) issue\(issueCount == 1 ? " needs" : "s need") review in Local Network settings"
+            }
+            if informationalCount > 0 {
+                return "\(informationalCount) informational item\(informationalCount == 1 ? "" : "s") — no repair needed"
+            }
+            if !ignoredFindings.isEmpty {
+                return "No issues found — \(ignoredFindings.count) informational item\(ignoredFindings.count == 1 ? "" : "s") ignored"
+            }
+            return "No Local Network privacy issues found"
         }
 
         public var isHealthy: Bool {
-            findings.isEmpty
+            issueCount == 0
         }
     }
 
@@ -135,13 +162,15 @@ public enum NetworkPrivacyAuditor {
     public static func inspect(
         archiveURL: URL = systemArchiveURL,
         installedApplications: [InstalledApplication],
+        findingStore: NetworkPrivacyFindingStore = .shared,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) throws -> Report {
-        try audit(
+        let report = try audit(
             rules: loadRules(from: archiveURL),
             installedApplications: installedApplications,
             fileExists: fileExists
         )
+        return findingStore.applyingIgnores(to: report)
     }
 
     /// Lightweight app identity inventory for privacy-rule correlation. This
@@ -184,9 +213,8 @@ public enum NetworkPrivacyAuditor {
         }
     }
 
-    /// More than ten explicit records for one signing identifier is never a
-    /// normal steady state. Chrome's updater can leave `code_sign_clone` paths
-    /// behind, producing many conflicting entries in System Settings.
+    /// Missing executables are historical metadata. Only current records are
+    /// considered for excessive records or conflicting privacy decisions.
     public static func audit(
         rules: [Rule],
         installedApplications: [InstalledApplication],
@@ -198,59 +226,70 @@ public enum NetworkPrivacyAuditor {
         var findings: [Finding] = []
 
         for (signingIdentifier, appRules) in groups {
-            if appRules.count > 10 {
-                findings.append(Finding(
-                    kind: .excessivePrivacyRecords,
-                    severity: .critical,
-                    signingIdentifier: signingIdentifier,
-                    affectedRecordCount: appRules.count,
-                    remediation: .guidedRecovery,
-                    detail: "\(appRules.count) Local Network privacy records found; macOS has no supported per-app reset."
-                ))
-            }
-
             let stale = appRules.filter { rule in
                 guard let path = rule.executablePath, path != "$null" else { return false }
                 return !fileExists(path)
             }
-            if !stale.isEmpty {
+            let staleRules = Set(stale)
+            let currentRules = appRules.filter { !staleRules.contains($0) }
+            if currentRules.count > 10 {
                 findings.append(Finding(
-                    kind: .stalePrivacyRecords,
-                    severity: .warning,
+                    kind: .excessivePrivacyRecords,
+                    severity: .critical,
                     signingIdentifier: signingIdentifier,
-                    affectedRecordCount: stale.count,
+                    affectedRecordCount: currentRules.count,
                     remediation: .guidedRecovery,
-                    detail: "\(stale.count) record(s) point to executable paths that no longer exist."
+                    detail: "\(currentRules.count) current Local Network records found. "
+                        + "Review settings if this app has connection problems.",
+                    evidenceFingerprint: fingerprint(currentRules)
                 ))
             }
 
-            if Set(appRules.map(\.isDenied)).count > 1 {
+            if !stale.isEmpty {
+                findings.append(Finding(
+                    kind: .stalePrivacyRecords,
+                    severity: .information,
+                    signingIdentifier: signingIdentifier,
+                    affectedRecordCount: stale.count,
+                    remediation: .none,
+                    detail: "\(stale.count) historical record\(stale.count == 1 ? " refers" : "s refer") "
+                        + "to executables that no longer exist. "
+                        + "App updates can leave these behind. No repair is needed for these records alone.",
+                    evidenceFingerprint: fingerprint(stale)
+                ))
+            }
+
+            if Set(currentRules.map(\.isDenied)).count > 1 {
                 findings.append(Finding(
                     kind: .conflictingPrivacyDecisions,
                     severity: .critical,
                     signingIdentifier: signingIdentifier,
-                    affectedRecordCount: appRules.count,
+                    affectedRecordCount: currentRules.count,
                     remediation: .guidedRecovery,
-                    detail: "Local Network records disagree about whether this app is allowed."
+                    detail: "Current Local Network records disagree about whether this app is allowed. "
+                        + "Review its access in System Settings.",
+                    evidenceFingerprint: fingerprint(currentRules)
                 ))
             }
 
             let installed = installedByBundleID[signingIdentifier] ?? []
-            let installedDenied = appRules.contains { rule in
+            let installedDenied = currentRules.filter { rule in
                 guard rule.isDenied else { return false }
                 guard let path = rule.executablePath, path != "$null" else {
                     return !installed.isEmpty
                 }
                 return installed.contains { $0.executablePath == path }
             }
-            if installedDenied {
+            if !installedDenied.isEmpty {
                 findings.append(Finding(
                     kind: .installedApplicationDenied,
-                    severity: .critical,
+                    severity: .information,
                     signingIdentifier: signingIdentifier,
-                    affectedRecordCount: appRules.filter(\.isDenied).count,
-                    remediation: .guidedRecovery,
-                    detail: "The installed application is explicitly denied Local Network access."
+                    affectedRecordCount: installedDenied.count,
+                    remediation: .manual,
+                    detail: "Local Network access is turned off for this app. This is a valid privacy choice. "
+                        + "Change it in System Settings only if you want the app to access your local network.",
+                    evidenceFingerprint: fingerprint(installedDenied)
                 ))
             }
         }
@@ -274,6 +313,17 @@ public enum NetworkPrivacyAuditor {
         case .conflictingPrivacyDecisions: 2
         case .stalePrivacyRecords: 3
         }
+    }
+
+    private static func fingerprint(_ rules: [Rule]) -> String {
+        // Length prefixes keep arbitrary paths unambiguous. Sorting makes the
+        // digest independent of archive order while preserving duplicate counts.
+        let records = rules.map { rule in
+            [rule.signingIdentifier, rule.executablePath ?? "$null", String(rule.isDenied), String(rule.preferenceWasSet)]
+                .map { "\($0.utf8.count):\($0)" }.joined()
+        }.sorted()
+        return SHA256.hash(data: Data(records.joined(separator: "\n").utf8))
+            .map { String(format: "%02x", $0) }.joined()
     }
 
     private static func resolveString(_ reference: Any?, objects: [Any]) -> String? {

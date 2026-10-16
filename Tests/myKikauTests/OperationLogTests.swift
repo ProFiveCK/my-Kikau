@@ -168,7 +168,7 @@ struct OperationLogTests {
         log.append(entry("/tmp/dry", size: 999, outcome: .dryRun, dryRun: true))
         log.append(entry("/tmp/failed", size: 999, outcome: .failed))
 
-        #expect(log.totals().freedBytes == 1200)
+        #expect(log.totals().trashedBytes == 1200)
         #expect(log.totals().operations == 14)
         #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("operations.1.log").path))
         // The current file holds fewer than everything written.
@@ -230,10 +230,10 @@ struct OperationLogTests {
         let log = OperationLog(logURL: url)
         #expect(log.recent(limit: 5).first?.path == "/tmp/old")
         // No sidecar yet: totals are rebuilt from the file.
-        #expect(log.totals().freedBytes == 42)
+        #expect(log.totals().trashedBytes == 42)
         #expect(log.totals().operations == 1)
         log.append(entry("/tmp/new", size: 8))
-        #expect(log.totals().freedBytes == 50)
+        #expect(log.totals().trashedBytes == 50)
         #expect(log.totals().operations == 2)
         #expect(log.verifyChain().isIntact)
     }

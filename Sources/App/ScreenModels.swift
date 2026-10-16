@@ -26,15 +26,21 @@ final class CleanModel: ObservableObject {
     }
 
     func scan() {
-        guard !isScanning else { return }
+        guard !isScanning,
+              let lease = WorkCoordinator.shared.begin("Measuring cleanup", cancel: { [weak self] in self?.cancel() }) else { return }
         isScanning = true
         sectionsDone = 0
         task = Task {
-            let plans = await CleanScanner.scanAllConcurrently { _ in
-                Task { @MainActor in CleanModel.shared.sectionsDone += 1 }
+            defer { WorkCoordinator.shared.finish(lease) }
+            let coverage = ScanCoverageRecorder()
+            let plans = await CleanScanner.scanAllConcurrently(coverage: coverage) { _ in
+                Task { @MainActor in
+                    guard WorkCoordinator.shared.activity?.id == lease else { return }
+                    CleanModel.shared.sectionsDone += 1
+                }
             }
             if !Task.isCancelled {
-                ScanEverythingCoordinator.shared.setCleanPlans(plans)
+                ScanEverythingCoordinator.shared.setCleanPlans(plans, coverage: coverage.snapshot)
             }
             isScanning = false
             task = nil
@@ -52,7 +58,31 @@ final class AppsModel: ObservableObject {
 
     @Published private(set) var isScanning = false
     /// Newer versions found by the last update check, keyed by `AppInfo.id`.
-    @Published private(set) var updates: [String: AppUpdateChecker.Update] = [:]
+    @Published private(set) var updateReport = AppUpdateChecker.Report()
+    @Published var selectedAppIDs: Set<String> = []
+    private var checkedVersions: [String: String] = [:]
+    private func versionKey(_ app: AppInventory.AppInfo) -> String {
+        (app.version ?? "") + "|" + String(app.lastModified?.timeIntervalSince1970 ?? 0)
+    }
+
+    func status(for app: AppInventory.AppInfo) -> AppUpdateChecker.CheckStatus? {
+        guard checkedVersions[app.id] == versionKey(app) else { return nil }
+        return updateReport.statuses[app.id]
+    }
+
+    func report(for apps: [AppInventory.AppInfo]) -> AppUpdateChecker.Report {
+        .init(statuses: Dictionary(uniqueKeysWithValues: apps.compactMap { app in status(for: app).map { (app.id, $0) } }))
+    }
+
+    var updates: [String: AppUpdateChecker.Update] {
+        report(for: ScanEverythingCoordinator.shared.apps ?? []).updates
+    }
+
+    func reconcileSelection() {
+        selectedAppIDs.formIntersection(Set(ScanEverythingCoordinator.shared.apps?.map(\.id) ?? []))
+    }
+
+    private var inventoryTask: Task<Void, Never>?
     @Published private(set) var isCheckingUpdates = false
     @Published private(set) var updateProgress: String?
     @Published private(set) var lastUpdateCheck: Date?
@@ -61,30 +91,52 @@ final class AppsModel: ObservableObject {
     private init() {}
 
     func scan() {
-        guard !isScanning else { return }
+        guard !isScanning, let lease = WorkCoordinator.shared.begin(
+            "Listing applications",
+            cancel: { [weak self] in self?.inventoryTask?.cancel() }
+        ) else { return }
         isScanning = true
-        Task {
-            let apps = await Task.detached(priority: .userInitiated) { AppInventory.scan() }.value
-            ScanEverythingCoordinator.shared.setApps(apps)
-            // Versions may have changed; drop results for apps that are gone.
+        inventoryTask = Task {
+            defer { isScanning = false; inventoryTask = nil; WorkCoordinator.shared.finish(lease) }
+            let coverage = ScanCoverageRecorder()
+            let cancellation = DiskScanner.Token()
+            let work = Task.detached(priority: .userInitiated) { AppInventory.scan(
+                coverage: coverage,
+                shouldContinue: { !cancellation.isCancelled }
+            ) }
+            let apps = await withTaskCancellationHandler { await work.value } onCancel: { cancellation.cancel(); work.cancel() }
+            guard !Task.isCancelled else { return }
+            ScanEverythingCoordinator.shared.setApps(apps, coverage: coverage.snapshot)
             let ids = Set(apps.map(\.id))
-            updates = updates.filter { ids.contains($0.key) }
-            isScanning = false
+            selectedAppIDs.formIntersection(ids)
+            // Installed versions may have changed. A fresh inventory needs a fresh check.
+            updateReport = .init()
+            checkedVersions = [:]
+            lastUpdateCheck = nil
         }
     }
 
     /// Asks each app's own update feed, and the App Store, whether a newer
     /// version exists. Only runs when the user asks for it.
     func checkForUpdates(_ apps: [AppInventory.AppInfo]) {
-        guard !isCheckingUpdates else { return }
+        guard !isCheckingUpdates, let lease = WorkCoordinator.shared.begin(
+            "Checking app updates",
+            kind: .updates,
+            cancel: { [weak self] in self?.cancelUpdateCheck() }
+        ) else { return }
         isCheckingUpdates = true
         updateProgress = nil
         updateTask = Task {
-            let found = await AppUpdateChecker.check(apps) { done, total in
-                Task { @MainActor in AppsModel.shared.updateProgress = "\(done) of \(total)" }
+            defer { WorkCoordinator.shared.finish(lease) }
+            let found = await AppUpdateChecker.checkReport(apps) { done, total in
+                Task { @MainActor in
+                    guard WorkCoordinator.shared.activity?.id == lease else { return }
+                    AppsModel.shared.updateProgress = "\(done) of \(total)"
+                }
             }
             if !Task.isCancelled {
-                updates = found
+                checkedVersions = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, versionKey($0)) })
+                updateReport = found
                 lastUpdateCheck = Date()
             }
             isCheckingUpdates = false
@@ -101,6 +153,8 @@ final class AppsModel: ObservableObject {
 @MainActor
 final class FilesModel: ObservableObject {
     static let shared = FilesModel()
+    @Published var selectedLargeFiles: Set<String> = []
+    @Published var selectedSimilar: Set<String> = []
 
     @Published private(set) var isScanning = false
     @Published private(set) var progressTitle = ""
@@ -111,17 +165,22 @@ final class FilesModel: ObservableObject {
     private init() {}
 
     func scan() {
-        guard !isScanning else { return }
+        guard !isScanning,
+              let lease = WorkCoordinator.shared.begin("Scanning files", cancel: { [weak self] in self?.cancel() }) else { return }
         isScanning = true
         progressTitle = "Reading your folders"
         progressDetail = nil
         progressFraction = nil
 
         let work = Task.detached(priority: .userInitiated) { () -> (
-            [DuplicateFinder.DuplicateGroup], [DuplicateFinder.FileEntry], Int
+            [DuplicateFinder.DuplicateGroup], [DuplicateFinder.FileEntry], Int, ScanCoverage
         )? in
-            let report = DuplicateFinder.walkReport { count in
-                Task { @MainActor in FilesModel.shared.progressDetail = "\(count.formatted()) files" }
+            let coverage = ScanCoverageRecorder()
+            let report = DuplicateFinder.walkReport(coverage: coverage) { count in
+                Task { @MainActor in
+                    guard WorkCoordinator.shared.activity?.id == lease else { return }
+                    FilesModel.shared.progressDetail = "\(count.formatted()) files"
+                }
             }
             if Task.isCancelled {
                 return nil
@@ -130,9 +189,10 @@ final class FilesModel: ObservableObject {
                 FilesModel.shared.progressTitle = "Comparing files"
                 FilesModel.shared.progressDetail = nil
             }
-            let duplicates = DuplicateFinder.findDuplicates(allFiles: report.files) { hashed, total in
+            let duplicates = DuplicateFinder.findDuplicates(allFiles: report.files, coverage: coverage) { hashed, total in
                 guard hashed % 8 == 0 || hashed == total else { return }
                 Task { @MainActor in
+                    guard WorkCoordinator.shared.activity?.id == lease else { return }
                     FilesModel.shared.progressFraction = total > 0 ? Double(hashed) / Double(total) : nil
                     FilesModel.shared.progressDetail = "\(hashed.formatted()) of \(total.formatted()) candidates"
                 }
@@ -140,16 +200,22 @@ final class FilesModel: ObservableObject {
             if Task.isCancelled {
                 return nil
             }
-            return (duplicates, DuplicateFinder.findLargeFiles(allFiles: report.files), report.skippedCloudOnly)
+            return (duplicates, DuplicateFinder.findLargeFiles(allFiles: report.files), report.skippedCloudOnly, coverage.snapshot)
         }
         task = Task {
+            defer { WorkCoordinator.shared.finish(lease) }
             let result = await withTaskCancellationHandler {
                 await work.value
             } onCancel: {
                 work.cancel()
             }
-            if let (duplicates, large, skipped) = result {
-                ScanEverythingCoordinator.shared.setFiles(duplicates: duplicates, large: large, skippedCloudOnly: skipped)
+            if let (duplicates, large, skipped, coverage) = result {
+                ScanEverythingCoordinator.shared.setFiles(
+                    duplicates: duplicates,
+                    large: large,
+                    skippedCloudOnly: skipped,
+                    coverage: coverage
+                )
             }
             isScanning = false
             progressDetail = nil
@@ -161,18 +227,24 @@ final class FilesModel: ObservableObject {
     /// Pictures that look alike. Separate from the main Files scan because
     /// it reads every image and takes longer.
     @Published private(set) var similar: SimilarImageFinder.Report?
+    @Published private(set) var similarCoverage: ScanCoverage?
 
     func findSimilar() {
-        guard !isScanning else { return }
+        guard !isScanning,
+              let lease = WorkCoordinator.shared.begin("Scanning files", cancel: { [weak self] in self?.cancel() }) else { return }
         isScanning = true
         progressTitle = "Reading your folders"
         progressDetail = nil
         progressFraction = nil
 
-        let work = Task.detached(priority: .userInitiated) { () -> SimilarImageFinder.Report? in
-            let files = DuplicateFinder.walkReport { count in
-                Task { @MainActor in FilesModel.shared.progressDetail = "\(count.formatted()) files" }
-            }.files
+        let work = Task.detached(priority: .userInitiated) { () -> (SimilarImageFinder.Report, ScanCoverage)? in
+            let walk = DuplicateFinder.walkReport { count in
+                Task { @MainActor in
+                    guard WorkCoordinator.shared.activity?.id == lease else { return }
+                    FilesModel.shared.progressDetail = "\(count.formatted()) files"
+                }
+            }
+            let files = walk.files
             if Task.isCancelled {
                 return nil
             }
@@ -182,20 +254,23 @@ final class FilesModel: ObservableObject {
             }
             let report = SimilarImageFinder.find(in: files) { done, total in
                 Task { @MainActor in
+                    guard WorkCoordinator.shared.activity?.id == lease else { return }
                     FilesModel.shared.progressFraction = total > 0 ? Double(done) / Double(total) : nil
                     FilesModel.shared.progressDetail = "\(done.formatted()) of \(total.formatted()) pictures"
                 }
             }
-            return Task.isCancelled ? nil : report
+            return Task.isCancelled ? nil : (report, walk.coverage)
         }
         task = Task {
+            defer { WorkCoordinator.shared.finish(lease) }
             let report = await withTaskCancellationHandler {
                 await work.value
             } onCancel: {
                 work.cancel()
             }
-            if let report {
+            if let (report, coverage) = report {
                 similar = report
+                similarCoverage = coverage
             }
             isScanning = false
             progressDetail = nil
@@ -227,13 +302,19 @@ final class PurgeModel: ObservableObject {
 
     private init() {}
 
+    private var task: Task<Void, Never>?
     func scan() {
-        guard !isScanning else { return }
+        guard !isScanning, let lease = WorkCoordinator.shared.begin(
+            "Scanning developer files",
+            cancel: { [weak self] in self?.task?.cancel() }
+        ) else { return }
         isScanning = true
-        Task {
-            let artifacts = await Task.detached(priority: .userInitiated) { ProjectArtifactScanner.scan() }.value
+        task = Task {
+            defer { isScanning = false; task = nil; WorkCoordinator.shared.finish(lease) }
+            let work = Task.detached(priority: .userInitiated) { ProjectArtifactScanner.scan() }
+            let artifacts = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+            guard !Task.isCancelled else { return }
             ScanEverythingCoordinator.shared.setPurgeArtifacts(artifacts)
-            isScanning = false
         }
     }
 }

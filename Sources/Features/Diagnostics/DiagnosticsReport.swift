@@ -62,7 +62,8 @@ public enum DiagnosticsReport {
 
         section("Operation log")
         row("Operations recorded", "\(totals.operations)")
-        row("Freed to date", ByteSizeFormatter.format(totals.freedBytes))
+        row("Moved to Trash", ByteSizeFormatter.format(totals.trashedBytes))
+        row("Permanently removed", ByteSizeFormatter.format(totals.freedBytes))
         row(
             "Integrity",
             chain.isIntact

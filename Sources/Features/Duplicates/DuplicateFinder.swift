@@ -70,6 +70,7 @@ public enum DuplicateFinder {
         /// Files stored in iCloud and not downloaded. Reading them to hash
         /// would download them, so they're left out.
         public var skippedCloudOnly = 0
+        public var coverage = ScanCoverage()
     }
 
     /// Directories scanned by default, relative to the home directory.
@@ -118,8 +119,13 @@ public enum DuplicateFinder {
     /// - A file with several hard links is returned once: its "copies" share
     ///   the same storage, so removing one frees nothing.
     /// - Files that live in iCloud and aren't downloaded are skipped.
-    public static func walkReport(home: URL? = nil, onProgress: ((Int) -> Void)? = nil) -> WalkReport {
+    public static func walkReport(
+        home: URL? = nil,
+        coverage: ScanCoverageRecorder? = nil,
+        onProgress: ((Int) -> Void)? = nil
+    ) -> WalkReport {
         let fm = FileManager.default
+        let coverage = coverage ?? ScanCoverageRecorder()
         let keys: [URLResourceKey] = [
             .fileSizeKey, .isRegularFileKey, .contentModificationDateKey,
             .fileResourceIdentifierKey,
@@ -129,23 +135,33 @@ public enum DuplicateFinder {
         var seenIdentifiers = Set<AnyHashable>()
         var visited = 0
         for root in scanPaths(home: home) {
+            do { _ = try fm.contentsOfDirectory(atPath: root.path); coverage.checked(root) }
+            catch { coverage.failed(root, error: error); continue }
             guard let enumerator = fm.enumerator(
                 at: root,
                 includingPropertiesForKeys: keys,
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
-            ) else { continue }
+                options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                errorHandler: { url, error in coverage.failed(url, error: error); return true }
+            ) else {
+                coverage.record(root, kind: .unavailable, detail: "The folder could not be enumerated.")
+                continue
+            }
             for case let url as URL in enumerator {
                 visited += 1
                 if visited % 256 == 0 {
                     if Task.isCancelled {
+                        report.coverage = coverage.snapshot
                         return report
                     }
                     onProgress?(visited)
                 }
-                guard let values = try? url.resourceValues(forKeys: Set(keys)),
-                      values.isRegularFile == true, let size = values.fileSize, size > 0 else { continue }
+                let values: URLResourceValues
+                do { values = try url.resourceValues(forKeys: Set(keys)) }
+                catch { coverage.failed(url, error: error); continue }
+                guard values.isRegularFile == true, let size = values.fileSize, size > 0 else { continue }
                 if isCloudOnly(values, path: url.path, size: Int64(size)) {
                     report.skippedCloudOnly += 1
+                    coverage.cloudSkipped()
                     continue
                 }
                 if let identifier = values.fileResourceIdentifier as? NSObject,
@@ -156,6 +172,7 @@ public enum DuplicateFinder {
                 report.files.append(FileEntry(url: url, sizeBytes: Int64(size), modified: values.contentModificationDate))
             }
         }
+        report.coverage = coverage.snapshot
         return report
     }
 
@@ -184,6 +201,7 @@ public enum DuplicateFinder {
     public static func findDuplicates(
         home: URL? = nil,
         allFiles: [FileEntry]? = nil,
+        coverage: ScanCoverageRecorder? = nil,
         onProgress: ((_ hashed: Int, _ total: Int) -> Void)? = nil
     ) -> [DuplicateGroup] {
         let files = allFiles ?? walk(home: home)
@@ -206,7 +224,7 @@ public enum DuplicateFinder {
                 }
                 hashed += 1
                 onProgress?(hashed, total)
-                guard let partial = partialHash(f.url, size: size) else { continue }
+                guard let partial = partialHash(f.url, size: size, coverage: coverage) else { continue }
                 byPartial[partial, default: []].append(f)
             }
             for (_, samePartial) in byPartial where samePartial.count > 1 {
@@ -218,7 +236,10 @@ public enum DuplicateFinder {
                     if Task.isCancelled {
                         return []
                     }
-                    guard let hash = fullyCovered ? partialHash(f.url, size: size) : contentHash(f.url) else { continue }
+                    guard let hash = fullyCovered ? partialHash(f.url, size: size, coverage: coverage) : contentHash(
+                        f.url,
+                        coverage: coverage
+                    ) else { continue }
                     byHash[hash, default: []].append(f)
                 }
                 for (hash, matched) in byHash where matched.count > 1 {
@@ -281,44 +302,44 @@ public enum DuplicateFinder {
 
     /// SHA-256 of the first and last `partialHashBytes` of the file. `nil` if
     /// either read fails.
-    static func partialHash(_ url: URL, size: Int64) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        var hasher = SHA256()
-        guard let head = try? handle.read(upToCount: partialHashBytes), !head.isEmpty else { return nil }
-        hasher.update(data: head)
-        if size > Int64(partialHashBytes) {
-            let tailStart = UInt64(max(Int64(partialHashBytes), size - Int64(partialHashBytes)))
-            guard (try? handle.seek(toOffset: tailStart)) != nil,
-                  let tail = try? handle.read(upToCount: partialHashBytes) else { return nil }
-            hasher.update(data: tail)
-        }
-        return hex(hasher.finalize())
+    static func partialHash(_ url: URL, size: Int64, coverage: ScanCoverageRecorder? = nil) -> String? {
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            var hasher = SHA256()
+            guard let head = try handle.read(upToCount: partialHashBytes), !head.isEmpty else {
+                coverage?.record(url, kind: .unavailable, detail: "The file changed or could not be read completely.")
+                return nil
+            }
+            hasher.update(data: head)
+            if size > Int64(partialHashBytes) {
+                let tailStart = UInt64(max(Int64(partialHashBytes), size - Int64(partialHashBytes)))
+                try handle.seek(toOffset: tailStart)
+                guard let tail = try handle.read(upToCount: partialHashBytes), !tail.isEmpty else {
+                    coverage?.record(url, kind: .unavailable, detail: "The file changed during comparison.")
+                    return nil
+                }
+                hasher.update(data: tail)
+            }
+            return hex(hasher.finalize())
+        } catch { coverage?.failed(url, error: error); return nil }
     }
 
-    /// Streamed SHA-256 so multi-GB files (movies, disk images) don't have to
-    /// be loaded into memory whole to be hashed. Returns `nil` if any read
-    /// fails — a hash of part of a file must never stand in for the whole.
-    static func contentHash(_ url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        var hasher = SHA256()
-        var count = 0
-        while true {
-            let chunk: Data?
-            do {
-                chunk = try handle.read(upToCount: 1_048_576)
-            } catch {
-                return nil
+    static func contentHash(_ url: URL, coverage: ScanCoverageRecorder? = nil) -> String? {
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            var hasher = SHA256()
+            var count = 0
+            while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty {
+                hasher.update(data: chunk)
+                count += 1
+                if count % 64 == 0, Task.isCancelled {
+                    return nil
+                }
             }
-            guard let chunk, !chunk.isEmpty else { break }
-            hasher.update(data: chunk)
-            count += 1
-            if count % 64 == 0, Task.isCancelled {
-                return nil
-            }
-        }
-        return hex(hasher.finalize())
+            return hex(hasher.finalize())
+        } catch { coverage?.failed(url, error: error); return nil }
     }
 
     private static func hex(_ digest: SHA256.Digest) -> String {

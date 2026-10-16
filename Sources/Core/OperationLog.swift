@@ -119,6 +119,7 @@ public final class OperationLog: @unchecked Sendable {
             "\(timestamp.timeIntervalSince1970)-\(action)-\(path)"
         }
 
+        public let sessionID: UUID?
         public let timestamp: Date
         public let action: String
         public let path: String
@@ -139,6 +140,7 @@ public final class OperationLog: @unchecked Sendable {
 
         public init(
             timestamp: Date = Date(),
+            sessionID: UUID? = nil,
             action: String,
             path: String,
             sizeBytes: Int64,
@@ -149,6 +151,7 @@ public final class OperationLog: @unchecked Sendable {
             trashedPath: String? = nil,
             trashedFileNumber: UInt64? = nil
         ) {
+            self.sessionID = sessionID
             self.timestamp = timestamp
             self.action = action
             self.path = path
@@ -162,19 +165,63 @@ public final class OperationLog: @unchecked Sendable {
         }
     }
 
-    /// Running totals across the life of the log, including rotated files.
+    /// Separate historical activity totals across rotations. Neither counter is
+    /// a measurement of current free disk space.
     public struct Totals: Codable, Equatable, Sendable {
+        /// Historical bytes permanently removed, not measured free-space gain.
         public var freedBytes: Int64
+        /// Historical Trash moves, not the current size of the Trash.
+        public var trashedBytes: Int64
+        /// Older versions mixed Trash moves and permanent removals. Preserve
+        /// that value without presenting it as classified or freed space.
+        public var legacyProcessedBytes: Int64
         public var operations: Int
-        /// Hash of the newest entry, kept outside the log file so that
-        /// removing entries from the end is detectable. `nil` in a sidecar
-        /// written before this field existed.
         public var lastHash: String?
+        public var accountingVersion: Int = 2
 
-        public init(freedBytes: Int64 = 0, operations: Int = 0, lastHash: String? = nil) {
+        public init(
+            freedBytes: Int64 = 0,
+            operations: Int = 0,
+            lastHash: String? = nil,
+            trashedBytes: Int64 = 0,
+            legacyProcessedBytes: Int64 = 0
+        ) {
             self.freedBytes = freedBytes
+            self.trashedBytes = trashedBytes
+            self.legacyProcessedBytes = legacyProcessedBytes
             self.operations = operations
             self.lastHash = lastHash
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case freedBytes, trashedBytes, legacyProcessedBytes, operations, lastHash, accountingVersion
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            operations = try c.decode(Int.self, forKey: .operations)
+            lastHash = try c.decodeIfPresent(String.self, forKey: .lastHash)
+            let previous = try c.decodeIfPresent(Int64.self, forKey: .freedBytes) ?? 0
+            if try c.decodeIfPresent(Int.self, forKey: .accountingVersion) == 2 {
+                freedBytes = previous
+                trashedBytes = try c.decodeIfPresent(Int64.self, forKey: .trashedBytes) ?? 0
+                legacyProcessedBytes = try c.decodeIfPresent(Int64.self, forKey: .legacyProcessedBytes) ?? 0
+            } else {
+                freedBytes = 0
+                trashedBytes = 0
+                legacyProcessedBytes = previous
+            }
+        }
+
+        mutating func record(_ entry: Entry) {
+            operations += 1
+            guard entry.outcome == .success, !entry.dryRun, !entry.path.isEmpty,
+                  entry.action != "putBack" else { return }
+            if entry.mode == .permanent {
+                freedBytes += max(0, entry.sizeBytes)
+            } else {
+                trashedBytes += max(0, entry.sizeBytes)
+            }
         }
     }
 
@@ -240,10 +287,7 @@ public final class OperationLog: @unchecked Sendable {
         lastLineHashLoaded = true
 
         var totals = loadTotals(excludingLastLine: true)
-        totals.operations += 1
-        if entry.outcome == .success, !entry.dryRun {
-            totals.freedBytes += entry.sizeBytes
-        }
+        totals.record(entry)
         totals.lastHash = lastLineHash
         saveTotals(totals)
     }
@@ -291,8 +335,23 @@ public final class OperationLog: @unchecked Sendable {
         }
     }
 
-    /// Total bytes freed by successful (non-dry-run) operations, including
-    /// those recorded in files that have since rotated out.
+    /// All retained rotations participate, so a cleanup isn't split at the
+    /// current-file boundary. Old ungrouped entries retain individual Put Back.
+    public func cleanupSessions(limit: Int = 20) -> [CleanupSession] {
+        queue.sync {
+            let decoder = Self.makeDecoder()
+            let files = (1 ... Self.rotatedFilesKept).reversed().map(rotatedURL) + [logURL]
+            let entries = files.flatMap { tailLines(of: $0, limit: .max) }
+                .compactMap { try? decoder.decode(Entry.self, from: $0) }
+                .filter { $0.sessionID != nil && !$0.dryRun && $0.action != "putBack" && !$0.path.isEmpty }
+            let groups = Dictionary(grouping: entries, by: { $0.sessionID! })
+            return Array(groups.map { CleanupSession(id: $0.key, entries: $0.value) }
+                .sorted { $0.date > $1.date }.prefix(max(0, limit)))
+        }
+    }
+
+    /// Historical bytes permanently removed. Trash moves are counted separately;
+    /// filesystem snapshots and other activity can affect actual free space.
     public func totalFreed() -> Int64 {
         totals().freedBytes
     }
@@ -387,12 +446,12 @@ public final class OperationLog: @unchecked Sendable {
             try data.write(to: destination, options: .atomic)
         case .csv:
             let formatter = ISO8601DateFormatter()
-            var text = "timestamp,action,outcome,mode,dryRun,sizeBytes,path,trashedPath,detail\n"
+            var text = "timestamp,action,outcome,mode,dryRun,sizeBytes,path,trashedPath,detail,sessionID\n"
             for entry in entries {
                 let fields = [
                     formatter.string(from: entry.timestamp), entry.action, entry.outcome.rawValue,
                     entry.mode.rawValue, String(entry.dryRun), String(entry.sizeBytes),
-                    entry.path, entry.trashedPath ?? "", entry.detail ?? "",
+                    entry.path, entry.trashedPath ?? "", entry.detail ?? "", entry.sessionID?.uuidString ?? "",
                 ]
                 text += fields.map(Self.csvEscape).joined(separator: ",") + "\n"
             }
@@ -434,17 +493,15 @@ public final class OperationLog: @unchecked Sendable {
             return totals
         }
         let decoder = Self.makeDecoder()
-        var lines = tailLines(of: logURL, limit: .max)
+        let files = (1 ... Self.rotatedFilesKept).reversed().map(rotatedURL) + [logURL]
+        var lines = files.flatMap { tailLines(of: $0, limit: .max) }
         if excludingLastLine, !lines.isEmpty {
             lines.removeLast()
         }
         var totals = Totals()
         for line in lines {
             guard let entry = try? decoder.decode(Entry.self, from: line) else { continue }
-            totals.operations += 1
-            if entry.outcome == .success, !entry.dryRun {
-                totals.freedBytes += entry.sizeBytes
-            }
+            totals.record(entry)
         }
         return totals
     }

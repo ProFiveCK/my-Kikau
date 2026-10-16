@@ -13,7 +13,12 @@ struct UninstallView: View {
     @State private var findingOrphans = false
     @State private var quitPrompt: [AppInventory.AppInfo]?
     @State private var notice: Notice?
-    @State private var selectedAppIDs: Set<String> = []
+    private var selectedAppIDs: Set<String> {
+        get { model.selectedAppIDs }
+        nonmutating set { model.selectedAppIDs = newValue }
+    }
+
+    @ObservedObject private var activity = WorkCoordinator.shared
     @State private var searchText = ""
     /// Column sort; size first, largest on top — the reason most people open
     /// an uninstaller.
@@ -83,8 +88,9 @@ struct UninstallView: View {
         let total = apps.reduce(Int64(0)) { $0 + $1.sizeBytes }
         var text = "\(apps.count) apps · \(ByteSizeFormatter.format(total)) total"
         if model.lastUpdateCheck != nil {
-            let count = model.updates.count
-            text += count == 0 ? " · all up to date" : " · \(count) update\(count == 1 ? "" : "s") available"
+            let report = model.report(for: apps)
+            let unchecked = apps.count - report.statuses.count
+            text += " · " + report.summary + (unchecked > 0 ? " · \(unchecked) not checked" : "")
         }
         return text
     }
@@ -123,18 +129,21 @@ struct UninstallView: View {
                             "Asks each app's own update feed, and the App Store, whether a newer version exists. "
                                 + "myKikau doesn't install anything."
                         )
-                        .disabled(model.isScanning)
+                        .disabled(activity.isBusy)
                 }
                 Button("Find Leftovers…") { findOrphans() }
                     .help("Looks for files left behind by apps that are no longer installed")
-                    .disabled(findingOrphans || preparing)
+                    .disabled(findingOrphans || preparing || activity.isBusy)
                 Button(coordinator.apps == nil ? "Scan Apps" : "Rescan") { model.scan() }
                     .keyboardShortcut("r", modifiers: .command)
                     .buttonStyle(.borderedProminent)
                     .tint(tint)
-                    .disabled(model.isScanning)
+                    .disabled(activity.isBusy)
             }
 
+            if let coverage = coordinator.coverage[.apps] {
+                ScanCoverageView(coverage).padding(.horizontal).padding(.bottom, 8)
+            }
             if coordinator.apps != nil {
                 filterBar
             }
@@ -179,12 +188,14 @@ struct UninstallView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(tint)
-                        .disabled(preparing)
+                        .disabled(preparing || activity.isBusy)
                     }
                     .padding()
                 }
             }
         }
+        .onAppear { model.reconcileSelection() }
+        .onChange(of: coordinator.apps) { _, _ in model.reconcileSelection() }
         .sheet(item: $pending) { item in
             PlanReviewView(
                 plan: item.plan,
@@ -195,7 +206,12 @@ struct UninstallView: View {
                     await prepare(item, simulate: simulate, selectedIDs: selectedIDs)
                 },
                 // Only when the administrator helper is installed and approved.
-                elevate: item.helperEnabled ? { paths in await removeWithHelper(paths) } : nil,
+                elevate: item.helperEnabled ? { paths in
+                    await removeWithHelper(
+                        paths,
+                        sizes: Dictionary(uniqueKeysWithValues: item.plan.items.map { ($0.url.path, $0.sizeBytes) })
+                    )
+                } : nil,
                 onClose: { result in
                     if let result, !result.dryRun {
                         for app in item.apps where result.removedIDs.contains(app.url.path) {
@@ -299,7 +315,7 @@ struct UninstallView: View {
     /// Rows are selected the native way (click, ⇧-click, ⌘-click, ⌘A);
     /// column headers sort.
     private func appsTable(_ visible: [AppInventory.AppInfo]) -> some View {
-        Table(visible, selection: $selectedAppIDs, sortOrder: $sortOrder) {
+        Table(visible, selection: $model.selectedAppIDs, sortOrder: $sortOrder) {
             TableColumn("Application", value: \.name, comparator: .localizedStandard) { app in
                 AppNameCell(app: app)
             }
@@ -309,16 +325,16 @@ struct UninstallView: View {
             }
             .width(min: 88, ideal: 100, max: 120)
             TableColumn("Update") { app in
-                UpdateCell(app: app, update: model.updates[app.id])
+                UpdateCell(app: app, status: model.status(for: app))
             }
-            .width(min: 60, ideal: 90, max: 120)
+            .width(min: 100, ideal: 120, max: 155)
             TableColumn("Size", value: \.sizeBytes) { app in
                 SizeCell(bytes: app.sizeBytes)
             }
             .width(min: 70, ideal: 84)
             .alignment(.trailing)
             TableColumn("") { app in
-                UninstallCell(app: app, disabled: preparing) { beginUninstall([app]) }
+                UninstallCell(app: app, disabled: preparing || activity.isBusy) { beginUninstall([app]) }
             }
             .width(92)
         }
@@ -337,7 +353,10 @@ struct UninstallView: View {
         var parts: [String] = []
         if item.apps.count == 1, let app = item.apps.first {
             if !item.appsWithOtherCopy.isEmpty {
-                parts.append("Another copy of \(app.name) is installed, so its settings, data and background services are left in place. Only this copy is removed.")
+                parts
+                    .append(
+                        "Another copy of \(app.name) is installed, so its settings, data and background services are left in place. Only this copy is removed."
+                    )
             } else {
                 let leftovers = item.plan.items.count - 1
                 parts.append(leftovers > 0
@@ -361,6 +380,7 @@ struct UninstallView: View {
     // MARK: - Flow
 
     private func beginUninstall(_ targets: [AppInventory.AppInfo]) {
+        guard !activity.isBusy else { return }
         let removable = targets.filter { !AppInventory.isProtected($0) }
         guard !removable.isEmpty else { return }
         if removable.contains(where: AppInventory.isRunning) {
@@ -396,8 +416,10 @@ struct UninstallView: View {
     }
 
     private func openReview(for targets: [AppInventory.AppInfo]) {
+        guard let lease = activity.begin("Preparing app review") else { preparing = false; return }
         preparing = true
         Task {
+            defer { activity.finish(lease) }
             let item = await Task.detached(priority: .userInitiated) { () -> PendingUninstall in
                 let helperEnabled = PrivilegedHelperClient.isEnabled
                 let installed = AppInventory.appBundleURLs()
@@ -475,11 +497,11 @@ struct UninstallView: View {
 
     /// Removes root-owned items through the administrator helper (which asks
     /// for a password and applies its own rules), and records the outcome.
-    private func removeWithHelper(_ paths: [String]) async -> (removed: Set<String>, failed: [String: String]) {
+    private func removeWithHelper(_ paths: [String], sizes: [String: Int64]) async -> (removed: Set<String>, failed: [String: String]) {
         let outcome = await PrivilegedHelperClient.removeItems(paths)
         for (path, trashed) in outcome.removed {
             OperationLog.shared.append(.init(
-                action: "uninstall.admin", path: path, sizeBytes: 0, mode: .trash,
+                action: "uninstall.admin", path: path, sizeBytes: sizes[path] ?? 0, mode: .trash,
                 outcome: .success, dryRun: false,
                 detail: "Removed with administrator rights", trashedPath: trashed
             ))
@@ -496,8 +518,10 @@ struct UninstallView: View {
     /// Looks for files left by apps that are no longer installed. Nothing is
     /// ticked by default: without the app to read, the match is a suggestion.
     private func findOrphans() {
+        guard let lease = activity.begin("Finding app leftovers") else { return }
         findingOrphans = true
         Task {
+            defer { activity.finish(lease) }
             let plan = await Task.detached(priority: .userInitiated) {
                 OrphanFinder.plan(for: OrphanFinder.find())
             }.value
@@ -522,10 +546,10 @@ struct UninstallView: View {
 
 private struct UpdateCell: View {
     let app: AppInventory.AppInfo
-    let update: AppUpdateChecker.Update?
+    let status: AppUpdateChecker.CheckStatus?
 
     var body: some View {
-        if let update {
+        if case let .available(update) = status {
             Button {
                 // The app updates itself; an App Store app updates from
                 // its store page.
@@ -541,7 +565,10 @@ private struct UpdateCell: View {
                 : "Version \(update.latestVersion) is available — opens its App Store page")
             .accessibilityLabel("Update \(app.name) to \(update.latestVersion)")
         } else {
-            Text("")
+            Text(status?.label ?? "Not checked")
+                .font(.caption)
+                .foregroundStyle(status?.label == "Check failed" ? Color.orange : .secondary)
+                .help(status?.detail ?? "Run Check for Updates to query the app’s update source.")
         }
     }
 }

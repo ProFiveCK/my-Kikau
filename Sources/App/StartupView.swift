@@ -8,10 +8,22 @@ import UI
 /// they run for. The user's own agents can be removed; system-wide ones are
 /// shown so you can see what's there.
 struct StartupView: View {
-    @State private var items: [StartupItems.Item]?
-    @State private var selection: Set<String> = []
+    @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
+    @ObservedObject private var model = StartupModel.shared
+    @ObservedObject private var activity = WorkCoordinator.shared
+    private var items: [StartupItems.Item]? {
+        coordinator.startupItems
+    }
+
+    private var selection: Set<String> {
+        get { coordinator.selectedStartupIDs }
+        nonmutating set { coordinator.selectedStartupIDs = newValue }
+    }
+
     @State private var review: ReviewRequest?
-    @State private var loading = false
+    private var loading: Bool {
+        model.loading
+    }
 
     private let tint = ContentView.SidebarItem.startup.tint
 
@@ -34,9 +46,12 @@ struct StartupView: View {
                     .keyboardShortcut("r", modifiers: .command)
                     .buttonStyle(.borderedProminent)
                     .tint(tint)
-                    .disabled(loading)
+                    .disabled(activity.isBusy)
             }
 
+            if let coverage = coordinator.coverage[.startup] {
+                ScanCoverageView(coverage).padding(.horizontal).padding(.bottom, 8)
+            }
             if let items {
                 if items.isEmpty {
                     ContentUnavailableView(
@@ -149,13 +164,7 @@ struct StartupView: View {
     }
 
     private func load() {
-        loading = true
-        Task {
-            let scanned = await Task.detached(priority: .userInitiated) { StartupItems.scan() }.value
-            items = scanned
-            selection = selection.intersection(scanned.map(\.id))
-            loading = false
-        }
+        model.scan()
     }
 }
 

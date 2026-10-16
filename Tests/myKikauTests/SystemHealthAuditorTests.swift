@@ -23,7 +23,7 @@ struct SystemHealthAuditorTests {
                     executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
                 ),
             ],
-            fileExists: { $0.hasPrefix("/Applications/") }
+            fileExists: { _ in true }
         )
 
         let finding = report.findings.first
@@ -34,8 +34,8 @@ struct SystemHealthAuditorTests {
         #expect(report.autoFixableCount == 0)
     }
 
-    @Test("stale conflicting rules and a denied installed app are reported")
-    func staleConflictingDeniedRulesAreUnhealthy() {
+    @Test("historical decisions and denied access are informational")
+    func historicalAndDeniedRulesAreInformational() {
         let installedPath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         let rules = [
             NetworkPrivacyAuditor.Rule(
@@ -61,11 +61,14 @@ struct SystemHealthAuditorTests {
         )
 
         #expect(report.findings.contains { $0.kind == .installedApplicationDenied })
-        #expect(report.findings.contains { $0.kind == .conflictingPrivacyDecisions })
+        #expect(!report.findings.contains { $0.kind == .conflictingPrivacyDecisions })
         #expect(report.findings.contains {
             $0.kind == .stalePrivacyRecords && $0.affectedRecordCount == 1
         })
-        #expect(report.findings.allSatisfy { $0.remediation == .guidedRecovery })
+        #expect(report.findings.allSatisfy { $0.severity == .information && $0.remediation != .guidedRecovery })
+        #expect(report.isHealthy)
+        #expect(report.issueCount == 0)
+        #expect(!report.requiresGuidedRepair)
         #expect(report.autoFixableCount == 0)
     }
 
@@ -169,7 +172,7 @@ struct SystemHealthAuditorTests {
         let report = NetworkPrivacyAuditor.audit(
             rules: rules,
             installedApplications: [],
-            fileExists: { _ in false }
+            fileExists: { _ in true }
         )
 
         let outcome = MaintenanceRunner().networkPrivacyOutcome(for: report)
@@ -178,8 +181,8 @@ struct SystemHealthAuditorTests {
             Issue.record("Expected attention, got \(outcome)")
             return
         }
-        #expect(detail?.contains("2 issues") == true)
-        #expect(detail?.contains("guided repair") == true)
+        #expect(detail?.contains("1 issue") == true)
+        #expect(detail?.contains("guided repair") == false)
     }
 
     @Test("guided repair preparation copies files and writes checksums and Recovery instructions")
