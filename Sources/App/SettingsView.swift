@@ -32,7 +32,13 @@ struct SettingsView: View {
                 case .advanced: AdvancedSettings()
                 }
             }.frame(maxHeight: .infinity)
-        }.frame(width: 600).frame(minHeight: 520, idealHeight: 640, maxHeight: 720).careScreen()
+        }
+        // Settings has its own typography and controls. In particular, it
+        // must not inherit the menu-bar footer's caption/plain-button style.
+        .font(.body).controlSize(.regular).buttonStyle(.bordered)
+        .careScreen()
+        .frame(width: 600).frame(minHeight: 520, idealHeight: 640, maxHeight: 720)
+        .background(SettingsWindowReader { SettingsPresentation.shared.register($0) })
     }
 }
 

@@ -121,7 +121,7 @@ struct HUDView: View {
                     HStack { Text("Open myKikau"); Spacer(); Image(systemName: "arrow.up.right") }
                 }.carePrimaryAction()
                 HStack {
-                    SettingsLink { Label("Settings", systemImage: "gearshape") }
+                    AppSettingsButton(dismissesSourceWindow: true) { Label("Settings", systemImage: "gearshape") }
                     Spacer()
                     // Escape dismisses the popover; it never quits the app.
                     Button("Quit myKikau") { NSApp.terminate(nil) }
