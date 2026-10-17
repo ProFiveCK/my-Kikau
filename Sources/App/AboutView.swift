@@ -2,6 +2,7 @@ import AppKit
 import Core
 import Features
 import SwiftUI
+import UI
 
 /// Replaces the old "History" sidebar destination — a raw operation log
 /// wasn't a useful screen of its own. This shows what an About screen
@@ -37,11 +38,9 @@ struct AboutView: View {
         ScrollView {
             VStack(spacing: 20) {
                 VStack(spacing: 10) {
-                    Image(nsImage: NSApplication.shared.applicationIconImage)
-                        .resizable()
-                        .frame(width: 96, height: 96)
+                    AppBrandIcon(size: 88)
                     Text("myKikau")
-                        .font(.title.bold())
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
                     Text("Version \(shortVersion) (\(buildNumber))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -51,11 +50,15 @@ struct AboutView: View {
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 360)
                 }
-                .padding(.top, 24)
+                .padding(28).frame(maxWidth: .infinity)
+                .background(
+                    LinearGradient(colors: [CareTheme.lilac, CareTheme.pink], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 22)
+                )
 
                 HStack(spacing: 12) {
                     Button {
-                        if let url = URL(string: "https://www.projectfive.co.ck/apps/mykikau/") {
+                        if let url = URL(string: "https://www.projectfive.co.ck/apps/") {
                             NSWorkspace.shared.open(url)
                         }
                     } label: {
@@ -68,7 +71,7 @@ struct AboutView: View {
                     } label: {
                         Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .carePrimaryAction()
                     .disabled(!updaterViewModel.canCheckForUpdates)
 
                     Button {
@@ -126,10 +129,11 @@ struct AboutView: View {
                     .foregroundStyle(.tertiary)
                     .padding(.bottom, 24)
             }
-            .padding(.horizontal, 32)
-            .frame(maxWidth: 480)
+            .padding(22)
+            .frame(maxWidth: 740)
             .frame(maxWidth: .infinity)
         }
+        .careScreen()
         .onAppear {
             Task {
                 let totals = await Task.detached { OperationLog.shared.totals() }.value
@@ -152,7 +156,7 @@ private struct InfoCard<Content: View>: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        .cardSurface(radius: 16)
     }
 }
 

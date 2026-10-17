@@ -20,15 +20,24 @@ struct CleanupRecoverySheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Restore files from this cleanup").font(.title2.bold())
-            Text(session.date.formatted(date: .complete, time: .shortened)).font(.subheadline).foregroundStyle(.secondary)
-            Text("Choose the exact files to put back. Existing files are never replaced. This restores files only; it does not undo settings or restart removed app services.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                AppBrandIcon(size: 40)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Restore files").font(.system(size: 24, weight: .bold, design: .rounded))
+                    Text(session.date.formatted(date: .complete, time: .shortened)).font(.caption).foregroundStyle(CareTheme.secondaryInk)
+                }
+            }
+            Text(
+                "Choose the exact files to put back. Existing files are never replaced. This restores files only; it does not undo settings or restart removed app services."
+            )
+            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if loading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let results {
-                Text("\(results.filter(\.restored).count) restored · \(results.filter { !$0.restored }.count) couldn’t be restored · \(max(0, chosen.count - results.count)) not attempted")
-                    .font(.headline)
+                Text(
+                    "\(results.filter(\.restored).count) restored · \(results.filter { !$0.restored }.count) couldn’t be restored · \(max(0, chosen.count - results.count)) not attempted"
+                )
+                .font(.headline)
                 List(results) { result in
                     VStack(alignment: .leading, spacing: 4) {
                         Label(result.message, systemImage: result.restored ? "checkmark.circle" : "exclamationmark.triangle")
@@ -61,8 +70,10 @@ struct CleanupRecoverySheet: View {
                     }.padding(.vertical, 5)
                 }
             }
-            Text("Recovery uses retained local history and files still in the Trash. Emptying the Trash or clearing history removes this recovery option.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Recovery uses retained local history and files still in the Trash. Emptying the Trash or clearing history removes this recovery option."
+            )
+            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack {
                 if running {
                     ProgressView().controlSize(.small); Text("Restoring files…").font(.caption)
@@ -76,7 +87,7 @@ struct CleanupRecoverySheet: View {
                         Button { restore() } label: {
                             Text("Restore \(chosen.count) \(chosen.count == 1 ? "File" : "Files")").foregroundStyle(CareTheme.onAccent)
                         }
-                        .buttonStyle(.borderedProminent).disabled(chosen.isEmpty || loading || work.isBusy)
+                        .carePrimaryAction().disabled(chosen.isEmpty || loading || work.isBusy)
                     }
                 }
             }

@@ -20,6 +20,7 @@ final class AppNavigation: ObservableObject {
 
     @Published var pendingSelection: ContentView.SidebarItem?
     @Published var pendingDuplicatesMode: DuplicatesMode?
+    @Published var pendingTrashReview = false
     @Published var pendingProcessMode: ProcessMonitor.SortMode?
 
     private init() {}

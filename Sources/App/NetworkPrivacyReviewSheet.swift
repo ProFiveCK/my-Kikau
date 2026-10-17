@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UI
 import Features
 
 /// Reviews privacy observations without treating a saved denial or old app
@@ -122,12 +123,14 @@ struct NetworkPrivacyReviewSheet: View {
                 .disabled(isInspecting)
                 Spacer()
                 Button("Done") { dismiss() }
+                    .carePrimaryAction()
                     .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
         .frame(width: 620)
         .frame(minHeight: 360)
+        .background(CareTheme.background).foregroundStyle(CareTheme.ink).tint(CareTheme.accent)
         .task { await inspect() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -175,7 +178,7 @@ struct NetworkPrivacyReviewSheet: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .cardSurface(radius: 13)
     }
 
     private func setIgnored(_ ignored: Bool, finding: NetworkPrivacyAuditor.Finding) {

@@ -35,7 +35,7 @@ struct StartupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeader("Startup Items", subtitle: subtitle, systemImage: ContentView.SidebarItem.startup.icon, tint: tint) {
+            ScreenHeader("Startup", subtitle: subtitle, systemImage: ContentView.SidebarItem.startup.icon, tint: tint) {
                 Button("Login Items Settings…") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
                         NSWorkspace.shared.open(url)
@@ -44,17 +44,22 @@ struct StartupView: View {
                 .help("Apps that open at login, and apps allowed to run in the background, are managed in System Settings")
                 Button(items == nil ? "Scan" : "Refresh") { load() }
                     .keyboardShortcut("r", modifiers: .command)
-                    .buttonStyle(.borderedProminent)
+                    .carePrimaryAction()
                     .tint(tint)
                     .disabled(activity.isBusy)
             }
 
+            if let items, !items.isEmpty {
+                CareSummary([("For you", items.filter { $0.scope == .user }.count.formatted()),
+                             ("All users", items.filter { $0.scope == .systemAgent }.count.formatted()),
+                             ("System", items.filter { $0.scope == .systemDaemon }.count.formatted())])
+            }
             if let coverage = coordinator.coverage[.startup] {
                 ScanCoverageView(coverage).padding(.horizontal).padding(.bottom, 8)
             }
             if let items {
                 if items.isEmpty {
-                    ContentUnavailableView(
+                    CareEmptyState(
                         "No Background Items",
                         systemImage: "checkmark.circle",
                         description: Text("No launch agents or daemons are installed.")
@@ -82,7 +87,7 @@ struct StartupView: View {
                                 }
                             }
                         }
-                    }
+                    }.careResults()
 
                     HStack {
                         let selected = items.filter { selection.contains($0.id) && $0.isRemovable }
@@ -104,7 +109,7 @@ struct StartupView: View {
                                 action: "startup"
                             )
                         }
-                        .buttonStyle(.borderedProminent)
+                        .carePrimaryAction()
                         .tint(tint)
                         .disabled(selected.isEmpty)
                     }
@@ -114,17 +119,14 @@ struct StartupView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ContentUnavailableView {
-                    Label("Not Scanned Yet", systemImage: "power")
-                } description: {
-                    Text("See which helpers and updaters are set to start in the background, and remove the ones you don't need.")
-                } actions: {
-                    Button("Scan") { load() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(tint)
+                CareEmptyState("A clearer start for your Mac.", systemImage: "power", description: Text(
+                    "Review the helpers and updaters that start in the background, and choose which ones you still need."
+                )) {
+                    Button("Scan Startup Items") { load() }.carePrimaryAction().disabled(activity.isBusy)
                 }
             }
         }
+        .careScreen()
         .sheet(item: $review) { request in
             PlanReviewView(
                 plan: request.plan,

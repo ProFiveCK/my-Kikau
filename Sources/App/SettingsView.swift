@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UI
 import Core
 import Features
 
@@ -9,18 +10,29 @@ import Features
 /// Anything an administrator has set through a configuration profile
 /// (`ManagedPolicy`) is shown as it is enforced, with its control disabled.
 struct SettingsView: View {
-    var body: some View {
-        TabView {
-            GeneralSettings()
-                .tabItem { Label("General", systemImage: "gearshape") }
-            SafetySettings()
-                .tabItem { Label("Safety", systemImage: "lock.shield") }
-            FilesSettings()
-                .tabItem { Label("Files", systemImage: "doc.on.doc") }
-            AdvancedSettings()
-                .tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
+    private enum Section: String, CaseIterable, Identifiable {
+        case general = "General", safety = "Safety", files = "Files", advanced = "Advanced"
+        var id: Self {
+            self
         }
-        .frame(width: 520)
+    }
+
+    @State private var section: Section = .general
+    var body: some View {
+        VStack(spacing: 0) {
+            CareWindowHeader("Settings", subtitle: "Make myKikau work your way") { EmptyView() }
+            Picker("Settings section", selection: $section) {
+                ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 22).padding(.bottom, 14)
+            Group {
+                switch section {
+                case .general: GeneralSettings()
+                case .safety: SafetySettings()
+                case .files: FilesSettings()
+                case .advanced: AdvancedSettings()
+                }
+            }.frame(maxHeight: .infinity)
+        }.frame(width: 600).frame(minHeight: 520, idealHeight: 640, maxHeight: 720).careScreen()
     }
 }
 
@@ -91,7 +103,6 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
         .onAppear { launchAtLogin = LaunchAtLoginService.isEnabled }
         .onChange(of: scanIntervalHours) { _, hours in
             if hours > 0 {
@@ -198,7 +209,6 @@ private struct SafetySettings: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func addExclusions() {
@@ -267,7 +277,6 @@ private struct FilesSettings: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func addFolders() {
@@ -303,9 +312,11 @@ private struct AdvancedSettings: View {
             Section {
                 Toggle("Developer tools", isOn: $developerTools)
                     .disabled(policy.isFeatureDisabled("purge"))
-                Text("Adds Project Purge to the sidebar: finds node_modules, build output and virtual environments in your project folders.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Adds Project Purge to the sidebar: finds node_modules, build output and virtual environments in your project folders."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 if policy.isFeatureDisabled("purge") {
                     ManagedNote()
                 }
@@ -382,7 +393,6 @@ private struct AdvancedSettings: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // Coming back from System Settings after approving the helper.
             helperStatus = PrivilegedHelperClient.status

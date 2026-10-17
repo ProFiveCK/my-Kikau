@@ -4,475 +4,282 @@ import Core
 import Features
 import UI
 
-/// Menu bar HUD showing live system metrics plus a couple of one-tap actions.
+/// A compact companion to Care hub. File removal always opens the main
+/// window's exact-item review; the popover itself never deletes files.
 struct HUDView: View {
     @Environment(\.openWindow) private var openWindow
-    @ObservedObject private var metricsService = MetricsService.shared
-    @State private var trashStatus: String?
-    @State private var freeingMemory = false
-    @State private var memoryStatus: String?
+    @ObservedObject private var metrics = MetricsService.shared
+    @ObservedObject private var work = WorkCoordinator.shared
     @State private var netInfo: NetworkInfo?
     @State private var copiedIP = false
+    @State private var memoryStatus: String?
+    @State private var freeingMemory = false
     private let canPurgeMemory = MemoryOptimizer.isPurgeAvailable()
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let snap = metricsService.snapshot {
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("myKikau")
-                            .font(.system(size: 15, weight: .semibold))
-                        Text("Mac Health: \(healthBand(snap).word)")
-                            .font(.caption)
-                            // The branded light teal works on the dashboard's
-                            // dark hero card but washes out on this system
-                            // popover in Light Mode. Keep teal on the icon and
-                            // use macOS's adaptive high-contrast text color here.
-                            .foregroundStyle(.primary)
-                        Text(statusDetail(for: snap))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Image(systemName: healthBand(snap).symbol)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(healthBand(snap).color)
-                        .frame(width: 34, height: 34)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(healthBand(snap).color.opacity(0.13))
-                        )
-                }
-                .padding(10)
-                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
-
-                // CPU/Memory/Disk are each a shortcut into exactly the view
-                // that answers "why" — Top CPU/Memory Processes or the Disk
-                // Analyser — instead of just being numbers you can only look
-                // at. GPU has no equivalent drill-down anywhere in the app,
-                // so it deliberately stays a plain, non-tappable row rather
-                // than faking an affordance that goes nowhere.
-                VStack(spacing: 8) {
-                    MetricRow(label: "CPU", value: "\(Int(snap.cpu.usage))%", percent: snap.cpu.usage, color: .blue) {
-                        openProcessList(mode: .cpu)
-                    }
-                    MetricRow(
-                        label: "Memory",
-                        value: "\(ByteSizeFormatter.format(Int64(snap.memory.available))) free",
-                        percent: snap.memory.usedPercent,
-                        color: SizeBar.color(for: snap.memory.usedPercent)
-                    ) {
-                        openProcessList(mode: .memory)
-                    }
-                    if let disk = snap.disks.first {
-                        MetricRow(
-                            label: "Disk",
-                            value: "\(ByteSizeFormatter.format(Int64(disk.total - disk.used))) free",
-                            percent: disk.usedPercent,
-                            color: SizeBar.color(for: disk.usedPercent)
-                        ) {
-                            AppNavigation.shared.pendingSelection = .analyze
-                            openMainWindow()
-                        }
-                    }
-                    if let gpu = snap.gpu.first, gpu.usage >= 0 {
-                        MetricRow(label: "GPU", value: "\(Int(gpu.usage))%", percent: gpu.usage, color: .purple)
-                    }
-                }
-
-                if let battery = snap.batteries.first {
-                    HStack {
-                        Text("Battery")
-                            .font(.caption)
-                        Spacer()
-                        Text("\(Int(battery.percent))%")
-                            .font(.caption)
-                            .monospacedDigit()
-                    }
-                }
-
-                if let net = netInfo {
-                    networkRow(net)
-                }
-
-                Divider()
-                HStack {
-                    Label(HealthScore.formatUptime(snap.uptimeSeconds), systemImage: "clock")
-                    Spacer()
-                    Text(snap.host)
-                        .lineLimit(1)
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            } else {
-                ProgressView("Collecting metrics...")
-                    .frame(maxWidth: .infinity, minHeight: 100)
-            }
-
-            QuickActionsGrid(
-                canPurgeMemory: canPurgeMemory,
-                memoryActionTitle: memoryActionTitle,
-                freeingMemory: freeingMemory,
-                memoryStatus: memoryStatus,
-                trashStatus: trashStatus,
-                openDashboard: {
-                    AppNavigation.shared.pendingSelection = .status
-                    openMainWindow()
-                },
-                openClean: {
-                    AppNavigation.shared.pendingSelection = .clean
-                    openMainWindow()
-                },
-                openOptimise: {
-                    AppNavigation.shared.pendingSelection = .optimize
-                    openMainWindow()
-                },
-                freeMemory: freeInactiveMemory,
-                emptyTrash: emptyTrash
-            )
-
-            Divider()
-
-            // No keyboard shortcut here deliberately: `.cancelAction` binds to
-            // Escape, and Escape is exactly the key someone reaches for to
-            // dismiss this popover — binding it to Quit instead would mean a
-            // reflex dismiss-tap quits the whole app. Cmd+Q still works
-            // app-wide via the standard app menu; clicking this button always
-            // works regardless.
-            Button {
-                NSApplication.shared.terminate(nil)
-            } label: {
-                Label("Quit myKikau", systemImage: "power")
-            }
-        }
-        .padding()
-        .frame(width: 306)
-        .onAppear {
-            metricsService.subscribe()
-            netInfo = NetworkInfo.collect()
-            copiedIP = false
-        }
-        .onDisappear { metricsService.unsubscribe() }
+    private var popoverHeight: CGFloat {
+        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        return min(660, max(380, (screen?.visibleFrame.height ?? 760) - 28))
     }
 
-    /// Connection + local IP, tappable to open the full Network screen, with a
-    /// one-tap copy for the IP address itself (a frequent "what's my IP" reach).
-    private func networkRow(_ net: NetworkInfo) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                AppNavigation.shared.pendingSelection = .network
-                openMainWindow()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: networkSymbol(net))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(net.shortLabel)
-                            .font(.caption)
-                            .lineLimit(1)
-                        Text(net.localIPv4 ?? "No IP address")
-                            .font(.caption2)
-                            .monospaced()
-                            .foregroundStyle(.secondary)
+    var body: some View {
+        VStack(spacing: 0) {
+            Button { navigate(.status) } label: {
+                HStack(spacing: 11) {
+                    AppBrandIcon(size: 36)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("myKikau").font(.system(size: 20, weight: .bold, design: .rounded)).tracking(-0.6)
+                        Text("Your Mac, at a glance").font(.caption).foregroundStyle(CareTheme.secondaryInk)
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(CareTheme.accent)
+                }.padding(14).contentShape(Rectangle())
+            }.buttonStyle(.plain).help("Open Care hub")
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let snapshot = metrics.snapshot {
+                        status(snapshot)
+                        VStack(spacing: 10) {
+                            HUDMetric(
+                                label: "CPU",
+                                value: "\(Int(snapshot.cpu.usage))% in use",
+                                percent: snapshot.cpu.usage,
+                                tint: CareTheme.blue
+                            ) {
+                                openProcesses(.cpu)
+                            }
+                            HUDMetric(
+                                label: "Memory",
+                                value: "\(ByteSizeFormatter.format(Int64(snapshot.memory.available))) available",
+                                percent: snapshot.memory.usedPercent,
+                                tint: CareTheme.teal
+                            ) { openProcesses(.memory) }
+                            if let disk = snapshot.disks.first {
+                                HUDMetric(
+                                    label: "Storage",
+                                    value: "\(ByteSizeFormatter.format(Int64(disk.total - disk.used))) available",
+                                    percent: disk.usedPercent,
+                                    tint: CareTheme.accent
+                                ) { navigate(.analyze) }
+                                    .disabled(ManagedPolicy.shared.isFeatureDisabled("analyze"))
+                            }
+                            HStack {
+                                if let gpu = snapshot.gpu.first, gpu.usage >= 0 {
+                                    Label("GPU \(Int(gpu.usage))%", systemImage: "rectangle.3.group")
+                                }
+                                Spacer()
+                                if let battery = snapshot.batteries.first {
+                                    Label(
+                                        "\(Int(battery.percent))%",
+                                        systemImage: battery.status == "Discharging" ? "battery.75" : "battery.100.bolt"
+                                    )
+                                }
+                            }.font(.caption2).foregroundStyle(CareTheme.secondaryInk)
+                        }.padding(12).cardSurface(radius: 16)
+                    } else {
+                        ProgressView("Reading live activity…").font(.caption)
+                            .frame(maxWidth: .infinity, minHeight: 110).cardSurface()
+                    }
+                    if let netInfo {
+                        network(netInfo)
+                    }
+                    if let activity = work.activity {
+                        HStack(spacing: 10) {
+                            ProgressView().controlSize(.small)
+                            Text(activity.title).font(.caption).lineLimit(2)
+                            Spacer(minLength: 0)
+                            if work.canCancel {
+                                Button("Cancel", action: work.cancel).controlSize(.small)
+                            }
+                        }.padding(12).cardSurface(radius: 13)
+                    }
+                    shortcuts
+                    if canPurgeMemory {
+                        Button {
+                            freeInactiveMemory()
+                        } label: {
+                            Label(freeingMemory ? "Freeing inactive memory…" : "Free inactive memory", systemImage: "memorychip")
+                                .font(.caption)
+                        }.buttonStyle(.plain).foregroundStyle(CareTheme.accent)
+                            .disabled(work.isBusy || freeingMemory)
+                            .help("Ask macOS to release inactive file cache. An administrator password may be required.")
+                    }
+                    if let memoryStatus {
+                        Text(memoryStatus).font(.caption).foregroundStyle(CareTheme.secondaryInk)
+                    }
+                    if let snapshot = metrics.snapshot {
+                        HStack {
+                            Label(HealthScore.formatUptime(snapshot.uptimeSeconds), systemImage: "clock")
+                            Spacer()
+                            Text(snapshot.host).lineLimit(1)
+                        }.font(.caption2).foregroundStyle(CareTheme.secondaryInk)
+                    }
+                }.padding(.horizontal, 16).padding(.bottom, 14)
+            }
+            VStack(spacing: 12) {
+                Button { navigate(.status) } label: {
+                    HStack { Text("Open myKikau"); Spacer(); Image(systemName: "arrow.up.right") }
+                }.carePrimaryAction()
+                HStack {
+                    SettingsLink { Label("Settings", systemImage: "gearshape") }
+                    Spacer()
+                    // Escape dismisses the popover; it never quits the app.
+                    Button("Quit myKikau") { NSApp.terminate(nil) }
+                }.buttonStyle(.plain).font(.caption).foregroundStyle(CareTheme.secondaryInk)
+            }.padding(16).background(CareTheme.panel)
+        }
+        .frame(width: 340, height: popoverHeight)
+        .foregroundStyle(CareTheme.ink).background(CareTheme.background).tint(CareTheme.accent)
+        .task {
+            metrics.subscribe()
+            copiedIP = false
+            let info = await Task.detached(priority: .utility) { NetworkInfo.collect() }.value
+            if !Task.isCancelled {
+                netInfo = info
+            }
+        }
+        .onDisappear { metrics.unsubscribe() }
+    }
+
+    private func status(_ snapshot: MetricsSnapshot) -> some View {
+        let band = HealthScore.band(for: snapshot.healthScore)
+        let parts = snapshot.healthScoreMsg.components(separatedBy: ": ")
+        let detail = parts.count > 1 ? parts.dropFirst().joined(separator: ": ") : band.explanation
+        return VStack(alignment: .leading, spacing: 7) {
+            Label(band.word, systemImage: band.symbol).font(.subheadline.weight(.semibold)).foregroundStyle(CareTheme.ink)
+            Text(detail).font(.caption).foregroundStyle(CareTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
+        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(CareTheme.lilac.opacity(0.55), in: RoundedRectangle(cornerRadius: 15))
+    }
+
+    private var shortcuts: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("A LITTLE CARE").font(.system(size: 9, weight: .bold)).tracking(1.4).foregroundStyle(CareTheme.secondaryInk)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                if !ManagedPolicy.shared.isFeatureDisabled("clean") {
+                    HUDShortcut("Clean up", detail: "Review everyday clutter", icon: "paintbrush.pointed", tint: CareTheme.accent) {
+                        navigate(.clean)
+                    }
+                }
+                if !ManagedPolicy.shared.isFeatureDisabled("uninstall") {
+                    HUDShortcut("Applications", detail: "Apps & leftovers", icon: "square.grid.2x2", tint: CareTheme.teal) {
+                        navigate(.uninstall)
+                    }
+                }
+                if !ManagedPolicy.shared.isFeatureDisabled("optimize") {
+                    HUDShortcut("System care", detail: "Checks & recommendations", icon: "wrench.and.screwdriver", tint: CareTheme.gold) {
+                        navigate(.optimize)
+                    }
+                }
+                if !ManagedPolicy.shared.isFeatureDisabled("clean") {
+                    HUDShortcut("Review Trash", detail: "Choose exact items first", icon: "trash", tint: CareTheme.rose) {
+                        AppNavigation.shared.pendingTrashReview = true
+                        navigate(.clean)
+                    }.disabled(work.isBusy)
+                }
+            }
+        }
+    }
+
+    private func network(_ info: NetworkInfo) -> some View {
+        HStack(spacing: 10) {
+            Button { navigate(.network) } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: info.isOnline ? "network" : "network.slash").foregroundStyle(CareTheme.accent)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(info.shortLabel).font(.caption.weight(.medium)).lineLimit(1)
+                        Text(info.localIPv4 ?? "No local IP address").font(.caption2).monospaced().foregroundStyle(CareTheme.secondaryInk)
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if let ip = net.localIPv4 {
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).disabled(ManagedPolicy.shared.isFeatureDisabled("network"))
+            if let ip = info.localIPv4 {
                 Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(ip, forType: .string)
-                    copiedIP = true
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(ip, forType: .string); copiedIP = true
                 } label: {
-                    Image(systemName: copiedIP ? "checkmark" : "doc.on.doc")
-                        .font(.caption2)
-                        .foregroundStyle(copiedIP ? .green : .secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Copy IP address")
+                    Image(systemName: copiedIP ? "checkmark" : "doc.on.doc").font(.caption)
+                }.buttonStyle(.borderless).help(copiedIP ? "IP address copied" : "Copy local IP address")
+                    .accessibilityLabel(copiedIP ? "IP address copied" : "Copy local IP address")
             }
-        }
+        }.padding(12).cardSurface(radius: 13)
     }
 
-    private func networkSymbol(_ net: NetworkInfo) -> String {
-        switch net.connectionName {
-        case "Wi-Fi": "wifi"
-        case "Ethernet": "cable.connector"
-        default: "network.slash"
-        }
-    }
-
-    /// `openWindow(id:)` already brings the singleton "main" `Window` scene
-    /// forward and makes it key — that's its whole job. This used to also
-    /// walk every `NSApplication.shared.windows` entry and force each one
-    /// `canBecomeMain || canBecomeKey` to the front, which was a blunt
-    /// workaround from before "main" was a singleton scene. The bug it left
-    /// behind: AppKit keeps a SwiftUI `Settings` scene's `NSWindow` alive in
-    /// `NSApp.windows` for the app's whole lifetime once it's been opened
-    /// even once (so ⌘, can reopen it instantly) — closed or not, it's still
-    /// in that array and `canBecomeKey`, so the old loop surfaced it right
-    /// alongside the dashboard on every single "Dashboard" click after that
-    /// point. `activate(ignoringOtherApps:)` is still needed here (this app
-    /// runs `.accessory` by default with no Dock icon, so without it the
-    /// window can open behind whatever app currently has focus).
-    private func openMainWindow() {
+    private func navigate(_ destination: ContentView.SidebarItem) {
+        AppNavigation.shared.pendingSelection = destination
         openWindow(id: "main")
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        NSApplication.shared.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.unhide(nil)
     }
 
-    private func openProcessList(mode: ProcessMonitor.SortMode) {
-        AppNavigation.shared.pendingSelection = .status
+    private func openProcesses(_ mode: ProcessMonitor.SortMode) {
+        guard !DeletionActivity.shared.isRunning else { navigate(.status); return }
         AppNavigation.shared.pendingProcessMode = mode
-        openMainWindow()
-    }
-
-    private func emptyTrash() {
-        let trashURL = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
-        guard let items = try? FileManager.default.contentsOfDirectory(
-            at: trashURL, includingPropertiesForKeys: nil, options: []
-        ).filter({ $0.lastPathComponent != ".DS_Store" }), !items.isEmpty else {
-            trashStatus = "Trash is already empty"
-            return
-        }
-
-        let plan = SafeFileDeleter.shared.preview(items, category: .trash)
-        guard !plan.items.isEmpty else {
-            trashStatus = "Nothing removable in Trash"
-            return
-        }
-
-        let alert = NSAlert()
-        alert.messageText = "Empty Trash?"
-        alert.informativeText = "\(plan.items.count) item(s), \(ByteSizeFormatter.format(plan.totalReclaimable)). This can't be undone."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Empty Trash")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        guard let lease = WorkCoordinator.shared.begin("Emptying Trash", kind: .deletion) else {
-            trashStatus = "Finish or cancel the current task first"
-            return
-        }
-        trashStatus = "Emptying Trash…"
-        Task {
-            defer { WorkCoordinator.shared.finish(lease) }
-            // Off the main thread: a full Trash can take a while to delete.
-            let result = await SafeFileDeleter.shared.executeAsync(
-                plan, mode: .permanent, dryRun: false, action: "menubar.emptyTrash"
-            )
-            trashStatus = result.failed > 0
-                ? "Deleted \(ByteSizeFormatter.format(result.freedBytes)) — \(result.failed) item(s) couldn't be deleted"
-                : "Deleted \(ByteSizeFormatter.format(result.freedBytes))"
-            ScanEverythingCoordinator.shared.removeCleanItems(ids: result.removedIDs)
-            if !result.removedIDs.isEmpty {
-                AnalyzeScanSession.shared.markStale()
-            }
-        }
+        navigate(.status)
     }
 
     private func freeInactiveMemory() {
-        // The card that calls this is only rendered when `canPurgeMemory` is
-        // true (otherwise the grid shows an "Optimise" shortcut instead), so
-        // there's no "View Memory Users" fallback here anymore — that just
-        // duplicated the tappable Memory metric row above.
-        guard !freeingMemory, canPurgeMemory else { return }
-        freeingMemory = true
-        memoryStatus = nil
+        guard !freeingMemory, let lease = work.begin("Releasing inactive file cache", kind: .maintenance) else { return }
+        freeingMemory = true; memoryStatus = nil
         Task {
-            let result = await MemoryOptimizer.freeInactiveMemory()
-            await MainActor.run {
-                freeingMemory = false
-                memoryStatus = result.message
-            }
-        }
-    }
-
-    private var memoryActionTitle: String {
-        freeingMemory ? "Freeing Memory..." : "Free Inactive Memory"
-    }
-
-    /// The one canonical band definition in `HealthScore` — also used by the
-    /// dashboard's hero card, so the menu bar and the main window can't
-    /// disagree on what a given score means. This used to be three separate
-    /// hand-rolled `switch`es here (word bands at 90/75/60, color/symbol
-    /// bands at 85/65/45) that didn't line up with each other, so a score in
-    /// the high 70s/low 80s could show "Good" rendered in cautionary yellow.
-    private func healthBand(_ snapshot: MetricsSnapshot) -> HealthScore.Band {
-        HealthScore.band(for: snapshot.healthScore)
-    }
-
-    /// Everything after the first ":" in e.g. "Fair: High CPU, Heavy Disk IO",
-    /// falling back to the band's own explanation when there's no itemized
-    /// issue (matches `StatusView`'s `issuesDetail` fallback behavior).
-    private func statusDetail(for snapshot: MetricsSnapshot) -> String {
-        let parts = snapshot.healthScoreMsg.components(separatedBy: ": ")
-        guard parts.count > 1 else { return healthBand(snapshot).explanation }
-        return parts.dropFirst().joined(separator: ": ")
-    }
-}
-
-private struct QuickActionsGrid: View {
-    let canPurgeMemory: Bool
-    let memoryActionTitle: String
-    let freeingMemory: Bool
-    let memoryStatus: String?
-    let trashStatus: String?
-    let openDashboard: () -> Void
-    let openClean: () -> Void
-    let openOptimise: () -> Void
-    let freeMemory: () -> Void
-    let emptyTrash: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Quick Actions")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                HUDActionCard(
-                    title: "Dashboard",
-                    subtitle: "Open status",
-                    systemImage: "gauge.with.dots.needle.50percent",
-                    tint: .accentColor,
-                    action: openDashboard
-                )
-                HUDActionCard(
-                    title: "Clean",
-                    subtitle: "Review junk",
-                    systemImage: "internaldrive",
-                    tint: .blue,
-                    action: openClean
-                )
-                // "See what's using memory" is already the tappable Memory
-                // metric row above, so this slot is only a memory control when
-                // it can do something that row can't — actually purge inactive
-                // file cache. Where `purge` isn't available, show the Optimise
-                // shortcut instead rather than a second link to the same
-                // process list.
-                if canPurgeMemory {
-                    HUDActionCard(
-                        title: memoryActionTitle,
-                        subtitle: memoryStatus ?? "Purge inactive file cache",
-                        systemImage: "memorychip",
-                        tint: .teal,
-                        disabled: freeingMemory,
-                        action: freeMemory
-                    )
-                } else {
-                    HUDActionCard(
-                        title: "Optimise",
-                        subtitle: "Run maintenance",
-                        systemImage: "wrench.and.screwdriver",
-                        tint: .orange,
-                        action: openOptimise
-                    )
-                }
-                HUDActionCard(
-                    title: "Empty Trash",
-                    subtitle: trashStatus ?? "Confirm first",
-                    systemImage: "trash",
-                    tint: .red,
-                    action: emptyTrash
-                )
-            }
+            defer { work.finish(lease); freeingMemory = false }
+            memoryStatus = await MemoryOptimizer.freeInactiveMemory().message
         }
     }
 }
 
-private struct HUDActionCard: View {
+private struct HUDShortcut: View {
     let title: String
-    let subtitle: String
-    let systemImage: String
+    let detail: String
+    let icon: String
     let tint: Color
-    var disabled = false
     let action: () -> Void
+    @Environment(\.isEnabled) private var enabled
+    init(_ title: String, detail: String, icon: String, tint: Color, action: @escaping () -> Void) {
+        self.title = title; self.detail = detail; self.icon = icon; self.tint = tint; self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(tint)
-                        .frame(width: 24, height: 24)
-                        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-                    Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon).font(.system(size: 13, weight: .medium)).foregroundStyle(tint)
+                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(CareTheme.ink)
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(9)
-            .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(.separator.opacity(0.35), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .opacity(disabled ? 0.6 : 1)
+                Text(detail).font(.system(size: 10)).foregroundStyle(CareTheme.secondaryInk).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.padding(10).frame(maxWidth: .infinity, minHeight: 65, alignment: .topLeading).cardSurface(radius: 13)
+                .opacity(enabled ? 1 : 0.5).contentShape(RoundedRectangle(cornerRadius: 13))
+        }.buttonStyle(.plain)
     }
 }
 
-private struct MetricRow: View {
+private struct HUDMetric: View {
     let label: String
     let value: String
     let percent: Double
-    let color: Color
+    let tint: Color
     var action: (() -> Void)?
-
     var body: some View {
-        Group {
-            if let action {
-                Button(action: action) { rowContent(showsChevron: true) }
-                    .buttonStyle(.plain)
-            } else {
-                rowContent(showsChevron: false)
-            }
+        if let action {
+            Button(action: action) { content }.buttonStyle(.plain)
+        } else {
+            content
         }
-        .contentShape(Rectangle())
     }
 
-    private func rowContent(showsChevron: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private var content: some View {
+        VStack(spacing: 6) {
             HStack {
-                Text(label).font(.caption)
+                Text(label).font(.caption.weight(.medium))
                 Spacer()
-                Text(value)
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.primary)
-                if showsChevron {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                Text(value).font(.caption).monospacedDigit().foregroundStyle(CareTheme.secondaryInk)
+                if action !=
+                    nil
+                {
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold)).foregroundStyle(CareTheme.secondaryInk)
                 }
             }
-            SizeBar(percent: percent, color: color)
-        }
+            SizeBar(percent: percent, color: tint)
+        }.contentShape(Rectangle())
     }
 }

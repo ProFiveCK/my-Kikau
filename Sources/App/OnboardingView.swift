@@ -1,6 +1,7 @@
 import AppKit
 import Core
 import SwiftUI
+import UI
 
 /// First-launch screen: explains why myKikau needs Full Disk Access and links
 /// straight to the System Settings pane to grant it.
@@ -15,12 +16,10 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "checkmark.shield")
-                .font(.system(size: 44))
-                .foregroundStyle(Color.accentColor)
+            AppBrandIcon(size: 88)
 
             Text("Welcome to myKikau")
-                .font(.title.bold())
+                .font(.system(size: 32, weight: .bold, design: .rounded))
 
             Text("""
             myKikau cleans caches, uninstalls apps along with their leftovers, and \
@@ -43,7 +42,7 @@ struct OnboardingView: View {
                 Button("Open System Settings…") {
                     openFullDiskAccessSettings()
                 }
-                .buttonStyle(.borderedProminent)
+                .carePrimaryAction()
 
                 Button(hasFullDiskAccess ? "Continue" : "Skip for now") {
                     onContinue()
@@ -51,12 +50,13 @@ struct OnboardingView: View {
                 .buttonStyle(.bordered)
             }
 
-            Text("You can grant this later too — Status will show a reminder until it's on.")
+            Text("You can grant access later in System Settings. Scan coverage shows any locations that could not be checked.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .padding(40)
         .frame(minWidth: 520, minHeight: 420)
+        .careScreen()
         .onAppear { hasFullDiskAccess = FullDiskAccessCheck.probe() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // Re-probe when the user comes back from System Settings.

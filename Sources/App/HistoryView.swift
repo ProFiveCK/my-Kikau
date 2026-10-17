@@ -78,6 +78,11 @@ struct HistoryView: View {
                 .fixedSize()
             }
 
+            if !entries.isEmpty {
+                CareSummary([("Moved to Trash", ByteSizeFormatter.format(totals.trashedBytes)),
+                             ("Permanently removed", ByteSizeFormatter.format(totals.freedBytes)),
+                             ("Recent sessions", sessions.count.formatted())])
+            }
             if totals.legacyProcessedBytes > 0 {
                 Text("Earlier activity used a combined counter. Separate totals start with this update; the original log is retained.")
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal).padding(.bottom, 8)
@@ -95,7 +100,7 @@ struct HistoryView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if visible.isEmpty {
-                ContentUnavailableView(
+                CareEmptyState(
                     entries.isEmpty ? "No Activity Yet" : "Nothing Matches",
                     systemImage: "clock.arrow.circlepath",
                     description: Text(entries.isEmpty
@@ -111,8 +116,10 @@ struct HistoryView: View {
                                     Image(systemName: "arrow.uturn.backward.circle").foregroundStyle(tint)
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(HistoryRow.actionLabel(session.action)).fontWeight(.medium)
-                                        Text("\(session.date.formatted(date: .abbreviated, time: .shortened)) · \(session.entries.count) recorded items")
-                                            .font(.caption).foregroundStyle(.secondary)
+                                        Text(
+                                            "\(session.date.formatted(date: .abbreviated, time: .shortened)) · \(session.entries.count) recorded items"
+                                        )
+                                        .font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()
                                     Button("Review & Restore…") { recovery = session }.disabled(work.isBusy)
@@ -134,9 +141,10 @@ struct HistoryView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                }
+                }.careResults()
             }
         }
+        .careScreen()
         .task { await reload() }
         .sheet(item: $recovery) { session in CleanupRecoverySheet(session: session) { Task { await reload() } } }
         .onChange(of: work.isBusy) {
@@ -303,7 +311,7 @@ private struct HistoryRow: View {
             Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
                 .font(.caption)
                 .monospacedDigit()
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(CareTheme.secondaryInk)
                 .frame(width: 64, alignment: .trailing)
         }
         .help(entry.path.isEmpty ? (entry.detail ?? "") : entry.path)
