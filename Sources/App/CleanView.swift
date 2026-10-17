@@ -6,6 +6,9 @@ import UI
 struct CleanView: View {
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
     @ObservedObject private var model = CleanModel.shared
+    @State private var trashNotice: String?
+    @State private var preparingTrash = false
+    @State private var trashTask: Task<Void, Never>?
     @State private var review: ReviewRequest?
 
     @ObservedObject private var activity = WorkCoordinator.shared
@@ -26,7 +29,7 @@ struct CleanView: View {
         }
         guard coordinator.cleanPlans != nil else { return "Caches, logs, temporary files and the Trash" }
         return totalReclaimable > 0
-            ? "\(ByteSizeFormatter.format(totalReclaimable)) can be reclaimed"
+            ? "\(ByteSizeFormatter.format(totalReclaimable)) of cleanup candidates to review"
             :
             (coordinator.coverage[.clean]?
                 .isPartial == true ? "No candidates in checked locations · partial scan" : "Nothing to clean right now")
@@ -37,12 +40,20 @@ struct CleanView: View {
             ScreenHeader("Clean up", subtitle: subtitle, systemImage: ContentView.SidebarItem.clean.icon, tint: tint) {
                 if totalReclaimable > 0, !model.isScanning {
                     Button("Review All (\(ByteSizeFormatter.format(totalReclaimable)))") { reviewAll() }
-                        .buttonStyle(.borderedProminent)
+                        .carePrimaryAction()
                         .tint(tint)
                 }
                 scanButton
             }
 
+            if preparingTrash {
+                ScanProgressBar(
+                    "Preparing your Trash review",
+                    detail: "Reading the exact items. Nothing is being deleted.",
+                    onCancel: { trashTask?.cancel() }
+                )
+                .padding(.horizontal).padding(.bottom, 12)
+            }
             if model.isScanning {
                 ScanProgressBar(
                     "Measuring cleanable data",
@@ -53,27 +64,26 @@ struct CleanView: View {
                 .padding([.horizontal, .bottom])
             }
 
+            if coordinator.cleanPlans != nil, totalReclaimable > 0 {
+                CareSummary([("To review", ByteSizeFormatter.format(totalReclaimable)),
+                             ("Items", plans.values.reduce(0) { $0 + $1.items.count }.formatted()),
+                             ("Categories", plans.values.filter { !$0.items.isEmpty }.count.formatted())])
+            }
             if let coverage = coordinator.coverage[.clean] {
                 ScanCoverageView(coverage).padding(.horizontal).padding(.bottom, 8)
             }
             if coordinator.cleanPlans == nil {
                 if !model.isScanning {
-                    ContentUnavailableView {
-                        Label("No Scan Yet", systemImage: "internaldrive")
-                    } description: {
-                        Text(
-                            "Find caches, logs, temporary files and Trash contents that are safe to remove. Nothing is removed until you review it."
-                        )
-                    } actions: {
-                        Button("Scan") { model.scan() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(tint)
+                    CareEmptyState("Make a little room.", systemImage: "internaldrive", description: Text(
+                        "Find caches, logs, temporary files and Trash contents that are safe to remove. Nothing is removed until you review it."
+                    )) {
+                        Button("Scan") { model.scan() }.carePrimaryAction().disabled(activity.isBusy)
                     }
                 } else {
                     Spacer()
                 }
             } else if totalReclaimable == 0 {
-                ContentUnavailableView(
+                CareEmptyState(
                     coordinator.coverage[.clean]?.isPartial == true ? "No Cleanup Candidates in Checked Locations" : "Nothing to Clean",
                     systemImage: "checkmark.circle",
                     description: Text("No removable caches, logs or Trash contents were found.")
@@ -95,10 +105,24 @@ struct CleanView: View {
                             }
                         }
                     }
-                    .padding()
+                    .padding(.horizontal, 22).padding(.bottom, 22)
                 }
             }
         }
+        .careScreen()
+        .onDisappear { trashTask?.cancel() }
+        .onReceive(AppNavigation.shared.$pendingTrashReview) { requested in
+            guard requested else { return }
+            AppNavigation.shared.pendingTrashReview = false
+            prepareTrashReview()
+        }
+        .alert("Trash review", isPresented: Binding(get: { trashNotice != nil }, set: {
+            if !$0 {
+                trashNotice = nil
+            }
+        })) {
+            Button("OK", role: .cancel) { trashNotice = nil }
+        } message: { Text(trashNotice ?? "") }
         .sheet(item: $review) { request in
             PlanReviewView(
                 plan: request.plan,
@@ -126,7 +150,36 @@ struct CleanView: View {
         if totalReclaimable > 0 {
             button.buttonStyle(.bordered)
         } else {
-            button.buttonStyle(.borderedProminent)
+            button.carePrimaryAction()
+        }
+    }
+
+    private func prepareTrashReview() {
+        guard !preparingTrash, review == nil,
+              let lease = activity.begin("Preparing Trash review", cancel: { trashTask?.cancel() })
+        else {
+            trashNotice = "Finish or cancel the current task before reviewing the Trash."
+            return
+        }
+        preparingTrash = true
+        trashTask = Task {
+            defer { preparingTrash = false; trashTask = nil; activity.finish(lease) }
+            let read = Task.detached(priority: .userInitiated) { TrashReview.prepare() }
+            let prepared = await withTaskCancellationHandler { await read.value } onCancel: { read.cancel() }
+            guard !Task.isCancelled else { return }
+            if prepared.plan.items.isEmpty {
+                trashNotice = prepared.coverage.isPartial
+                    ? "The Trash could not be fully checked. Review its permissions in System Settings or open it in Finder."
+                    : "No removable items were found in the Trash."
+            } else {
+                review = ReviewRequest(
+                    plan: prepared.plan,
+                    title: "Review Trash",
+                    subtitle: "Choose the exact items to delete permanently. This cannot be undone."
+                        + (prepared.coverage.isPartial ? " Some locations could not be checked; only the listed items are included." : ""),
+                    action: "menubar.emptyTrash"
+                )
+            }
         }
     }
 
@@ -205,7 +258,7 @@ private struct CleanSectionCard: View {
                         .multilineTextAlignment(.leading)
                     Text(countText)
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(CareTheme.secondaryInk)
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption)

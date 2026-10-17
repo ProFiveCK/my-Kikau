@@ -1017,3 +1017,23 @@ struct SessionRecoverySafetyTests {
         #expect(CleanupRecovery.preview(session).first?.isAvailable == false)
     }
 }
+
+@Suite("Menu bar Trash review safety")
+struct MenuBarTrashReviewSafetyTests {
+    @Test("Preparing a menu bar Trash review lists exact Trash children and changes nothing")
+    func reviewIsReadOnlyAndScoped() throws {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let trashFile = home.appendingPathComponent(".Trash/old-download.txt")
+        let document = home.appendingPathComponent("Documents/keep.txt")
+        touch(trashFile)
+        touch(document)
+        let log = OperationLog(logURL: home.appendingPathComponent("operations.log"))
+        let review = TrashReview.prepare(home: home, deleter: SafeFileDeleter(opLog: log))
+        #expect(review.plan.items.map { $0.url.resolvingSymlinksInPath().path } == [trashFile.resolvingSymlinksInPath().path])
+        #expect(review.plan.items.allSatisfy { $0.category == .trash && $0.isPermanentRemoval })
+        #expect(FileManager.default.fileExists(atPath: trashFile.path))
+        #expect(FileManager.default.fileExists(atPath: document.path))
+        #expect(log.recent().isEmpty)
+    }
+}

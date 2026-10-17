@@ -37,11 +37,16 @@ struct PurgeView: View {
                     model.scan()
                 }
                 .keyboardShortcut("r", modifiers: .command)
-                .buttonStyle(.borderedProminent)
+                .carePrimaryAction()
                 .tint(tint)
                 .disabled(activity.isBusy)
             }
 
+            if !artifacts.isEmpty {
+                CareSummary([("Build folders", artifacts.count.formatted()),
+                             ("To review", ByteSizeFormatter.format(artifacts.reduce(0) { $0 + $1.sizeBytes })),
+                             ("Selected", selectedArtifacts.count.formatted())])
+            }
             if model.isScanning {
                 ScanProgressBar("Measuring build artifacts")
                     .padding([.horizontal, .bottom])
@@ -51,20 +56,14 @@ struct PurgeView: View {
                 if model.isScanning {
                     Spacer()
                 } else {
-                    ContentUnavailableView {
-                        Label("No Projects Scanned", systemImage: "hammer")
-                    } description: {
-                        Text(
-                            "Finds node_modules, build, target and similar folders. Projects you've worked on recently are flagged so you can leave them alone."
-                        )
-                    } actions: {
-                        Button("Scan Projects") { model.scan() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(tint)
+                    CareEmptyState("Room for your next build.", systemImage: "hammer", description: Text(
+                        "Review dependencies and build output that your tools can recreate. Recently used projects are flagged before you decide."
+                    )) {
+                        Button("Scan Projects") { model.scan() }.carePrimaryAction().disabled(activity.isBusy)
                     }
                 }
             } else if artifacts.isEmpty {
-                ContentUnavailableView(
+                CareEmptyState(
                     "Nothing to Purge",
                     systemImage: "checkmark.circle",
                     description: Text("No build artifacts were found in your project folders.")
@@ -81,7 +80,7 @@ struct PurgeView: View {
                             }
                         }
                     ))
-                }
+                }.careResults()
 
                 HStack {
                     let selected = artifacts.filter { selectedArtifacts.contains($0.id) }
@@ -102,13 +101,14 @@ struct PurgeView: View {
                             action: "purge"
                         )
                     }
-                    .buttonStyle(.borderedProminent)
+                    .carePrimaryAction()
                     .tint(tint)
                     .disabled(selected.isEmpty)
                 }
                 .padding()
             }
         }
+        .careScreen()
         .sheet(item: $review) { request in
             PlanReviewView(
                 plan: request.plan,

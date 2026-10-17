@@ -100,21 +100,12 @@ struct OptimizeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                Image(systemName: ContentView.SidebarItem.optimize.icon)
-                    .foregroundStyle(tint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("System care").font(.title2).bold()
-                    Text(headerSubtitle)
-                        .font(.caption)
-                        .foregroundStyle(scanState == .scanned && !recommendedTasks.isEmpty ? tint : .secondary)
-                }
-                Spacer()
+            ScreenHeader("System care", subtitle: headerSubtitle, systemImage: ContentView.SidebarItem.optimize.icon, tint: tint) {
                 if scanState == .scanned, !selectedTasks.isEmpty {
                     Button(applying ? "Applying…" : "Review \(selectedTasks.count) Recommendation\(selectedTasks.count == 1 ? "" : "s")…") {
                         confirmingFix = true
                     }
-                    .buttonStyle(.borderedProminent)
+                    .carePrimaryAction()
                     .tint(tint)
                     .disabled(selectedTasks.isEmpty || activity.isBusy)
                 }
@@ -126,12 +117,11 @@ struct OptimizeView: View {
                         .disabled(activity.isBusy)
                 } else {
                     Button(scanButtonTitle) { model.scan() }
-                        .buttonStyle(.borderedProminent)
+                        .carePrimaryAction()
                         .tint(tint)
                         .disabled(activity.isBusy)
                 }
             }
-            .padding()
 
             Label(
                 "Review each recommendation before applying it. Privacy notes and incomplete checks are shown separately.",
@@ -144,7 +134,7 @@ struct OptimizeView: View {
 
             switch scanState {
             case .notScanned:
-                ContentUnavailableView(
+                CareEmptyState(
                     "Scan to Find Issues",
                     systemImage: "wrench.and.screwdriver",
                     description: Text(
@@ -202,6 +192,7 @@ struct OptimizeView: View {
                 }
             }
         }
+        .careScreen()
         .onAppear { reloadLastRuns() }
         .onChange(of: model.applying) {
             _, applying in if !applying {
@@ -282,16 +273,12 @@ private struct FixConfirmationSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Review \(tasks.count) Recommendation\(tasks.count == 1 ? "" : "s")").font(.headline)
-                Text(fileCount > 0
+            CareWindowHeader(
+                "Review \(tasks.count) Recommendation\(tasks.count == 1 ? "" : "s")",
+                subtitle: fileCount > 0
                     ? "\(fileCount) file\(fileCount == 1 ? "" : "s") will move to the Trash, where you can put them back. Everything else is a setting or cache macOS rebuilds."
-                    : "These refresh settings and caches that macOS rebuilds on its own. No files are removed.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
+                    : "These refresh settings and caches that macOS rebuilds on its own. No files are removed."
+            ) { EmptyView() }
 
             Divider()
 
@@ -330,12 +317,13 @@ private struct FixConfirmationSheet: View {
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
                 Button("Fix", action: onConfirm)
-                    .buttonStyle(.borderedProminent)
+                    .carePrimaryAction()
                     .keyboardShortcut(.defaultAction)
             }
             .padding()
         }
         .frame(minWidth: 520, minHeight: 420)
+        .careScreen()
     }
 }
 
@@ -486,12 +474,12 @@ private struct MaintenanceTaskCard: View {
                         "Last run \(lastRun.timestamp.formatted(date: .abbreviated, time: .shortened))\(lastRun.dryRun ? " · dry run" : "")"
                     )
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(CareTheme.secondaryInk)
                     .lineLimit(1)
                 } else {
                     Text("Never run")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(CareTheme.secondaryInk)
                 }
 
                 if let result, let detail = result.outcome.detail, !detail.isEmpty {
@@ -508,9 +496,9 @@ private struct MaintenanceTaskCard: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            .cardSurface(radius: 16)
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 16)
                     .strokeBorder(selected ? tintColor.opacity(0.7) : .clear, lineWidth: 1.5)
             )
         }

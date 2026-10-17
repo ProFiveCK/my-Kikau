@@ -22,6 +22,8 @@ Maintenance inspections produce recommendations, never “Applied” results. Fa
 
 Older mixed “freed” totals are retained as unclassified historical activity, rather than converted into inaccurate permanent-removal totals. The Care hub offers **Quick scan** (everyday cleanup and startup) and **Full scan** (also applications, duplicate/large files and system care); similar-photo comparison stays on demand in My files. Each area retains its own checked time. Scheduled scans use Quick scan and notify only about its cleanup results.
 
+Feature screens share Care headers, summary cards, readable native results, empty states and primary actions. Settings, onboarding, live activity and file review use the same myKikau identity. The menu-bar companion retains live metric drill-downs, adds application/system-care shortcuts, and opens **Review Trash** in the main window for exact selection and permanent-delete confirmation. Opening the popover or preparing its Trash review never removes files.
+
 **History → Cleanup sessions → Review & Restore** previews the exact recorded files from a cleanup, including unavailable and permanently removed items. Restore checks the Trash file identity, protection rules and destination again, skips conflicts, and never overwrites. It restores files, not settings or app services. Sessions share the existing local operation log, including retained rotations; with logging off, no new recovery history is stored. Earlier ungrouped records keep individual Put Back.
 
 ## Safety Design

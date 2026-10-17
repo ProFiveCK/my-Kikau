@@ -29,11 +29,12 @@ struct AnalyzeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: ContentView.SidebarItem.analyze.icon)
-                    .foregroundStyle(tint)
-                Text("Disk Analyser").font(.title2).bold()
-                Spacer()
+            ScreenHeader(
+                "Storage",
+                subtitle: "Understand your disk space, then explore what’s using it",
+                systemImage: ContentView.SidebarItem.analyze.icon,
+                tint: tint
+            ) {
                 if !session.entries.isEmpty {
                     Picker("View", selection: $mode) {
                         ForEach(ViewMode.allCases) { m in
@@ -71,11 +72,10 @@ struct AnalyzeView: View {
                     }
                 }
                 .keyboardShortcut("r", modifiers: .command)
-                .buttonStyle(.borderedProminent)
+                .carePrimaryAction()
                 .tint(tint)
                 .disabled(activity.isBusy)
             }
-            .padding()
 
             if session.isScanning {
                 ScanProgressBar(
@@ -102,7 +102,7 @@ struct AnalyzeView: View {
                         currentDir: session.currentDir,
                         onSelectRoot: { session.scanVolumeOverview() },
                         onSelect: { session.scan($0) }
-                    )
+                    ).frame(height: 22)
                     if let lastScanAt = session.lastScanAt {
                         Text("Last scanned \(lastScanAt.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption)
@@ -115,14 +115,10 @@ struct AnalyzeView: View {
             }
 
             if session.entries.isEmpty, !session.isScanning {
-                ContentUnavailableView {
-                    Label("No Scan Yet", systemImage: "chart.pie")
-                } description: {
-                    Text("Analyse the whole startup disk — see used vs free space, then drill into the folders using the most storage.")
-                } actions: {
-                    Button("Analyse Disk") { session.scanVolumeOverview() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(tint)
+                CareEmptyState("See where your space goes.", systemImage: "chart.pie", description: Text(
+                    "Explore used and available disk space, then open the folders taking up the most storage."
+                )) {
+                    Button("Analyse Disk") { session.scanVolumeOverview() }.carePrimaryAction().disabled(activity.isBusy)
                 }
             } else if session.entries.isEmpty {
                 // Scanning with nothing to show yet — the progress bar above
@@ -190,6 +186,7 @@ struct AnalyzeView: View {
                 }
             }
         }
+        .careScreen()
         .onAppear {
             hasUsedAnalyze = true
             if session.entries.isEmpty {
@@ -294,7 +291,7 @@ private struct BreadcrumbBar: View {
                     if !isLast {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(CareTheme.secondaryInk)
                     }
                 }
             }
@@ -412,7 +409,7 @@ private struct PieChartSection: View {
                 .chartLegend(.hidden)
                 .accessibilityLabel("Disk usage chart")
                 .accessibilityValue(slices.prefix(5).map { "\($0.name) \(percentString($0.sizeBytes))" }.joined(separator: ", "))
-                .frame(minWidth: 240, idealWidth: 280, maxWidth: 320, minHeight: 240, idealHeight: 280, maxHeight: 320)
+                .frame(minWidth: 240, idealWidth: 280, maxWidth: 320, minHeight: 200, idealHeight: 260, maxHeight: 300)
 
                 VStack(spacing: 2) {
                     Text(ByteSizeFormatter.format(totalBytes))
@@ -452,7 +449,7 @@ private struct PieChartSection: View {
                                 }
                             }
                             .padding(10)
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                            .cardSurface(radius: 12)
                         }
                         .buttonStyle(.plain)
                         .disabled(!slice.isNavigable)

@@ -87,7 +87,7 @@ struct DuplicatesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeader("Duplicates & Large Files", subtitle: subtitle, systemImage: ContentView.SidebarItem.duplicates.icon, tint: tint) {
+            ScreenHeader("My files", subtitle: subtitle, systemImage: ContentView.SidebarItem.duplicates.icon, tint: tint) {
                 Picker("View", selection: $mode) {
                     ForEach(Mode.allCases) { m in
                         Text(LocalizedStringKey(m.rawValue)).tag(m)
@@ -107,11 +107,16 @@ struct DuplicatesView: View {
                     }
                 }
                 .keyboardShortcut("r", modifiers: .command)
-                .buttonStyle(.borderedProminent)
+                .carePrimaryAction()
                 .tint(tint)
                 .disabled(activity.isBusy)
             }
 
+            if hasScanned, mode != .similar {
+                CareSummary([("Duplicate sets", duplicateGroups.count.formatted()),
+                             ("Duplicate space", ByteSizeFormatter.format(totalDuplicateReclaimable)),
+                             ("Large files", largeFiles.count.formatted())])
+            }
             if !deniedFolders.isEmpty {
                 ProtectedFolderAccessBanner(deniedFolders: deniedFolders)
                     .padding(.horizontal)
@@ -142,16 +147,10 @@ struct DuplicatesView: View {
                 if model.isScanning {
                     Spacer()
                 } else {
-                    ContentUnavailableView {
-                        Label("No Scan Yet", systemImage: "doc.on.doc")
-                    } description: {
-                        Text(
-                            "Looks through Downloads, Documents, Desktop, Pictures and Movies for files with identical content and for oversized files. Add more folders in Settings."
-                        )
-                    } actions: {
-                        Button("Scan") { model.scan() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(tint)
+                    CareEmptyState("Find your space to breathe.", systemImage: "doc.on.doc", description: Text(
+                        "Find exact duplicates and large files in your own folders. Similar-photo comparison runs only when you choose it."
+                    )) {
+                        Button("Scan Files") { model.scan() }.carePrimaryAction().disabled(activity.isBusy)
                     }
                 }
             } else if mode == .duplicates {
@@ -172,6 +171,7 @@ struct DuplicatesView: View {
                 .padding(.vertical, 6)
             }
         }
+        .careScreen()
         .sheet(item: $review) { request in
             PlanReviewView(
                 plan: request.plan,
@@ -209,7 +209,7 @@ struct DuplicatesView: View {
     @ViewBuilder
     private var duplicatesList: some View {
         if duplicateGroups.isEmpty {
-            ContentUnavailableView(
+            CareEmptyState(
                 "No Duplicates Found",
                 systemImage: "checkmark.circle",
                 description: Text("Nothing duplicated across your scanned folders.")
@@ -228,7 +228,7 @@ struct DuplicatesView: View {
                                 subtitle: "One copy of each file is kept. Untick anything else you want to keep."
                             )
                         }
-                        .buttonStyle(.borderedProminent)
+                        .carePrimaryAction()
                         .tint(tint)
                     }
                 }
@@ -254,7 +254,7 @@ struct DuplicatesView: View {
                         .font(.caption)
                     }
                 }
-            }
+            }.careResults()
         }
     }
 
@@ -284,7 +284,7 @@ struct DuplicatesView: View {
     private var similarList: some View {
         if let report = model.similar {
             if report.groups.isEmpty {
-                ContentUnavailableView(
+                CareEmptyState(
                     "No Similar Pictures",
                     systemImage: "photo.on.rectangle.angled",
                     description: Text("None of the pictures in your scanned folders look alike.")
@@ -324,6 +324,7 @@ struct DuplicatesView: View {
                         .foregroundStyle(.secondary)
                     }
                 }
+                .careResults()
 
                 HStack {
                     let selected = report.groups.flatMap(\.files).filter { selectedSimilar.contains($0.id) }
@@ -341,7 +342,7 @@ struct DuplicatesView: View {
                             action: "similarPhotos"
                         )
                     }
-                    .buttonStyle(.borderedProminent)
+                    .carePrimaryAction()
                     .tint(tint)
                     .disabled(selected.isEmpty)
                 }
@@ -350,17 +351,10 @@ struct DuplicatesView: View {
         } else if model.isScanning {
             Spacer()
         } else {
-            ContentUnavailableView {
-                Label("Find Similar Pictures", systemImage: "photo.on.rectangle.angled")
-            } description: {
-                Text(
-                    "Compares the pictures in your scanned folders and groups the ones that look alike — resized copies, "
-                        + "re-saved exports, burst shots. Everything is analysed on this Mac. Your Photos library is not touched."
-                )
-            } actions: {
-                Button("Find Similar Pictures") { model.findSimilar() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(tint)
+            CareEmptyState("A fresh look at your pictures.", systemImage: "photo.on.rectangle.angled", description: Text(
+                "Find pictures that look alike, including resized copies and re-saved exports. Analysis stays on this Mac; your Photos library is not touched."
+            )) {
+                Button("Find Similar Pictures") { model.findSimilar() }.carePrimaryAction().disabled(activity.isBusy)
             }
         }
     }
@@ -368,7 +362,7 @@ struct DuplicatesView: View {
     @ViewBuilder
     private var largeFilesList: some View {
         if largeFiles.isEmpty {
-            ContentUnavailableView(
+            CareEmptyState(
                 "No Large Files Found",
                 systemImage: "checkmark.circle",
                 description: Text(
@@ -387,7 +381,7 @@ struct DuplicatesView: View {
                         }
                     }
                 ))
-            }
+            }.careResults()
 
             HStack {
                 let selected = largeFiles.filter { selectedLargeFiles.contains($0.id) }
@@ -404,7 +398,7 @@ struct DuplicatesView: View {
                         action: "largeFiles"
                     )
                 }
-                .buttonStyle(.borderedProminent)
+                .carePrimaryAction()
                 .tint(tint)
                 .disabled(selected.isEmpty)
             }

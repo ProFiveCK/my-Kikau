@@ -79,8 +79,10 @@ struct CareHubView: View {
                         }.pickerStyle(.segmented).frame(maxWidth: 320).disabled(work.isBusy)
                         Text(scanMode.summary).font(.caption).foregroundStyle(.secondary)
                         if let mode = coordinator.lastScanMode, let date = coordinator.lastScanAt {
-                            Text("\(mode.title) completed \(date.formatted(date: .abbreviated, time: .shortened)). Each area shows when it was checked.")
-                                .font(.caption2).foregroundStyle(.secondary)
+                            Text(
+                                "\(mode.title) completed \(date.formatted(date: .abbreviated, time: .shortened)). Each area shows when it was checked."
+                            )
+                            .font(.caption2).foregroundStyle(.secondary)
                         }
                     }
                     tools
@@ -191,7 +193,8 @@ struct CareHubView: View {
                 Text(coordinator.hasResults ? "Your scan, at a glance" : "Care for every corner").font(.headline)
                 Spacer()
                 if let date = coordinator.lastScanAt {
-                    Text("\(coordinator.lastScanMode?.title ?? "Scan") · \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption2).foregroundStyle(.secondary)
+                    Text("\(coordinator.lastScanMode?.title ?? "Scan") · \(date.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
             }
             LazyVGrid(
@@ -217,7 +220,7 @@ struct CareHubView: View {
                         detail: coordinator.apps == nil ? "Remove apps and leftovers" : ByteSizeFormatter
                             .format(coordinator.appFootprintBytes) + " installed",
                         icon: "square.grid.2x2",
-                        tint: .teal
+                        tint: CareTheme.teal
                     )
                 }
                 if canFiles {
@@ -227,7 +230,7 @@ struct CareHubView: View {
                             .format(duplicateBytes) + " in duplicates" : "Explore your files",
                         detail: coordinator.largeFiles.map { "\($0.count) large files to explore" } ?? "Find space to breathe",
                         icon: "folder",
-                        tint: .blue
+                        tint: CareTheme.blue
                     )
                 }
             }
@@ -246,7 +249,8 @@ struct CareHubView: View {
     }
 
     private func checkedDate(_ area: ScanEverythingCoordinator.Area, title: String) -> some View {
-        Text(coordinator.scannedAt[area].map { "\(title) · \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "\(title) · Not checked")
+        Text(coordinator.scannedAt[area]
+            .map { "\(title) · \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "\(title) · Not checked")
             .font(.system(size: 10)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
     }
 

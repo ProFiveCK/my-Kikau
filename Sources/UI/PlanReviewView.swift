@@ -131,6 +131,7 @@ public struct PlanReviewView: View {
             }
         }
         .frame(minWidth: 560, idealWidth: 640, minHeight: 440, idealHeight: 520)
+        .careScreen()
         .interactiveDismissDisabled(isRunning)
     }
 
@@ -156,9 +157,10 @@ public struct PlanReviewView: View {
 
     private var reviewStage: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.headline)
+            HStack(alignment: .center, spacing: 12) {
+                AppBrandIcon(size: 36)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title).font(.system(size: 24, weight: .bold, design: .rounded))
                     Text(subtitle ?? "Untick anything you want to keep.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -237,7 +239,7 @@ public struct PlanReviewView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(permanentCount > 0 ? .red : .accentColor)
+                .tint(permanentCount > 0 ? .red : CareTheme.accent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(selection.isEmpty || activity.isBusy)
             }

@@ -18,11 +18,11 @@
 **Spec pills:**
 - macOS 14 Sonoma or later
 - Apple Silicon
-- 5.5 MB DMG
+- 5.7 MB DMG
 - Signed & notarized by Apple
 - Open source (GPL-3.0)
 
-**Primary button:** Download myKikau 0.9.1
+**Primary button:** Download myKikau 0.10.0
 **Secondary button:** Release notes
 **Download note:** Automatic updates are delivered through Sparkle. Full Disk Access is requested and explained on first launch.
 
@@ -30,7 +30,7 @@
 
 - **Preview before delete.** Review file paths, sizes, and protected items — with a checkbox on every item — before anything moves to the Trash. Restore recorded files individually or by cleanup session from History while they remain in the Trash.
 - **Leftover-aware uninstall.** Removes the app bundle plus LaunchAgents, login items, and related files in your Library.
-- **Live system dashboard.** Open Live activity from the Care hub for CPU, memory, disk, network, GPU, thermals, and battery metrics refreshed every two seconds.
+- **Live system dashboard.** Open Live activity from the Care hub for CPU, memory, disk, network, GPU, thermals, and battery metrics refreshed every two seconds. The menu-bar companion offers live metrics, task progress and shortcuts, with an exact-item review before emptying the Trash.
 - **Duplicate and similar-photo finder.** Content-hash verification identifies real duplicates, and on-device image analysis groups pictures that look alike, before you decide what to remove.
 - **Large-file review.** Find big items across Downloads, Documents, Desktop, Pictures, and Movies.
 - **Local activity log.** When logging is enabled, file operations are recorded locally at ~/Library/Logs/myKikau/operations.log, with cleanup sessions for reviewed file recovery.
@@ -64,7 +64,7 @@
 ## System requirements
 
 - macOS 14 (Sonoma) or later — Apple Silicon
-- 5.5 MB installer download
+- 5.7 MB installer download
 - Full Disk Access permission (requested on first launch; some features are limited without it)
 
 ## Open source
@@ -73,6 +73,14 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes
+
+### Version 0.10.0 — October 2026
+
+- **A consistent Care experience** — refreshed cleanup, applications, files, storage, network, system care, startup, purge and history screens share the Care hub’s cards, typography and primary actions.
+- **Original myKikau branding** — the green-and-gold app icon appears consistently in the sidebar, menu-bar companion, Settings, onboarding and review dialogs.
+- **A clearer menu-bar companion** — live metric drill-downs, application and system-care shortcuts, active-task progress and cancellation, plus convenient Settings and Quit controls.
+- **Review Trash before removal** — the menu-bar shortcut opens an exact-item review in the main window, with a second confirmation for permanent deletion. Preparing a review changes no files.
+- **Light, dark and compact layouts** — adaptive colors, responsive headers, readable result panels and Settings sections that stay visible while forms scroll.
 
 ### Version 0.9.1 — October 2026
 

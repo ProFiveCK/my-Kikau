@@ -22,6 +22,7 @@ public extension View {
     /// The standard card surface used for list rows and summary panels.
     func cardSurface(radius: CGFloat = Theme.Radius.card) -> some View {
         background(CareTheme.panel, in: RoundedRectangle(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(CareTheme.border, lineWidth: 1))
     }
 
     /// A tinted icon badge: the rounded square behind a feature's symbol.
@@ -55,13 +56,15 @@ public struct ScreenHeader<Actions: View>: View {
     }
 
     private var heading: some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage).font(.system(size: 19, weight: .medium))
-                .foregroundStyle(tint).iconBadge(tint: tint, size: 40, radius: 12).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.system(size: 26, weight: .bold, design: .rounded)).tracking(-0.6).accessibilityAddTraits(.isHeader)
+        HStack(spacing: 14) {
+            Image(systemName: systemImage).font(.system(size: 23, weight: .medium))
+                .foregroundStyle(tint).iconBadge(tint: tint, size: 50, radius: 16).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title).font(.system(size: 28, weight: .bold, design: .rounded)).tracking(-0.7)
+                    .foregroundStyle(CareTheme.ink).accessibilityAddTraits(.isHeader)
                 if let subtitle {
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(subtitle).font(.caption).foregroundStyle(CareTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -69,10 +72,21 @@ public struct ScreenHeader<Actions: View>: View {
 
     public var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) { heading; Spacer(minLength: 12); actions }
-            VStack(alignment: .leading, spacing: 14) { heading; HStack { actions; Spacer(minLength: 0) } }
+            HStack(spacing: 18) {
+                heading.fixedSize(horizontal: true, vertical: true)
+                Spacer(minLength: 16)
+                HStack(spacing: 8) { actions }.fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: 18) { heading; HStack(spacing: 8) { actions; Spacer(minLength: 0) } }
         }
         .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(colors: [CareTheme.panel, CareTheme.lilac.opacity(0.5)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 20)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(CareTheme.border, lineWidth: 1))
+        .padding(.horizontal, 22).padding(.top, 22).padding(.bottom, 18)
     }
 }
 
@@ -140,6 +154,22 @@ public enum CareTheme {
         NSColor(red: 0.45, green: 0.31, blue: 0.83, alpha: 1),
         NSColor(red: 0.73, green: 0.61, blue: 0.97, alpha: 1)
     )
+    public static let teal = adaptive(
+        NSColor(red: 0.08, green: 0.46, blue: 0.44, alpha: 1),
+        NSColor(red: 0.35, green: 0.82, blue: 0.76, alpha: 1)
+    )
+    public static let blue = adaptive(
+        NSColor(red: 0.20, green: 0.40, blue: 0.74, alpha: 1),
+        NSColor(red: 0.53, green: 0.71, blue: 0.98, alpha: 1)
+    )
+    public static let rose = adaptive(
+        NSColor(red: 0.68, green: 0.27, blue: 0.43, alpha: 1),
+        NSColor(red: 0.94, green: 0.58, blue: 0.73, alpha: 1)
+    )
+    public static let gold = adaptive(
+        NSColor(red: 0.63, green: 0.40, blue: 0.12, alpha: 1),
+        NSColor(red: 0.94, green: 0.73, blue: 0.40, alpha: 1)
+    )
     public static let background = adaptive(
         NSColor(red: 0.98, green: 0.97, blue: 0.99, alpha: 1),
         NSColor(red: 0.13, green: 0.12, blue: 0.16, alpha: 1)
@@ -148,7 +178,8 @@ public enum CareTheme {
         NSColor(red: 0.94, green: 0.93, blue: 0.97, alpha: 1),
         NSColor(red: 0.16, green: 0.15, blue: 0.19, alpha: 1)
     )
-    public static let panel = Color(nsColor: .controlBackgroundColor)
+    public static let border = adaptive(NSColor.black.withAlphaComponent(0.055), NSColor.white.withAlphaComponent(0.09))
+    public static let panel = adaptive(.white, NSColor(red: 0.17, green: 0.16, blue: 0.20, alpha: 1))
     public static let lilac = adaptive(
         NSColor(red: 0.90, green: 0.87, blue: 0.98, alpha: 1),
         NSColor(red: 0.23, green: 0.19, blue: 0.32, alpha: 1)

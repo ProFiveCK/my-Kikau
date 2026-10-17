@@ -20,7 +20,9 @@ struct StatusView: View {
         CareHubView(onNavigate: onNavigate, onShowActivity: { showingActivity = true })
             .sheet(isPresented: $showingActivity) {
                 VStack(spacing: 0) {
-                    HStack { Text("Live activity").font(.title2.bold()); Spacer(); Button("Done") { showingActivity = false } }.padding()
+                    CareWindowHeader("Live activity", subtitle: "Current readings from your Mac") {
+                        Button("Done") { showingActivity = false }.carePrimaryAction()
+                    }
                     if let snap = metricsService.snapshot {
                         ScrollView {
                             HeroHealthCard(
@@ -38,7 +40,7 @@ struct StatusView: View {
                         ProgressView("Collecting metrics…").padding(60)
                     }
                 }
-                .frame(width: 720, height: 620)
+                .frame(width: 720, height: 620).careScreen()
                 .sheet(item: $activityProcessSheet) { ProcessListSheet(mode: $0.mode) }
             }
             .onAppear {
@@ -47,7 +49,11 @@ struct StatusView: View {
             .onDisappear { metricsService.unsubscribe() }
             .onReceive(AppNavigation.shared.$pendingProcessMode) { pending in
                 guard let pending else { return }
-                processSheet = ProcessSheet(mode: pending)
+                if showingActivity {
+                    activityProcessSheet = ProcessSheet(mode: pending)
+                } else {
+                    processSheet = ProcessSheet(mode: pending)
+                }
                 AppNavigation.shared.pendingProcessMode = nil
             }
             .sheet(item: $processSheet) { sheet in
@@ -56,10 +62,11 @@ struct StatusView: View {
     }
 
     private func freeInactiveMemory() {
-        guard !freeingMemory else { return }
+        guard !freeingMemory, let lease = WorkCoordinator.shared.begin("Releasing inactive file cache", kind: .maintenance) else { return }
         freeingMemory = true
         memoryActionMessage = nil
         Task {
+            defer { WorkCoordinator.shared.finish(lease) }
             let result = await MemoryOptimizer.freeInactiveMemory()
             await MainActor.run {
                 freeingMemory = false
@@ -169,7 +176,7 @@ private struct HeroHealthCard: View {
         let t = snapshot.thermal
         let temp = t.cpuTemp > 0 ? t.cpuTemp : t.batteryTemp
         switch temp {
-        case ..<85: return .white
+        case ..<85: return CareTheme.ink
         case 85 ..< 100: return .yellow
         default: return .red
         }
@@ -198,28 +205,28 @@ private struct HeroHealthCard: View {
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "laptopcomputer")
                     .font(.system(size: 18))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(CareTheme.accent)
                     .frame(width: 38, height: 38)
-                    .background(.white.opacity(0.08), in: Circle())
+                    .background(CareTheme.lilac, in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("Mac Health")
+                        Text("Current activity")
                             .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.65))
+                            .foregroundStyle(CareTheme.secondaryInk)
                         Text(statusWord)
                             .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(statusColor)
+                            .foregroundStyle(CareTheme.ink)
                     }
                     .accessibilityElement(children: .combine)
                     Text(issuesDetail ?? statusExplanation)
                         .font(.caption)
-                        .foregroundStyle(issuesDetail == nil ? Color.white.opacity(0.6) : statusColor.opacity(0.9))
+                        .foregroundStyle(CareTheme.secondaryInk)
                 }
                 Spacer()
                 Text("\(snapshot.host) · up \(HealthScore.formatUptime(snapshot.uptimeSeconds))")
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(CareTheme.secondaryInk)
             }
             .help("Based on CPU, memory pressure, disk space, temperature, disk activity, battery, and uptime.")
 
@@ -290,17 +297,11 @@ private struct HeroHealthCard: View {
             if let memoryActionMessage {
                 Text(memoryActionMessage)
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(CareTheme.secondaryInk)
             }
         }
         .padding(14)
-        .background(
-            LinearGradient(
-                colors: [Color(red: 0.20, green: 0.11, blue: 0.42), Color(red: 0.08, green: 0.05, blue: 0.20)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 16)
-        )
+        .cardSurface(radius: 18)
     }
 
     /// Wear: full-charge capacity against design capacity, and cycle count.
@@ -340,14 +341,11 @@ private struct ProcessListSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(title).font(.title3.bold())
-                Spacer()
+            CareWindowHeader(title, subtitle: "Inspect usage before deciding what to close") {
                 Button("Activity Monitor") { openActivityMonitor() }
                 Button("Refresh") { load() }
-                Button("Done") { dismiss() }
+                Button("Done") { dismiss() }.carePrimaryAction()
             }
-            .padding()
 
             if loading {
                 ProgressView("Collecting processes...")
@@ -404,6 +402,7 @@ private struct ProcessListSheet: View {
                 .frame(width: 640, height: 380)
             }
         }
+        .careScreen()
         .onAppear { load() }
         .confirmationDialog(
             "Quit \(confirmQuit?.command ?? "process")?",
@@ -486,7 +485,7 @@ private struct GlassTile: View {
     let icon: String
     let title: String
     let value: String
-    var valueColor: Color = .white
+    var valueColor: Color = CareTheme.ink
     var caption: String?
     /// Recent readings (0…100), oldest first, drawn as a small trend line.
     var trend: [Double] = []
@@ -503,11 +502,11 @@ private struct GlassTile: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(CareTheme.secondaryInk)
                     .accessibilityHidden(true)
                 Text(title)
                     .font(.caption.bold())
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(CareTheme.secondaryInk)
                     .lineLimit(1)
                     .accessibilityHidden(true)
                 Spacer(minLength: 4)
@@ -524,7 +523,7 @@ private struct GlassTile: View {
                 }
                 .font(.caption.bold())
                 .buttonStyle(.plain)
-                .foregroundStyle(HealthScore.accentTeal)
+                .foregroundStyle(CareTheme.accent)
             }
             HStack(alignment: .center, spacing: 8) {
                 Text(value)
@@ -537,7 +536,7 @@ private struct GlassTile: View {
                     Chart(Array(trend.enumerated()), id: \.offset) { point in
                         LineMark(x: .value("Sample", point.offset), y: .value("Percent", point.element))
                             .interpolationMethod(.monotone)
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(CareTheme.accent)
                     }
                     .chartXAxis(.hidden)
                     .chartYAxis(.hidden)
@@ -552,7 +551,7 @@ private struct GlassTile: View {
             if let caption {
                 Text(caption)
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(CareTheme.secondaryInk)
                     .lineLimit(1)
                     .accessibilityHidden(true)
             }
@@ -560,8 +559,8 @@ private struct GlassTile: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 50, alignment: .topLeading)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.1), lineWidth: 1))
+        .background(CareTheme.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(CareTheme.border, lineWidth: 1))
     }
 }
 
@@ -576,6 +575,6 @@ private struct StatCard<Content: View>: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .cardSurface(radius: 15)
     }
 }

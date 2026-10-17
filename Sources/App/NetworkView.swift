@@ -1,6 +1,7 @@
 import AppKit
 import CoreLocation
 import SwiftUI
+import UI
 import Core
 import Features
 
@@ -22,11 +23,12 @@ struct NetworkView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: ContentView.SidebarItem.network.icon)
-                    .foregroundStyle(tint)
-                Text("Network").font(.title2).bold()
-                Spacer()
+            ScreenHeader(
+                "Network",
+                subtitle: "Your connection, addresses and tools in one place",
+                systemImage: ContentView.SidebarItem.network.icon,
+                tint: tint
+            ) {
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(model.info.plainTextSummary(), forType: .string)
@@ -39,10 +41,9 @@ struct NetworkView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.borderedProminent)
+                .carePrimaryAction()
                 .tint(tint)
             }
-            .padding()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -56,6 +57,7 @@ struct NetworkView: View {
                 .padding()
             }
         }
+        .careScreen()
         .onAppear { model.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refresh()
@@ -116,13 +118,17 @@ struct NetworkView: View {
                         Image(systemName: "location.slash")
                             .foregroundStyle(.orange)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("macOS hides the network name until myKikau has Location access. Channel, signal and speed still work without it.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                "macOS hides the network name until myKikau has Location access. Channel, signal and speed still work without it."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                             HStack {
                                 Button("Grant Location Access") { model.requestLocationAccess() }
                                 Button("Open Settings") {
-                                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
+                                    if let url =
+                                        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices")
+                                    {
                                         NSWorkspace.shared.open(url)
                                     }
                                 }
@@ -410,9 +416,9 @@ private struct Card<Content: View>: View {
                 .foregroundStyle(tint)
             content
         }
-        .padding(14)
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .cardSurface(radius: 16)
     }
 }
 

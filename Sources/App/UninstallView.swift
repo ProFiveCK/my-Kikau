@@ -136,11 +136,18 @@ struct UninstallView: View {
                     .disabled(findingOrphans || preparing || activity.isBusy)
                 Button(coordinator.apps == nil ? "Scan Apps" : "Rescan") { model.scan() }
                     .keyboardShortcut("r", modifiers: .command)
-                    .buttonStyle(.borderedProminent)
+                    .carePrimaryAction()
                     .tint(tint)
                     .disabled(activity.isBusy)
             }
 
+            if coordinator.apps != nil {
+                CareSummary([
+                    ("Applications", apps.count.formatted()),
+                    ("Installed size", ByteSizeFormatter.format(coordinator.appFootprintBytes)),
+                    ("Selected", selected.count.formatted()),
+                ])
+            }
             if let coverage = coordinator.coverage[.apps] {
                 ScanCoverageView(coverage).padding(.horizontal).padding(.bottom, 8)
             }
@@ -153,18 +160,14 @@ struct UninstallView: View {
                     .padding(.horizontal)
                 Spacer()
             } else if coordinator.apps == nil {
-                ContentUnavailableView {
-                    Label("No Apps Listed Yet", systemImage: "app.dashed")
-                } description: {
-                    Text("List installed applications, see which are large or unused, and remove them with their leftovers.")
-                } actions: {
-                    Button("Scan Apps") { model.scan() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(tint)
+                CareEmptyState("Space for the apps you use.", systemImage: "app.dashed", description: Text(
+                    "List installed applications, see which are large or unused, and remove them with their leftovers."
+                )) {
+                    Button("Scan Apps") { model.scan() }.carePrimaryAction().disabled(activity.isBusy)
                 }
             } else if visible.isEmpty {
                 if searchText.isEmpty {
-                    ContentUnavailableView(
+                    CareEmptyState(
                         "No Apps Match",
                         systemImage: "line.3.horizontal.decrease.circle",
                         description: Text("No installed app fits the “\(filter.rawValue)” filter.")
@@ -173,7 +176,7 @@ struct UninstallView: View {
                     ContentUnavailableView.search(text: searchText)
                 }
             } else {
-                appsTable(visible)
+                appsTable(visible).careResults()
 
                 if !selected.isEmpty {
                     HStack {
@@ -186,7 +189,7 @@ struct UninstallView: View {
                         Button("Uninstall \(selected.count) App\(selected.count == 1 ? "" : "s")…") {
                             beginUninstall(selected)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .carePrimaryAction()
                         .tint(tint)
                         .disabled(preparing || activity.isBusy)
                     }
@@ -194,6 +197,7 @@ struct UninstallView: View {
                 }
             }
         }
+        .careScreen()
         .onAppear { model.reconcileSelection() }
         .onChange(of: coordinator.apps) { _, _ in model.reconcileSelection() }
         .sheet(item: $pending) { item in
@@ -308,8 +312,7 @@ struct UninstallView: View {
             .frame(width: 190)
             .accessibilityLabel("Filter apps")
         }
-        .padding(.horizontal)
-        .padding(.bottom, 8)
+        .careToolbar()
     }
 
     /// Rows are selected the native way (click, ⇧-click, ⌘-click, ⌘A);
@@ -319,24 +322,24 @@ struct UninstallView: View {
             TableColumn("Application", value: \.name, comparator: .localizedStandard) { app in
                 AppNameCell(app: app)
             }
-            .width(min: 240, ideal: 320)
+            .width(min: 160, ideal: 210, max: 500)
             TableColumn("Last Used", value: \.lastUsedSortKey) { app in
                 LastUsedCell(app: app)
             }
-            .width(min: 88, ideal: 100, max: 120)
+            .width(min: 76, ideal: 88, max: 110)
             TableColumn("Update") { app in
                 UpdateCell(app: app, status: model.status(for: app))
             }
-            .width(min: 100, ideal: 120, max: 155)
+            .width(min: 82, ideal: 92, max: 140)
             TableColumn("Size", value: \.sizeBytes) { app in
                 SizeCell(bytes: app.sizeBytes)
             }
-            .width(min: 70, ideal: 84)
+            .width(min: 62, ideal: 68, max: 100)
             .alignment(.trailing)
             TableColumn("") { app in
                 UninstallCell(app: app, disabled: preparing || activity.isBusy) { beginUninstall([app]) }
             }
-            .width(92)
+            .width(80)
         }
         .contextMenu(forSelectionType: AppInventory.AppInfo.ID.self) { ids in
             if ids.count == 1, let app = apps.first(where: { $0.id == ids.first }) {
@@ -596,7 +599,7 @@ private struct AppNameCell: View {
                 }
                 HStack(spacing: 8) {
                     if let bundleID = app.bundleID {
-                        Text(bundleID).foregroundStyle(.tertiary).lineLimit(1)
+                        Text(bundleID).foregroundStyle(CareTheme.secondaryInk).lineLimit(1)
                     }
                     if let reason = protectionReason {
                         Label("Protected — \(reason)", systemImage: "lock.shield").foregroundStyle(.secondary)

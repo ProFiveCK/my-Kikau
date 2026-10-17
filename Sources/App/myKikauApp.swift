@@ -300,10 +300,10 @@ struct ContentView: View {
         var icon: String {
             switch self {
             case .status: "house"
-            case .clean: "internaldrive"
-            case .uninstall: "app.dashed"
+            case .clean: "paintbrush.pointed"
+            case .uninstall: "square.grid.2x2"
             case .analyze: "chart.bar.doc.horizontal"
-            case .duplicates: "doc.on.doc"
+            case .duplicates: "folder"
             case .network: "wifi"
             case .optimize: "wrench.and.screwdriver"
             case .startup: "power"
@@ -320,15 +320,15 @@ struct ContentView: View {
             switch self {
             case .status: CareTheme.accent
             case .clean: CareTheme.accent
-            case .uninstall: .purple
-            case .analyze: .teal
-            case .duplicates: .pink
-            case .network: .indigo
+            case .uninstall: CareTheme.teal
+            case .analyze: CareTheme.teal
+            case .duplicates: CareTheme.blue
+            case .network: CareTheme.blue
             case .optimize: CareTheme.accent
-            case .startup: .green
-            case .purge: .brown
-            case .history: .mint
-            case .about: .secondary
+            case .startup: CareTheme.teal
+            case .purge: CareTheme.gold
+            case .history: CareTheme.teal
+            case .about: CareTheme.secondaryInk
             }
         }
     }
@@ -351,12 +351,7 @@ struct ContentView: View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 9) {
-                    Image(nsImage: NSApplication.shared.applicationIconImage)
-                        .resizable()
-                        .renderingMode(.original)
-                        .scaledToFit()
-                        .frame(width: 36, height: 36)
-                        .accessibilityHidden(true)
+                    AppBrandIcon(size: 36)
                     Text("myKikau").foregroundStyle(CareTheme.ink).font(.system(size: 23, weight: .bold, design: .rounded)).tracking(-0.8)
                 }.padding(.horizontal, 18).padding(.top, 20).padding(.bottom, 14)
                 List {
@@ -430,7 +425,7 @@ struct ContentView: View {
             // A screen whose content doesn't fill the pane (an empty state)
             // keeps its header at the top instead of floating mid-window.
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(CareTheme.background)
+            .background(CareTheme.background).foregroundStyle(CareTheme.ink)
         }
         .tint(CareTheme.accent)
         .accentColor(CareTheme.accent)
