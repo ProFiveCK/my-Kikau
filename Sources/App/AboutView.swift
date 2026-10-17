@@ -88,7 +88,7 @@ struct AboutView: View {
                     // window (⌘,), which is where a macOS user actually
                     // looks for them. This link keeps them one click away
                     // for anyone who lands on About first.
-                    SettingsLink {
+                    AppSettingsButton {
                         Label("Settings…", systemImage: "gearshape")
                     }
                     .buttonStyle(.bordered)

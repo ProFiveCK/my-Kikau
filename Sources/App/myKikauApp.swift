@@ -118,6 +118,8 @@ struct myKikauApp: App {
             SettingsView()
                 .environmentObject(updaterViewModel)
         }
+        .defaultSize(width: 600, height: 640)
+        .windowResizability(.contentSize)
     }
 
     /// Warms the Analyze whole-disk overview cache in the background a few

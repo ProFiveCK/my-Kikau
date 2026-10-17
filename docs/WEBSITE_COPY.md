@@ -22,7 +22,7 @@
 - Signed & notarized by Apple
 - Open source (GPL-3.0)
 
-**Primary button:** Download myKikau 0.10.0
+**Primary button:** Download myKikau 0.10.1
 **Secondary button:** Release notes
 **Download note:** Automatic updates are delivered through Sparkle. Full Disk Access is requested and explained on first launch.
 
@@ -73,6 +73,11 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes
+
+### Version 0.10.1 — October 2026
+
+- **Settings opens in front** — the menu-bar shortcut activates myKikau, dismisses its popover and focuses the native Settings window, including when the Dock icon is hidden or Settings was minimized.
+- **Consistent Settings layout** — the menu-bar and main-app shortcuts use the same Settings scene, with its own typography, controls and constrained window sizing. All four sections remain available and their forms scroll.
 
 ### Version 0.10.0 — October 2026
 
