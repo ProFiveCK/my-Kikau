@@ -1037,3 +1037,170 @@ struct MenuBarTrashReviewSafetyTests {
         #expect(log.recent().isEmpty)
     }
 }
+
+@Suite("Cleanup review safety")
+struct CleanupReviewSafetyTests {
+    @Test("A symlink posing as a Trash parent cannot authorise permanent removal")
+    func permanentRemovalResolvesParent() throws {
+        let root = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let outside = root.appendingPathComponent("outside")
+        let file = outside.appendingPathComponent("keep.txt")
+        touch(file)
+        let trash = root.appendingPathComponent(".Trash")
+        try FileManager.default.createSymbolicLink(at: trash, withDestinationURL: outside)
+        let alias = trash.appendingPathComponent("keep.txt")
+        let item = SafeFileDeleter.Item(url: alias, sizeBytes: 8, category: .trash, protected: false)
+        #expect(!item.isPermanentRemoval)
+        let log = OperationLog(logURL: root.appendingPathComponent("audit/operations.log"))
+        let result = SafeFileDeleter(opLog: log).execute(
+            .init(items: [item], protectedItems: [], missingItems: []),
+            mode: .permanent, dryRun: true, action: "fixture"
+        )
+        #expect(result.recoverable == 1)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(log.recent().first?.mode == .trash)
+    }
+
+    @Test("Deleting a symlink in a physical Trash leaves its destination intact")
+    func trashLeafSymlink() throws {
+        let root = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let outside = root.appendingPathComponent("keep.txt")
+        touch(outside)
+        let link = root.appendingPathComponent(".Trash/link")
+        makeDir(link.deletingLastPathComponent())
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+        #expect(SafeFileDeleter.isInsideTrash(link))
+        let deleter = SafeFileDeleter(opLog: OperationLog(logURL: root.appendingPathComponent("audit/operations.log")))
+        let result = deleter.execute(deleter.preview([link], category: .trash), mode: .trash, dryRun: false, action: "fixture")
+        #expect(result.succeeded == 1)
+        #expect(result.recoverable == 0)
+        #expect(FileManager.default.fileExists(atPath: outside.path))
+        #expect(!FileManager.default.fileExists(atPath: link.path))
+    }
+
+    @Test("Trash failure guidance tells the user to empty it in Finder")
+    func trashFailureGuidance() {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let trash = SafeFileDeleter.Failure(path: home.appendingPathComponent(".Trash/App.app").path,
+                                          reason: "Denied", needsAdministrator: true)
+        #expect(trash.recoverySuggestion.contains("Empty Trash"))
+        let application = SafeFileDeleter.Failure(path: "/Applications/App.app", reason: "Denied", needsAdministrator: true)
+        #expect(application.recoverySuggestion.contains("Move this item"))
+    }
+
+    @Test("Execution rechecks security-agent descendants added after preview")
+    func newProtectedDescendant() {
+        let root = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = root.appendingPathComponent("cache")
+        touch(cache.appendingPathComponent("ordinary"))
+        let deleter = SafeFileDeleter(opLog: OperationLog(logURL: root.appendingPathComponent("audit/operations.log")))
+        let plan = deleter.preview([cache], category: .cache)
+        #expect(plan.items.count == 1)
+        let protected = cache.appendingPathComponent("com.jamf.agent/state")
+        touch(protected)
+        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "fixture")
+        #expect(result.skipped == 1)
+        #expect(result.succeeded == 0)
+        #expect(FileManager.default.fileExists(atPath: protected.path))
+    }
+
+    @Test("Command-line build activity excludes developer caches, including after the scan")
+    func commandLineBuilds() {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let cache = home.appendingPathComponent("Library/Caches/go-build")
+        touch(cache.appendingPathComponent("data"))
+        let idle = CleanScanner.targets(for: .devTools, home: home, runningToolNames: [])
+        #expect(idle.contains { $0.resolvingSymlinksInPath().path == cache.resolvingSymlinksInPath().path })
+        let plan = SafeFileDeleter().preview([cache], category: .cache)
+        for tool in ["go", "node", "java", "swift-frontend", "xcodebuild", "cargo"] {
+            #expect(CleanScanner.targets(for: .devTools, home: home, runningToolNames: [tool]).isEmpty)
+            #expect(CleanScanner.revalidated(plan, home: home, runningToolNames: [tool]).items.isEmpty)
+        }
+        #expect(FileManager.default.fileExists(atPath: cache.path))
+    }
+
+    @Test("Developer caches cannot bypass build protection through User App Cache")
+    func buildCacheSectionOwnership() {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let names = ["node-gyp", "org.swift.swiftpm", "org.llvm.clang", "Homebrew"]
+        for name in names { touch(home.appendingPathComponent("Library/Caches/\(name)/cache")) }
+        let ordinary = CleanScanner.targets(for: .userAppCache, home: home, runningToolNames: ["node"])
+        #expect(ordinary.isEmpty)
+        let developer = CleanScanner.scan(.devTools, home: home)
+        #expect(Set(developer.items.map(\.url.lastPathComponent)) == Set(names))
+        #expect(CleanScanner.revalidated(developer, home: home, runningToolNames: ["node"]).items.isEmpty)
+    }
+
+    @Test("An old temporary folder with fresh deeply nested files is not stale")
+    func activeNestedTemporaryFiles() {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let entry = home.appendingPathComponent("private/tmp/build-job")
+        let nested = entry.appendingPathComponent("a/b/c")
+        let fresh = nested.appendingPathComponent("active.db")
+        touch(fresh)
+        for path in [entry, entry.appendingPathComponent("a"), entry.appendingPathComponent("a/b"), nested] {
+            setModDate(path, daysAgo: 10)
+        }
+        #expect(!CleanScanner.targets(for: .systemLogs, home: home).contains {
+            $0.resolvingSymlinksInPath().path == entry.resolvingSymlinksInPath().path
+        })
+        setModDate(fresh, daysAgo: 10)
+        #expect(CleanScanner.targets(for: .systemLogs, home: home).contains {
+            $0.resolvingSymlinksInPath().path == entry.resolvingSymlinksInPath().path
+        })
+    }
+
+    @Test("Every maintenance file-removal task requires an explicit path review")
+    func missingMaintenanceReview() async {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let oldState = home.appendingPathComponent("Library/Saved Application State/com.fixture.old.savedState")
+        touch(oldState.appendingPathComponent("state"))
+        setModDate(oldState, daysAgo: 60)
+        let config = home.appendingPathComponent("Library/Preferences/com.fixture.broken.plist")
+        touch(config)
+        setModDate(config, daysAgo: 10)
+        let list = home.appendingPathComponent("Library/Application Support/com.apple.sharedfilelist/broken.sfl3")
+        touch(list)
+        let agent = home.appendingPathComponent("Library/LaunchAgents/com.fixture.missing.plist")
+        makeDir(agent.deletingLastPathComponent())
+        (["Label": "com.fixture.missing", "Program": "/nonexistent/fixture/tool"] as NSDictionary).write(to: agent, atomically: true)
+        let runner = MaintenanceRunner(home: home, opLog: OperationLog(logURL: home.appendingPathComponent("audit/operations.log")))
+        for id in ["saved_state", "broken_configs", "shared_file_lists", "launch_agents"] {
+            let result = await runner.run(taskID: id, dryRun: false)
+            if case .failed = result.outcome {} else { Issue.record("Missing review must stop \(id): \(result.outcome)") }
+        }
+        for url in [oldState, config, list, agent] { #expect(FileManager.default.fileExists(atPath: url.path)) }
+    }
+
+    @Test("Cancelled maintenance never removes files, spawns commands or starts the next task")
+    func cancelledMaintenance() async {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let state = home.appendingPathComponent("Library/Saved Application State/com.fixture.old.savedState")
+        touch(state.appendingPathComponent("state"))
+        setModDate(state, daysAgo: 60)
+        let marker = home.appendingPathComponent("must-not-exist")
+        let runner = MaintenanceRunner(home: home, opLog: OperationLog(logURL: home.appendingPathComponent("audit/operations.log")))
+        let worker = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            let result = await runner.run(taskID: "saved_state", dryRun: false, reviewedPaths: [state.path])
+            let command = await runner.runProcess("/usr/bin/touch", arguments: [marker.path])
+            let batch = await runner.run(taskIDs: ["saved_state", "broken_configs"], dryRun: false)
+            return (result, command.exitCode, batch.count)
+        }
+        let (result, code, count) = await worker.value
+        if case .skipped = result.outcome {} else { Issue.record("Cancellation must be reported") }
+        #expect(code != 0)
+        #expect(count == 0)
+        #expect(FileManager.default.fileExists(atPath: state.path))
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
+}

@@ -140,6 +140,13 @@ public final class SafeFileDeleter: @unchecked Sendable {
         /// needs administrator rights myKikau doesn't have.
         public let needsAdministrator: Bool
 
+        public var recoverySuggestion: String {
+            if SafeFileDeleter.isInsideTrash(URL(fileURLWithPath: path)) {
+                return "Open the Trash in Finder and choose Empty Trash. Finder can request administrator approval for items myKikau cannot remove."
+            }
+            return "Move this item to the Trash in Finder, which can request administrator approval."
+        }
+
         public init(path: String, reason: String, needsAdministrator: Bool) {
             self.path = path
             self.reason = reason
@@ -253,7 +260,7 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
             // Never trust the plan: it may be stale, or may have been built by
             // a caller that passed `protected: false`. Re-check right here.
-            if protection.shouldProtect(item.url) {
+            if protection.shouldProtect(item.url) || protection.containsEndpointSecurityItem(item.url, fileManager: fileManager) {
                 opLog.append(.init(
                     sessionID: sessionID, action: action, path: item.url.path,
                     sizeBytes: 0, mode: .init(mode),
@@ -424,8 +431,14 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
     /// True if `url` is inside a Trash folder (`~/.Trash`, or a volume's `.Trashes`).
     public static func isInsideTrash(_ url: URL) -> Bool {
-        let components = url.standardizedFileURL.deletingLastPathComponent().pathComponents
-        return components.contains(".Trash") || components.contains(".Trashes")
+        // Resolve the parent, not the final component: removing a symlink in
+        // the Trash removes the link itself. A symlink *posing as* a Trash
+        // parent must never permit permanent deletion outside the Trash.
+        let parent = url.standardizedFileURL.deletingLastPathComponent()
+        func containsTrash(_ path: URL) -> Bool {
+            path.pathComponents.contains(".Trash") || path.pathComponents.contains(".Trashes")
+        }
+        return containsTrash(parent) && containsTrash(parent.resolvingSymlinksInPath())
     }
 
     private static func failure(for url: URL, error: Error, fileManager: FileManager) -> Failure {

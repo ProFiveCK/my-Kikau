@@ -146,7 +146,8 @@ struct MaintenanceRunnerTests {
 
         let deleter = SafeFileDeleter()
         let runner = MaintenanceRunner(home: home, deleter: deleter)
-        let result = await runner.run(taskID: "saved_state", dryRun: false)
+        let review = await runner.run(taskID: "saved_state", dryRun: true)
+        let result = await runner.run(taskID: "saved_state", dryRun: false, reviewedPaths: Set(review.output))
 
         if case .applied = result.outcome {
             // expected

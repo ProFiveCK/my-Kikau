@@ -62,10 +62,13 @@ final class MaintenanceModel: ObservableObject {
                 }
                 let result = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
                 coordinator.maintenanceApplyResults[id] = result
+                guard !Task.isCancelled else { break }
                 // Recheck without overwriting what actually ran.
-                let check = await Task.detached(priority: .userInitiated) {
+                let recheck = Task.detached(priority: .userInitiated) {
                     await MaintenanceRunner().run(taskID: id, dryRun: true)
-                }.value
+                }
+                let check = await withTaskCancellationHandler { await recheck.value } onCancel: { recheck.cancel() }
+                guard !Task.isCancelled else { break }
                 var checks = coordinator.maintenanceResults ?? [:]
                 checks[id] = check
                 let applied = coordinator.maintenanceApplyResults

@@ -57,6 +57,7 @@ public struct PlanReviewView: View {
     private let action: String
     private let deleter: SafeFileDeleter
     private let prepare: Prepare?
+    private let revalidate: ((SafeFileDeleter.Plan) async -> SafeFileDeleter.Plan)?
     private let elevate: Elevate?
     private let onClose: (SafeFileDeleter.ExecutionResult?) -> Void
 
@@ -85,6 +86,7 @@ public struct PlanReviewView: View {
         deleter: SafeFileDeleter = .shared,
         preselected: Bool = true,
         prepare: Prepare? = nil,
+        revalidate: ((SafeFileDeleter.Plan) async -> SafeFileDeleter.Plan)? = nil,
         elevate: Elevate? = nil,
         onClose: @escaping (SafeFileDeleter.ExecutionResult?) -> Void
     ) {
@@ -94,6 +96,7 @@ public struct PlanReviewView: View {
         self.action = action
         self.deleter = deleter
         self.prepare = prepare
+        self.revalidate = revalidate
         self.elevate = elevate
         self.onClose = onClose
         // Suggestions built on weaker evidence start unticked: the user
@@ -328,13 +331,21 @@ public struct PlanReviewView: View {
         stage = .running(completed: 0, total: 0, path: "")
         runTask = Task {
             defer { DeletionActivity.shared.end() }
-            let notes = await prepare?(simulate, selected) ?? []
+            var notes = await prepare?(simulate, selected) ?? []
+            // A long-open review can become stale. Only keep reviewed paths;
+            // validation may remove candidates, never introduce new ones.
+            let validated = await revalidate?(chosen) ?? chosen
+            let eligible = chosen.keeping(Set(validated.items.map(\.id)))
+            let dropped = chosen.items.count - eligible.items.count
+            if dropped > 0 {
+                notes.append("Left \(dropped) item(s) alone because they are now in use or no longer eligible for cleanup.")
+            }
             let result: SafeFileDeleter.ExecutionResult = if Task.isCancelled {
                 SafeFileDeleter.ExecutionResult(
                     freedBytes: 0, succeeded: 0, failed: 0, skipped: 0, errors: [], cancelled: true, dryRun: simulate
                 )
             } else {
-                await deleter.executeAsync(chosen, mode: .trash, dryRun: simulate, action: action) { progress in
+                await deleter.executeAsync(eligible, mode: .trash, dryRun: simulate, action: action) { progress in
                     Task { @MainActor in
                         guard isRunning else { return }
                         stage = .running(completed: progress.completed, total: progress.total, path: progress.currentPath)
@@ -647,11 +658,16 @@ private struct ResultStage: View {
                             .disabled(elevating)
                             .help("Asks for an administrator password, then removes these through the myKikau helper")
                     } else {
-                        Text(
-                            "Items owned by another user can be dragged to the Trash in Finder, which will ask for an administrator password."
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(needingAdministrator.first?.recoverySuggestion ?? "")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Show Remaining Items in Finder") {
+                                NSWorkspace.shared.activateFileViewerSelecting(
+                                    needingAdministrator.map { URL(fileURLWithPath: $0.path) }
+                                )
+                            }
+                        }
                     }
                 }
                 Spacer()
