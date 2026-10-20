@@ -64,7 +64,11 @@ public final class MaintenanceRunner {
         details = []
         self.reviewedPaths = reviewedPaths
         inspectionError = nil
-        let detected = await dispatch(taskID: taskID, dryRun: dryRun)
+        let detected: MaintenanceOutcome = if Task.isCancelled {
+            .skipped("Cancelled")
+        } else {
+            await dispatch(taskID: taskID, dryRun: dryRun)
+        }
         let outcome: MaintenanceOutcome = if let inspectionError {
             .unavailable(inspectionError)
         } else if dryRun, case let .applied(detail) = detected {
@@ -85,6 +89,9 @@ public final class MaintenanceRunner {
     public func run(taskIDs: [String], dryRun: Bool) async -> [String: Result] {
         var results: [String: Result] = [:]
         for id in taskIDs {
+            if Task.isCancelled {
+                break
+            }
             results[id] = await run(taskID: id, dryRun: dryRun)
         }
         return results
@@ -141,6 +148,7 @@ public final class MaintenanceRunner {
         requiresSudo: Bool = false,
         dryRun: Bool = false
     ) async -> (exitCode: Int, output: String) {
+        guard !Task.isCancelled else { return (1, "Cancelled") }
         if dryRun {
             let cmd = ([executable] + arguments).joined(separator: " ")
             return (0, "[dry-run] \(cmd)")
@@ -428,10 +436,16 @@ public final class MaintenanceRunner {
             return .applied("Would remove \(plan.items.count) old saved state(s)")
         }
 
-        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+        guard let reviewedPaths, Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) else {
             return .failed("The files changed after review. Scan and review this task again.")
         }
-        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.saved_state")
+        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.saved_state", isCancelled: { Task.isCancelled })
+        if result.cancelled {
+            return .skipped("Stopped after removing \(result.succeeded) saved state(s)")
+        }
+        if result.skipped > 0 {
+            return .skipped("Some saved states became protected; scan again")
+        }
         if result.failed > 0 {
             return .failed("Removed \(result.succeeded), failed \(result.failed) saved state(s)")
         }
@@ -476,10 +490,16 @@ public final class MaintenanceRunner {
         if dryRun {
             return .applied("Would repair \(plan.items.count) corrupted shared file list(s)")
         }
-        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+        guard let reviewedPaths, Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) else {
             return .failed("The files changed after review. Scan and review this task again.")
         }
-        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.shared_file_lists")
+        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.shared_file_lists", isCancelled: { Task.isCancelled })
+        if result.cancelled {
+            return .skipped("Stopped after repairing \(result.succeeded) shared file list(s)")
+        }
+        if result.skipped > 0 {
+            return .skipped("Some shared file lists became protected; scan again")
+        }
         if result.failed > 0 {
             return .failed("Repaired \(result.succeeded), failed \(result.failed) shared file list(s)")
         }
@@ -535,10 +555,16 @@ public final class MaintenanceRunner {
         if dryRun {
             return .applied("Would repair \(plan.items.count) corrupted preference file(s)")
         }
-        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+        guard let reviewedPaths, Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) else {
             return .failed("The files changed after review. Scan and review this task again.")
         }
-        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.broken_configs")
+        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.broken_configs", isCancelled: { Task.isCancelled })
+        if result.cancelled {
+            return .skipped("Stopped after repairing \(result.succeeded) preference file(s)")
+        }
+        if result.skipped > 0 {
+            return .skipped("Some preferences became protected; scan again")
+        }
         if result.failed > 0 {
             return .failed("Repaired \(result.succeeded), failed \(result.failed) preference file(s)")
         }
@@ -605,17 +631,21 @@ public final class MaintenanceRunner {
         }
 
         // Unload before removing.
-        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
+        guard let reviewedPaths, Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) else {
             return .failed("The files changed after review. Scan and review this task again.")
         }
         for item in plan.items {
+            guard !Task.isCancelled else { return .skipped("Cancelled before removing Launch Agents") }
             _ = await runProcess("/bin/launchctl", arguments: ["bootout", "gui/\(getuid())", item.url.path], dryRun: false)
         }
 
-        if let reviewedPaths, !Set(plan.items.map(\.id)).isSubset(of: reviewedPaths) {
-            return .failed("The files changed after review. Scan and review this task again.")
+        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.launch_agents", isCancelled: { Task.isCancelled })
+        if result.cancelled {
+            return .skipped("Stopped after removing \(result.succeeded) Launch Agent(s)")
         }
-        let result = deleter.execute(plan, mode: .trash, dryRun: false, action: "optimize.launch_agents")
+        if result.skipped > 0 {
+            return .skipped("Some Launch Agents became protected; scan again")
+        }
         if result.failed > 0 {
             return .failed("Removed \(result.succeeded), failed \(result.failed) Launch Agent(s)")
         }

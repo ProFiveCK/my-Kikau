@@ -55,7 +55,7 @@ public enum CleanScanner {
             switch self {
             case .userAppCache: String(localized: "Caches that apps rebuild when they next need them. Running apps are skipped.")
             case .browserCache: String(localized: "Cached web content. Bookmarks, history, passwords and open tabs are not touched.")
-            case .devTools: String(localized: "Build caches and package downloads. The next build or install re-downloads what it needs.")
+            case .devTools: String(localized: "Selected Mac build caches and package downloads. Skipped while build tools run. Docker storage and project outputs are not included.")
             case .systemLogs: String(localized: "Your account's log files and temporary files untouched for three days.")
             case .appSpecificCache: String(localized: "Media and download caches for chat, music and meeting apps.")
             case .trash: String(localized: "Everything in the Trash. This is permanent.")
@@ -73,6 +73,7 @@ public enum CleanScanner {
         "Google", "Firefox", "Microsoft Edge", "BraveSoftware", "Arc", "Vivaldi", "com.operasoftware.Opera",
         "com.spotify.client", "com.getdropbox.dropbox", "us.zoom.xos",
         "go-build", "pip", "com.apple.dt.Xcode", "com.apple.helpd",
+        "node-gyp", "org.swift.swiftpm", "org.llvm.clang", "Homebrew",
     ]
 
     /// Which app owns a cache that isn't named after its bundle ID. While
@@ -113,10 +114,19 @@ public enum CleanScanner {
         for section: Section,
         home: URL? = nil,
         runningBundleIDs: Set<String>? = nil,
+        runningToolNames: Set<String>? = nil,
         now: Date = Date(),
         coverage: ScanCoverageRecorder? = nil
     ) -> [URL] {
         let resolvedHome = home ?? FileManager.default.homeDirectoryForCurrentUser
+        if section == .devTools {
+            let tools = runningToolNames ?? (home == nil ? BuildActivity.runningToolNames() : [])
+            guard let tools else {
+                coverage?.record(resolvedHome, kind: .unavailable, detail: "Build activity could not be checked; developer caches were left alone.")
+                return []
+            }
+            guard tools.isDisjoint(with: BuildActivity.toolNames) else { return [] }
+        }
         // What's running only says something about the real home folder; an
         // injected one (tests) is judged on its contents alone.
         let running = runningBundleIDs ?? (home == nil ? currentRunningBundleIDs() : [])
@@ -129,17 +139,22 @@ public enum CleanScanner {
     /// Paths that are targets right now, across every section. A plan built
     /// earlier is checked against this before it's shown for confirmation —
     /// an app may have been opened, or a temp file touched, since the scan.
-    public static func currentTargetPaths(home: URL? = nil, runningBundleIDs: Set<String>? = nil) -> Set<String> {
-        Set(Section.allCases.flatMap { targets(for: $0, home: home, runningBundleIDs: runningBundleIDs) }.map(\.path))
+    public static func currentTargetPaths(
+        home: URL? = nil, runningBundleIDs: Set<String>? = nil, runningToolNames: Set<String>? = nil
+    ) -> Set<String> {
+        Set(Section.allCases.flatMap {
+            targets(for: $0, home: home, runningBundleIDs: runningBundleIDs, runningToolNames: runningToolNames)
+        }.map(\.path))
     }
 
     /// `plan` without the items that have stopped being targets since it was built.
     public static func revalidated(
         _ plan: SafeFileDeleter.Plan,
         home: URL? = nil,
-        runningBundleIDs: Set<String>? = nil
+        runningBundleIDs: Set<String>? = nil,
+        runningToolNames: Set<String>? = nil
     ) -> SafeFileDeleter.Plan {
-        let current = currentTargetPaths(home: home, runningBundleIDs: runningBundleIDs)
+        let current = currentTargetPaths(home: home, runningBundleIDs: runningBundleIDs, runningToolNames: runningToolNames)
         return plan.keeping(Set(plan.items.map(\.id).filter(current.contains)))
     }
 
@@ -208,6 +223,10 @@ public enum CleanScanner {
                 home.appendingPathComponent(".cargo/registry/cache"),
                 home.appendingPathComponent("Library/Caches/pip"),
                 home.appendingPathComponent(".gradle/caches"),
+                home.appendingPathComponent("Library/Caches/node-gyp"),
+                home.appendingPathComponent("Library/Caches/org.swift.swiftpm"),
+                home.appendingPathComponent("Library/Caches/org.llvm.clang"),
+                home.appendingPathComponent("Library/Caches/Homebrew"),
             ]
 
         case .systemLogs:
@@ -223,7 +242,7 @@ public enum CleanScanner {
                 : home.appendingPathComponent("private/tmp")
             let cutoff = now.addingTimeInterval(-temporaryFileMinimumAge)
             let staleTemp = contents(of: tempDir, keys: [.contentModificationDateKey]).filter { entry in
-                guard let modified = latestModification(of: entry) else { return false }
+                guard let modified = latestModification(of: entry, cutoff: cutoff, coverage: coverage) else { return false }
                 return modified < cutoff
             }
             return logs + [home.appendingPathComponent("Library/Caches/com.apple.helpd")] + staleTemp
@@ -326,21 +345,45 @@ public enum CleanScanner {
 
     /// When an entry was last touched. A folder's own date doesn't change
     /// when a file inside it is rewritten, so for a folder this is the newest
-    /// date among the folder and the entries directly inside it.
-    private static func latestModification(of entry: URL) -> Date? {
-        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isDirectoryKey]
-        guard let values = try? entry.resourceValues(forKeys: keys),
-              var latest = values.contentModificationDate else { return nil }
-        if values.isDirectory == true {
-            for child in contents(of: entry, keys: [.contentModificationDateKey], includeHidden: true) {
-                if let date = try? child.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                   date > latest
-                {
-                    latest = date
-                }
+    /// date anywhere inside it. A failed read cannot establish that it is stale.
+    private static func latestModification(of entry: URL, cutoff: Date, coverage: ScanCoverageRecorder?) -> Date? {
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isDirectoryKey, .isSymbolicLinkKey]
+        do {
+            let values = try entry.resourceValues(forKeys: keys)
+            guard var latest = values.contentModificationDate, values.isSymbolicLink != true else { return nil }
+            if latest >= cutoff {
+                return latest
             }
+            guard values.isDirectory == true else { return latest }
+            var failed = false
+            guard let enumerator = FileManager.default.enumerator(
+                at: entry, includingPropertiesForKeys: Array(keys), options: [],
+                errorHandler: { url, error in
+                    failed = true
+                    coverage?.failed(url, error: error)
+                    return false
+                }
+            ) else {
+                coverage?.record(entry, kind: .unavailable, detail: "Temporary folder could not be inspected")
+                return nil
+            }
+            for case let child as URL in enumerator {
+                guard !Task.isCancelled else { return nil }
+                let childValues = try child.resourceValues(forKeys: keys)
+                if childValues.isSymbolicLink == true {
+                    continue
+                }
+                guard let date = childValues.contentModificationDate else { return nil }
+                if date >= cutoff {
+                    return date
+                }
+                latest = max(latest, date)
+            }
+            return failed ? nil : latest
+        } catch {
+            coverage?.failed(entry, error: error)
+            return nil
         }
-        return latest
     }
 
     private static func currentRunningBundleIDs() -> Set<String> {

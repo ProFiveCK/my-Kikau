@@ -4,7 +4,7 @@ function pf_apps(): array {
             'name'     => 'myKikau',
             'tagline'  => 'Clean your Mac with confidence',
             'platform' => 'macOS utility',
-            'version'  => '0.10.1',
+            'version'  => '0.10.2',
             'license'  => 'GPL-3.0',
             'summary'  => 'A native macOS maintenance app with a Care hub, Quick and Full scans, safe cleanup, app uninstall, duplicate and large-file review, and live system monitoring. It previews everything first and moves deletions to the Trash rather than destroying them.',
             'specs'    => [
@@ -14,7 +14,7 @@ function pf_apps(): array {
                 'Signed & notarized by Apple',
                 'Open source (GPL-3.0)',
             ],
-            'download_url'  => 'https://www.projectfive.co.ck/downloads/myKikau-0.10.1.dmg',
+            'download_url'  => 'https://www.projectfive.co.ck/downloads/myKikau-0.10.2.dmg',
             'notes_url'     => 'https://github.com/ProFiveCK/my-Kikau/releases',
             'source_url'    => 'https://github.com/ProFiveCK/my-Kikau',
             'download_note' => 'Automatic updates are delivered through Sparkle. Full Disk Access is requested and explained on first launch.',

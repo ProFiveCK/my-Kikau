@@ -22,7 +22,7 @@
 - Signed & notarized by Apple
 - Open source (GPL-3.0)
 
-**Primary button:** Download myKikau 0.10.1
+**Primary button:** Download myKikau 0.10.2
 **Secondary button:** Release notes
 **Download note:** Automatic updates are delivered through Sparkle. Full Disk Access is requested and explained on first launch.
 
@@ -73,6 +73,15 @@ myKikau's source is public and licensed under GPL-3.0.
 **Source code:** github.com/ProFiveCK/my-Kikau
 
 ## Release notes
+
+### Version 0.10.2 — October 2026
+
+- **Clearer Trash failures** — items needing administrator approval now explain how to finish in Finder, with a shortcut to reveal the remaining items. Administrator-owned Trash contents can still require Finder.
+- **Build-aware cleanup** — known command-line build and package tools keep developer caches out of cleanup while running. SwiftPM, node-gyp, Clang and Homebrew caches now use the same protection as the other developer caches.
+- **Clear Docker coverage** — Clean explains which Mac caches it covers, and that Docker-managed images, containers, volumes and build cache are not included in its totals.
+- **Fresh checks before cleanup** — reviews are prepared off the main thread and eligibility is checked again at confirmation. Temporary folders with recently written files at any depth are left alone.
+- **Stronger deletion checks** — symlinked Trash parents cannot permit permanent deletion outside Trash, and security-agent descendants added after a scan are checked again before removal.
+- **Safer System care** — file-removal tasks require reviewed paths, cancellation stops later steps and rechecks, and newly protected items are reported as skipped.
 
 ### Version 0.10.1 — October 2026
 

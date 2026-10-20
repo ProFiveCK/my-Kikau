@@ -7,8 +7,8 @@ struct CleanView: View {
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
     @ObservedObject private var model = CleanModel.shared
     @State private var trashNotice: String?
-    @State private var preparingTrash = false
-    @State private var trashTask: Task<Void, Never>?
+    @State private var preparingReview = false
+    @State private var reviewTask: Task<Void, Never>?
     @State private var review: ReviewRequest?
 
     @ObservedObject private var activity = WorkCoordinator.shared
@@ -42,15 +42,16 @@ struct CleanView: View {
                     Button("Review All (\(ByteSizeFormatter.format(totalReclaimable)))") { reviewAll() }
                         .carePrimaryAction()
                         .tint(tint)
+                        .disabled(activity.isBusy)
                 }
                 scanButton
             }
 
-            if preparingTrash {
+            if preparingReview {
                 ScanProgressBar(
-                    "Preparing your Trash review",
+                    "Preparing your review",
                     detail: "Reading the exact items. Nothing is being deleted.",
-                    onCancel: { trashTask?.cancel() }
+                    onCancel: { reviewTask?.cancel() }
                 )
                 .padding(.horizontal).padding(.bottom, 12)
             }
@@ -72,6 +73,31 @@ struct CleanView: View {
             if let coverage = coordinator.coverage[.clean] {
                 ScanCoverageView(coverage).padding(.horizontal).padding(.bottom, 8)
             }
+            DisclosureGroup("Build and Docker cleanup coverage") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("""
+                    Developer Tools covers selected Mac caches for Xcode, SwiftPM, npm, Node, Go, Cargo, pip, Gradle and Homebrew. \
+                    Known build and package tools keep these caches out of cleanup while running.
+                    """)
+                    Text("""
+                    Docker images, containers, volumes and build cache are managed inside Docker. \
+                    They are not included in Clean totals. Review them in Docker Desktop; \
+                    volumes can hold databases and other data you need.
+                    """)
+                    Text("""
+                    Project folders such as node_modules, .build and dist are not part of Clean. \
+                    The separate Developer tools scanner is optional and its suggestions need individual review.
+                    """)
+                    Link("Docker storage guidance", destination: URL(
+                        string: "https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/"
+                    )!)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(.secondary)
+                .padding(.top, 6)
+            }
+            .font(.caption)
+            .padding(.horizontal, 22).padding(.bottom, 10)
             if coordinator.cleanPlans == nil {
                 if !model.isScanning {
                     CareEmptyState("Make a little room.", systemImage: "internaldrive", description: Text(
@@ -110,7 +136,7 @@ struct CleanView: View {
             }
         }
         .careScreen()
-        .onDisappear { trashTask?.cancel() }
+        .onDisappear { reviewTask?.cancel() }
         .onReceive(AppNavigation.shared.$pendingTrashReview) { requested in
             guard requested else { return }
             AppNavigation.shared.pendingTrashReview = false
@@ -128,7 +154,11 @@ struct CleanView: View {
                 plan: request.plan,
                 title: request.title,
                 subtitle: request.subtitle,
-                action: request.action
+                action: request.action,
+                revalidate: { plan in
+                    let worker = Task.detached(priority: .userInitiated) { CleanScanner.revalidated(plan) }
+                    return await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+                }
             ) { result in
                 if let result, !result.dryRun {
                     coordinator.removeCleanItems(ids: result.removedIDs)
@@ -155,15 +185,15 @@ struct CleanView: View {
     }
 
     private func prepareTrashReview() {
-        guard !preparingTrash, review == nil,
-              let lease = activity.begin("Preparing Trash review", cancel: { trashTask?.cancel() })
+        guard !preparingReview, review == nil,
+              let lease = activity.begin("Preparing Trash review", cancel: { reviewTask?.cancel() })
         else {
             trashNotice = "Finish or cancel the current task before reviewing the Trash."
             return
         }
-        preparingTrash = true
-        trashTask = Task {
-            defer { preparingTrash = false; trashTask = nil; activity.finish(lease) }
+        preparingReview = true
+        reviewTask = Task {
+            defer { preparingReview = false; reviewTask = nil; activity.finish(lease) }
             let read = Task.detached(priority: .userInitiated) { TrashReview.prepare() }
             let prepared = await withTaskCancellationHandler { await read.value } onCancel: { read.cancel() }
             guard !Task.isCancelled else { return }
@@ -195,18 +225,29 @@ struct CleanView: View {
     /// target since — the cache of an app that's now open, a temp file that's
     /// been touched.
     private func openReview(_ plan: SafeFileDeleter.Plan, title: String, subtitle: String?) {
-        let current = CleanScanner.revalidated(plan)
-        let dropped = plan.items.count - current.items.count
-        if dropped > 0 {
-            coordinator.removeCleanItems(ids: Set(plan.items.map(\.id)).subtracting(current.items.map(\.id)))
+        guard !preparingReview, review == nil,
+              let lease = activity.begin("Preparing cleanup review", cancel: { reviewTask?.cancel() }) else { return }
+        preparingReview = true
+        reviewTask = Task {
+            defer { preparingReview = false; reviewTask = nil; activity.finish(lease) }
+            let worker = Task.detached(priority: .userInitiated) { CleanScanner.revalidated(plan) }
+            let current = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+            guard !Task.isCancelled else { return }
+            let dropped = plan.items.count - current.items.count
+            if dropped > 0 {
+                coordinator.removeCleanItems(ids: Set(plan.items.map(\.id)).subtracting(current.items.map(\.id)))
+            }
+            guard !current.items.isEmpty else {
+                trashNotice = "These items are now in use or no longer eligible. Rescan after closing build tools and apps."
+                return
+            }
+            var note = subtitle
+            if dropped > 0 {
+                let left = "\(dropped) item(s) are now in use or no longer eligible and were left out."
+                note = [subtitle, left].compactMap { $0 }.joined(separator: " ")
+            }
+            review = ReviewRequest(plan: current, title: title, subtitle: note, action: "clean")
         }
-        guard !current.items.isEmpty else { return }
-        var note = subtitle
-        if dropped > 0 {
-            let left = "\(dropped) item\(dropped == 1 ? " is" : "s are") now in use and \(dropped == 1 ? "was" : "were") left out."
-            note = [subtitle, left].compactMap { $0 }.joined(separator: " ")
-        }
-        review = ReviewRequest(plan: current, title: title, subtitle: note, action: "clean")
     }
 }
 
