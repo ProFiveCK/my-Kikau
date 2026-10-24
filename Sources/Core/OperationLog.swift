@@ -520,7 +520,9 @@ public final class OperationLog: @unchecked Sendable {
 
         let chunkSize: UInt64 = 64 * 1024
         var offset = fileSize
-        var buffer = Data()
+        // Chunks newest first, joined once at the end: prepending each chunk
+        // to one buffer recopies everything read so far, every time.
+        var chunks: [Data] = []
         var newlines = 0
         while offset > 0 {
             let readSize = min(chunkSize, offset)
@@ -528,12 +530,16 @@ public final class OperationLog: @unchecked Sendable {
             guard (try? handle.seek(toOffset: offset)) != nil,
                   let chunk = try? handle.read(upToCount: Int(readSize)) else { break }
             newlines += chunk.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
-            buffer = chunk + buffer
+            chunks.append(chunk)
             // Two spare newlines: one may be the terminator of a line that
             // lies before the buffer, and the oldest fragment may be partial.
             if limit != .max, newlines > limit + 1 {
                 break
             }
+        }
+        var buffer = Data(capacity: Int(fileSize - offset))
+        for chunk in chunks.reversed() {
+            buffer.append(chunk)
         }
         var lines = buffer.split(separator: 0x0A).map { Data($0) }
         // If the read stopped mid-file, the first fragment is partial —

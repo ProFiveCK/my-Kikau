@@ -313,17 +313,22 @@ private struct AdvancedSettings: View {
         ManagedPolicy.shared
     }
 
+    private var advancedToolsManaged: Bool {
+        policy.isFeatureDisabled("purge") && policy.isFeatureDisabled("network")
+    }
+
     var body: some View {
         Form {
             Section {
-                Toggle("Developer tools", isOn: $developerTools)
-                    .disabled(policy.isFeatureDisabled("purge"))
+                Toggle("Advanced tools", isOn: $developerTools)
+                    .disabled(advancedToolsManaged)
                 Text(
-                    "Adds Project Purge to the sidebar: finds node_modules, build output and virtual environments in your project folders."
+                    "Adds Network (addresses, DNS and connection tools) and Project Purge (node_modules, build output "
+                        + "and virtual environments in your project folders) to the sidebar."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                if policy.isFeatureDisabled("purge") {
+                if advancedToolsManaged {
                     ManagedNote()
                 }
             }

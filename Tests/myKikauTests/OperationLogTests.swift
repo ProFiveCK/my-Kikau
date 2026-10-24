@@ -157,6 +157,20 @@ struct OperationLogTests {
         #expect(log.verifyChain().isIntact)
     }
 
+    @Test("Entries read across several chunks keep their order")
+    func tailReadKeepsOrderAcrossChunks() {
+        let dir = makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = OperationLog(logURL: dir.appendingPathComponent("operations.log"))
+        // About 600 bytes a line, so 300 lines span three 64 KB chunks.
+        let padding = String(repeating: "x", count: 400)
+        for index in 0..<300 { log.append(entry("/tmp/\(index)-\(padding)")) }
+        log.flush()
+
+        let paths = log.recent(limit: 250).map(\.path)
+        #expect(paths == (50..<300).reversed().map { "/tmp/\($0)-\(padding)" })
+    }
+
     @Test("Totals count only real successes and survive rotation")
     func totalsSurviveRotation() {
         let dir = makeDir()

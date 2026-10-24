@@ -78,12 +78,6 @@ struct CareHubView: View {
                             }
                         }.pickerStyle(.segmented).frame(maxWidth: 320).disabled(work.isBusy)
                         Text(scanMode.summary).font(.caption).foregroundStyle(.secondary)
-                        if let mode = coordinator.lastScanMode, let date = coordinator.lastScanAt {
-                            Text(
-                                "\(mode.title) completed \(date.formatted(date: .abbreviated, time: .shortened)). Each area shows when it was checked."
-                            )
-                            .font(.caption2).foregroundStyle(.secondary)
-                        }
                     }
                     tools
                     if canCare {
@@ -128,15 +122,12 @@ struct CareHubView: View {
     private func hero(compact: Bool) -> some View {
         HStack(spacing: compact ? 4 : 22) {
             VStack(alignment: .leading, spacing: 13) {
-                Text(coordinator
-                    .hasResults ?
-                    (reviewDestination == nil ? "Your scan is ready.\nYou’re in control." : "A little clutter.\nA lot of possibility.") :
-                    "A little care.\nA lighter Mac.")
+                Text(headline)
                     .font(.system(size: compact ? 29 : 36, weight: .bold, design: .rounded))
                     .tracking(-1.1).fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 Text(coordinator.hasResults
-                    ? "Your results are ready. Choose what to review, and keep everything you need."
+                    ? "Nothing is removed until you review it."
                     : "Clear the clutter. Find your space. Give your Mac a little breathing room.")
                     .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 310, alignment: .leading)
@@ -175,6 +166,16 @@ struct CareHubView: View {
         )
     }
 
+    /// Says what the scan found, not a slogan.
+    private var headline: String {
+        guard coordinator.hasResults else { return "A little care.\nA lighter Mac." }
+        switch reviewDestination {
+        case .clean: return "\(ByteSizeFormatter.format(cleanBytes))\nready to review."
+        case nil: return "Nothing needs\nyour attention."
+        default: return "Your results\nare ready."
+        }
+    }
+
     private var primaryTitle: String {
         if coordinator.isScanning {
             return "Scanning…"
@@ -192,10 +193,6 @@ struct CareHubView: View {
             HStack {
                 Text(coordinator.hasResults ? "Your scan, at a glance" : "Care for every corner").font(.headline)
                 Spacer()
-                if let date = coordinator.lastScanAt {
-                    Text("\(coordinator.lastScanMode?.title ?? "Scan") · \(date.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
             }
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(minimum: 150), spacing: 12), count: max(
@@ -234,6 +231,8 @@ struct CareHubView: View {
                     )
                 }
             }
+            // The one place scan times are shown: each area keeps its own,
+            // since a screen can be rescanned on its own.
             HStack {
                 if canClean {
                     checkedDate(.clean, title: "Cleanup")

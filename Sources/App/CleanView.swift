@@ -73,31 +73,6 @@ struct CleanView: View {
             if let coverage = coordinator.coverage[.clean] {
                 ScanCoverageView(coverage).padding(.horizontal).padding(.bottom, 8)
             }
-            DisclosureGroup("Build and Docker cleanup coverage") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("""
-                    Developer Tools covers selected Mac caches for Xcode, SwiftPM, npm, Node, Go, Cargo, pip, Gradle and Homebrew. \
-                    Known build and package tools keep these caches out of cleanup while running.
-                    """)
-                    Text("""
-                    Docker images, containers, volumes and build cache are managed inside Docker. \
-                    They are not included in Clean totals. Review them in Docker Desktop; \
-                    volumes can hold databases and other data you need.
-                    """)
-                    Text("""
-                    Project folders such as node_modules, .build and dist are not part of Clean. \
-                    The separate Developer tools scanner is optional and its suggestions need individual review.
-                    """)
-                    Link("Docker storage guidance", destination: URL(
-                        string: "https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/"
-                    )!)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .foregroundStyle(.secondary)
-                .padding(.top, 6)
-            }
-            .font(.caption)
-            .padding(.horizontal, 22).padding(.bottom, 10)
             if coordinator.cleanPlans == nil {
                 if !model.isScanning {
                     CareEmptyState("Make a little room.", systemImage: "internaldrive", description: Text(
@@ -261,6 +236,15 @@ private struct CleanSectionCard: View {
     let maxReclaimable: Int64
     let onReview: () -> Void
 
+    /// What Developer Tools does and doesn't cover, on hover rather than as
+    /// a permanent block on the Clean screen.
+    private static let devToolsCoverage = """
+    Covers selected Mac caches for Xcode, SwiftPM, npm, Node, Go, Cargo, pip, Gradle and Homebrew, \
+    skipped while those tools run. Docker images, containers and volumes are managed in Docker Desktop \
+    and aren't included; volumes can hold databases you need. Project folders such as node_modules \
+    are covered separately by Project Purge (Settings → Advanced).
+    """
+
     private var relativeSize: Double {
         maxReclaimable > 0 ? Double(plan.totalReclaimable) / Double(maxReclaimable) * 100 : 0
     }
@@ -310,6 +294,7 @@ private struct CleanSectionCard: View {
             .cardSurface()
         }
         .buttonStyle(.plain)
+        .help(section == .devTools ? Self.devToolsCoverage : "")
         .accessibilityLabel("\(section.displayName), \(ByteSizeFormatter.format(plan.totalReclaimable)), \(countText)")
         .accessibilityHint("Opens the list of items to review")
     }

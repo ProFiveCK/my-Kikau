@@ -12,6 +12,8 @@ struct HUDView: View {
     @ObservedObject private var work = WorkCoordinator.shared
     @State private var netInfo: NetworkInfo?
     @State private var copiedIP = false
+    /// Network is a sidebar screen only while advanced tools are on.
+    @AppStorage(AppStorageKey.developerToolsEnabled) private var advancedTools = false
     @State private var memoryStatus: String?
     @State private var freeingMemory = false
     private let canPurgeMemory = MemoryOptimizer.isPurgeAvailable()
@@ -192,7 +194,8 @@ struct HUDView: View {
                     }
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
-            }.buttonStyle(.plain).disabled(ManagedPolicy.shared.isFeatureDisabled("network"))
+            }.buttonStyle(.plain)
+                .disabled(!ContentView.SidebarItem.visibleCases(developerTools: advancedTools).contains(.network))
             if let ip = info.localIPv4 {
                 Button {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString(ip, forType: .string); copiedIP = true

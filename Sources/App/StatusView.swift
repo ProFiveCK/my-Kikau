@@ -42,11 +42,11 @@ struct StatusView: View {
                 }
                 .frame(width: 720, height: 620).careScreen()
                 .sheet(item: $activityProcessSheet) { ProcessListSheet(mode: $0.mode) }
+                // Overview itself shows no live readings, so metrics are
+                // collected only while this sheet is open.
+                .onAppear { metricsService.subscribe() }
+                .onDisappear { metricsService.unsubscribe() }
             }
-            .onAppear {
-                metricsService.subscribe()
-            }
-            .onDisappear { metricsService.unsubscribe() }
             .onReceive(AppNavigation.shared.$pendingProcessMode) { pending in
                 guard let pending else { return }
                 if showingActivity {
@@ -561,20 +561,5 @@ private struct GlassTile: View {
         .frame(maxWidth: .infinity, minHeight: 50, alignment: .topLeading)
         .background(CareTheme.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(CareTheme.border, lineWidth: 1))
-    }
-}
-
-private struct StatCard<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline)
-            content
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardSurface(radius: 15)
     }
 }
