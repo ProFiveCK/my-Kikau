@@ -34,6 +34,11 @@ public enum StartupItems {
         /// when that tool sits directly in `/Library/PrivilegedHelperTools`
         /// (exact-path evidence, removed together with the plist).
         public let helperTool: URL?
+        /// The plist's file permissions let only its owner (usually root)
+        /// read it, so its label and program are unknown. The item is still
+        /// listed; no privacy permission can change this, so it isn't
+        /// reported as a gap in the scan.
+        public let contentsUnreadable: Bool
 
         /// The app the executable lives in, if it lives in one.
         public var owningAppName: String? {
@@ -103,7 +108,12 @@ public enum StartupItems {
             } else {
                 coverage?.record(url, kind: .unavailable, detail: "The startup configuration could not be read.")
             }
-        } catch { coverage?.failed(url, error: error) }
+        } catch {
+            if !isOwnerOnly(url) {
+                coverage?.failed(url, error: error)
+            }
+        }
+        let contentsUnreadable = dict.isEmpty && isOwnerOnly(url)
         let label = (dict["Label"] as? String) ?? url.deletingPathExtension().lastPathComponent
         let program = (dict["Program"] as? String) ?? (dict["ProgramArguments"] as? [String])?.first
         let missing: Bool = if let program, program.hasPrefix("/"), !program.hasPrefix("/Volumes/") {
@@ -135,8 +145,16 @@ public enum StartupItems {
                 || url.lastPathComponent.hasPrefix("com.apple.")
                 || protection.isEndpointSecurityBundle(label)
                 || protection.shouldProtect(url),
-            helperTool: helperTool
+            helperTool: helperTool,
+            contentsUnreadable: contentsUnreadable
         )
+    }
+
+    /// Unreadable because of its file permissions (EACCES), not a privacy
+    /// setting such as Full Disk Access (EPERM): e.g. a vendor's daemon plist
+    /// installed as root with mode 700.
+    static func isOwnerOnly(_ url: URL) -> Bool {
+        access(url.path, R_OK) != 0 && errno == EACCES
     }
 
     /// Plan for removing startup items: each plist, plus the helper tool a

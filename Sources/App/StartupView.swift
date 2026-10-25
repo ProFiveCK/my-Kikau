@@ -172,6 +172,9 @@ struct StartupView: View {
                 } : nil,
                 onClose: { result in
                     review = nil
+                    // Whatever happened in the sheet, show what's on disk now;
+                    // the rescan can't run while another task is busy.
+                    coordinator.pruneMissingStartupItems()
                     if let result, !result.dryRun, !result.removedIDs.isEmpty {
                         selection.subtract(result.removedIDs)
                         load()
@@ -181,6 +184,7 @@ struct StartupView: View {
         }
         .task {
             helperEnabled = PrivilegedHelperClient.isEnabled
+            coordinator.pruneMissingStartupItems()
             if items == nil {
                 load()
             }
@@ -213,6 +217,9 @@ private struct StartupRow: View {
         }
         if let program = item.program {
             parts.append(program)
+        }
+        if item.contentsUnreadable {
+            parts.append(String(localized: "settings readable only by its owner (root)"))
         }
         if item.helperTool != nil {
             parts.append(String(localized: "removes its helper tool too"))

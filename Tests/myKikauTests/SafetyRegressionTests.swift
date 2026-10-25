@@ -932,6 +932,69 @@ struct StartupItemsTests {
         #expect(Set(plan.items.map(\.url.lastPathComponent)) == ["com.vendor.updater.plist", "com.vendor.inapp.plist"])
     }
 
+    @Test("Startup items whose file has gone drop out of the list without a rescan")
+    @MainActor
+    func vanishedItemsArePruned() throws {
+        let home = makeTempDir()
+        let library = makeTempDir()
+        defer {
+            try? FileManager.default.removeItem(at: home)
+            try? FileManager.default.removeItem(at: library)
+        }
+        let daemons = library.appendingPathComponent("LaunchDaemons")
+        makeDir(daemons)
+        for label in ["com.vendor.kept", "com.vendor.removed"] {
+            (["Label": label, "Program": "/nonexistent/\(label)"] as NSDictionary)
+                .write(to: daemons.appendingPathComponent("\(label).plist"), atomically: true)
+        }
+        let coordinator = ScanEverythingCoordinator()
+        let items = StartupItems.scan(home: home, library: library)
+        coordinator.setStartupItems(items)
+        coordinator.selectedStartupIDs = Set(items.map(\.id))
+
+        // Removed outside this screen (by the helper, or the vendor's uninstaller).
+        try FileManager.default.removeItem(at: daemons.appendingPathComponent("com.vendor.removed.plist"))
+        coordinator.pruneMissingStartupItems()
+
+        #expect(coordinator.startupItems?.map(\.label) == ["com.vendor.kept"])
+        #expect(coordinator.selectedStartupIDs == Set(coordinator.startupItems?.map(\.id) ?? []))
+    }
+
+    @Test("A plist only its owner can read is listed, not reported as a gap; an unparsable one still is")
+    func ownerOnlyPlistIsNotAScanGap() throws {
+        // Root reads everything, so the permission case can't be set up.
+        guard getuid() != 0 else { return }
+        let home = makeTempDir()
+        let library = makeTempDir()
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644], ofItemAtPath: library.appendingPathComponent("LaunchDaemons/com.vendor.locked.plist").path
+            )
+            try? FileManager.default.removeItem(at: home)
+            try? FileManager.default.removeItem(at: library)
+        }
+        let daemons = library.appendingPathComponent("LaunchDaemons")
+        makeDir(daemons)
+        // Like NordVPN's helper: a valid plist installed with mode 700.
+        let locked = daemons.appendingPathComponent("com.vendor.locked.plist")
+        (["Label": "com.vendor.locked", "Program": "/Library/PrivilegedHelperTools/com.vendor.locked"] as NSDictionary)
+            .write(to: locked, atomically: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+
+        let coverage = ScanCoverageRecorder()
+        let item = try #require(StartupItems.scan(home: home, library: library, coverage: coverage)
+            .first { $0.label == "com.vendor.locked" })
+        #expect(item.contentsUnreadable)
+        #expect(item.program == nil)
+        #expect(!coverage.snapshot.isPartial)
+
+        // A readable file that isn't a property list is still a real gap.
+        try Data("not a plist".utf8).write(to: daemons.appendingPathComponent("com.vendor.broken.plist"))
+        let second = ScanCoverageRecorder()
+        _ = StartupItems.scan(home: home, library: library, coverage: second)
+        #expect(second.snapshot.isPartial)
+    }
+
     @Test("System-wide items need the administrator helper, and bring only the exact helper tool they run")
     func systemItemsThroughHelper() throws {
         let home = makeTempDir()
