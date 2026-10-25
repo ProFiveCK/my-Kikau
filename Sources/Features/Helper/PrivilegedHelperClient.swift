@@ -118,6 +118,31 @@ public enum PrivilegedHelperClient {
         return outcome
     }
 
+    /// `removeItems`, with each outcome recorded in the operation log under
+    /// `action` (e.g. "uninstall.admin"), as the review sheet's elevate step.
+    public static func removeItems(
+        _ paths: [String],
+        sizes: [String: Int64],
+        logAction action: String,
+        log: OperationLog = .shared
+    ) async -> (removed: Set<String>, failed: [String: String]) {
+        let outcome = await removeItems(paths)
+        for (path, trashed) in outcome.removed {
+            log.append(.init(
+                action: action, path: path, sizeBytes: sizes[path] ?? 0, mode: .trash,
+                outcome: .success, dryRun: false,
+                detail: "Removed with administrator rights", trashedPath: trashed
+            ))
+        }
+        for (path, reason) in outcome.failed {
+            log.append(.init(
+                action: action, path: path, sizeBytes: 0, mode: .trash,
+                outcome: .failed, dryRun: false, detail: reason
+            ))
+        }
+        return (Set(outcome.removed.keys), outcome.failed)
+    }
+
     /// Owns an `AuthorizationRef` for as long as a helper call needs it.
     private final class AuthorizationToken: @unchecked Sendable {
         let reference: AuthorizationRef

@@ -4,6 +4,11 @@
 
 ## Release notes
 
+### Version 0.10.4 — October 2026
+
+- **Remove system-wide startup items** — with the administrator helper turned on, System care → Startup items can remove background services installed for all users, such as an app's leftover updater. Each one is stopped straight away, the helper tool it runs is removed with it, and everything goes to the Trash after you approve with an administrator password.
+- **Clear limits** — Apple's own items and security or device-management software stay protected, and a helper tool is only removed when the service names that exact file.
+
 ### Version 0.10.3 — October 2026
 
 - **A simpler sidebar** — seven places instead of ten. Startup items are now a tab of System care, About is in the app menu, and Network joins Project Purge under Settings → Advanced tools.

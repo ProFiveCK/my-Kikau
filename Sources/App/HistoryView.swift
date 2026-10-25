@@ -335,6 +335,7 @@ private struct HistoryRow: View {
         case "uninstall.admin": return String(localized: "Uninstall — administrator helper")
         case "uninstall.orphans": return String(localized: "Leftovers from removed apps")
         case "startup": return String(localized: "Startup Items")
+        case "startup.admin": return String(localized: "Startup Items — administrator helper")
         case "uninstall.teardown": return String(localized: "Uninstall — background services stopped")
         case "duplicates": return String(localized: "Duplicates")
         case "largeFiles": return String(localized: "Large Files")

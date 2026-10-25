@@ -931,6 +931,74 @@ struct StartupItemsTests {
         let plan = StartupItems.removalPlan(for: items, deleter: SafeFileDeleter())
         #expect(Set(plan.items.map(\.url.lastPathComponent)) == ["com.vendor.updater.plist", "com.vendor.inapp.plist"])
     }
+
+    @Test("System-wide items need the administrator helper, and bring only the exact helper tool they run")
+    func systemItemsThroughHelper() throws {
+        let home = makeTempDir()
+        let library = makeTempDir()
+        defer {
+            try? FileManager.default.removeItem(at: home)
+            try? FileManager.default.removeItem(at: library)
+        }
+        let daemons = library.appendingPathComponent("LaunchDaemons")
+        let agents = library.appendingPathComponent("LaunchAgents")
+        let tools = library.appendingPathComponent("PrivilegedHelperTools")
+        makeDir(daemons)
+        makeDir(agents)
+        let tool = tools.appendingPathComponent("com.vendor.daemon")
+        touch(tool)
+        touch(tools.appendingPathComponent("nested/com.vendor.deep"))
+        try FileManager.default.createSymbolicLink(at: tools.appendingPathComponent("com.vendor.linked"), withDestinationURL: tool)
+        // A user agent that happens to name a helper tool never brings it along.
+        let userAgents = home.appendingPathComponent("Library/LaunchAgents")
+        makeDir(userAgents)
+        (["Label": "com.vendor.user", "Program": tool.path] as NSDictionary)
+            .write(to: userAgents.appendingPathComponent("com.vendor.user.plist"), atomically: true)
+        for (dir, label, program) in [
+            (daemons, "com.vendor.daemon", tool.path),
+            (daemons, "com.vendor.deep", tools.appendingPathComponent("nested/com.vendor.deep").path),
+            (daemons, "com.vendor.linked", tools.appendingPathComponent("com.vendor.linked").path),
+            (daemons, "com.apple.thing", tools.appendingPathComponent("com.apple.thing").path),
+            (daemons, "com.jamf.agent", tools.appendingPathComponent("com.jamf.agent").path),
+            (agents, "com.vendor.updater", library.appendingPathComponent("Application Support/Vendor/Updater").path),
+        ] {
+            (["Label": label, "ProgramArguments": [program]] as NSDictionary)
+                .write(to: dir.appendingPathComponent("\(label).plist"), atomically: true)
+        }
+
+        let items = StartupItems.scan(home: home, library: library)
+        let byLabel = Dictionary(uniqueKeysWithValues: items.map { ($0.label, $0) })
+        let daemon = try #require(byLabel["com.vendor.daemon"])
+
+        #expect(daemon.helperTool?.path == tool.path)
+        #expect(byLabel["com.vendor.deep"]?.helperTool == nil)
+        #expect(byLabel["com.vendor.linked"]?.helperTool == nil)
+        #expect(byLabel["com.vendor.updater"]?.helperTool == nil)
+        #expect(byLabel["com.vendor.user"]?.helperTool == nil)
+
+        // Without the helper, system-wide items can't be ticked; with it they can.
+        #expect(daemon.needsAdministrator && !daemon.isRemovable)
+        #expect(!daemon.canRemove(helperEnabled: false))
+        #expect(daemon.canRemove(helperEnabled: true))
+        // Apple's and device-management items never, helper or not.
+        #expect(byLabel["com.apple.thing"]?.canRemove(helperEnabled: true) == false)
+        #expect(byLabel["com.jamf.agent"]?.canRemove(helperEnabled: true) == false)
+
+        let deleter = SafeFileDeleter()
+        let withoutHelper = StartupItems.removalPlan(for: items, deleter: deleter)
+        #expect(Set(withoutHelper.items.map(\.url.lastPathComponent)) == ["com.vendor.user.plist"])
+
+        // Folder and name: the temporary folder may come back as /private/var.
+        let withHelper = StartupItems.removalPlan(for: items, helperEnabled: true, deleter: deleter)
+        #expect(Set(withHelper.items.map { "\($0.url.deletingLastPathComponent().lastPathComponent)/\($0.url.lastPathComponent)" }) == [
+            "LaunchAgents/com.vendor.user.plist",
+            "LaunchDaemons/com.vendor.daemon.plist",
+            "PrivilegedHelperTools/com.vendor.daemon",
+            "LaunchDaemons/com.vendor.deep.plist",
+            "LaunchDaemons/com.vendor.linked.plist",
+            "LaunchAgents/com.vendor.updater.plist",
+        ])
+    }
 }
 
 @Suite("Care foundation safety")
