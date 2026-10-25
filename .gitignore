@@ -28,3 +28,6 @@ website-upload/
 
 # Localisation extraction scratch
 .build-loc/
+
+# Python
+__pycache__/

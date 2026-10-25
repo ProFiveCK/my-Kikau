@@ -1,410 +1,288 @@
 #!/usr/bin/env python3
-"""Deploy myKikau release artifacts to projectfive.co.ck via Plesk API.
+"""Deploy a myKikau release to projectfive.co.ck through the Hostinger API.
 
-Uploads the DMG, appcast.xml, and updates the /apps/ page app facts in the
-WordPress theme's functions.php — all through the Plesk REST fs API. No
-manual FTP, WordPress admin, or temporary PHP scripts needed.
+projectfive.co.ck is a static site built from a separate folder (default
+~/MyProjects/projectfive/website-renew/site, override with --site or
+MYKIKAU_SITE_DIR). The release's version and DMG size live in that site's
+src/mykikau.json; this script updates it, rebuilds and checks the site, then
+uploads only the files a release changes:
 
-The /apps/ page is rendered by the theme template page-apps.php, which reads
-app data from pf_apps() in functions.php. Deploying edits that function in
-place on the server so version, download URL, and copy stay in sync with the
-release artifacts.
+  downloads/myKikau-<version>.dmg   (first, so the feed never points at nothing)
+  apps/index.html                   (version, size and download link)
+  .htaccess                         (keeps /apps/appcast.xml, the feed URL of
+                                     builds up to 0.10.2, serving the feed)
+  downloads/appcast.xml             (last: this is what Sparkle reads)
+
+Each file goes through Hostinger's upload URL (POST /api/hosting/v1/files/upload-urls)
+as a TUS upload with override=true. Before uploading, the current remote text
+files are saved to ~/.hermes/cache/projectfive_mykikau_backups/<timestamp>/.
+Afterwards the Cloudflare cache for those URLs is purged and the public URLs
+are checked: DMG checksum, feed version (at both feed URLs), page link.
 
 Usage:
-  python3 scripts/deploy-website.py                    # deploys website-upload/<version>/
-  python3 scripts/deploy-website.py --version 0.4.3     # explicit version
-  python3 scripts/deploy-website.py --dry-run           # validate only, no writes
-  python3 scripts/deploy-website.py --env /path/to/env  # custom env file
+  python3 scripts/deploy-website.py                      # newest website-upload/<version>/
+  python3 scripts/deploy-website.py --version 0.10.3
+  python3 scripts/deploy-website.py --dry-run            # build and check the site, no uploads
+  python3 scripts/deploy-website.py --only .htaccess     # upload just these built files
 
-Environment file (~/.hermes/secrets/plesk-hostme.env):
-  PLESK_HOSTME_URL=https://hostme.projectfive.co.ck
-  PLESK_HOSTME_USERNAME=admin
-  PLESK_HOSTME_PASSWORD=...
-  PROJECTFIVE_WP_URL=https://www.projectfive.co.ck
+Credentials (never printed):
+  ~/.hermes/secrets/hostinger.env   HOSTINGER_API_TOKEN (hPanel → API)
+  ~/.hermes/secrets/cloudflare.env  CLOUDFLARE_API_TOKEN (needs Zone → Cache Purge), CLOUDFLARE_ZONE
+                                    (zone ID or name; optional, a failed purge only warns)
 
-Requirements:
-  - A signed/notarized DMG in website-upload/<version>/myKikau-<version>.dmg
-  - appcast.xml in website-upload/<version>/appcast.xml
-  - pf-apps.php in website-upload/<version>/pf-apps.php
-  - The Plesk env file with credentials
-
-The script:
-  1. Validates all artifacts exist and match expected markers
-  2. Backs up the current remote appcast + theme functions.php
-  3. Uploads DMG to /downloads/myKikau-<version>.dmg via Plesk fs API
-  4. Uploads appcast.xml to /downloads/appcast.xml via Plesk fs API
-  5. Updates pf_apps() in functions.php via Plesk fs API (in-place edit)
-  6. Verifies all public URLs serve the correct content
-  7. Reports pass/fail summary
-
-Exit codes: 0=success, 1=validation error, 2=API/upload error, 3=verification error
+Exit codes: 0 success, 1 validation error, 2 API/upload error, 3 verification error.
 """
 
 import argparse
-import base64
 import datetime as dt
 import hashlib
 import json
+import logging
+import os
 import re
-import ssl
+import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-# --- Constants ---
+log = logging.getLogger("deploy-website")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ENV_PATH = Path.home() / ".hermes" / "secrets" / "plesk-hostme.env"
-DOMAIN = "projectfive.co.ck"
-DOWNLOAD_URL_PREFIX = "https://www.projectfive.co.ck/downloads/"
-APPS_LANDING_URL = "https://www.projectfive.co.ck/apps/"
-THEME_PATH = "wp-content/themes/project-five"
-THEME_FUNCTIONS_PATH = f"{THEME_PATH}/functions.php"
+SECRETS = Path.home() / ".hermes" / "secrets"
 BACKUP_BASE = Path.home() / ".hermes" / "cache" / "projectfive_mykikau_backups"
+DEFAULT_SITE = Path(os.environ.get("MYKIKAU_SITE_DIR", Path.home() / "MyProjects/projectfive/website-renew/site"))
+
+API = "https://developers.hostinger.com"
+HOSTING_USERNAME = "u183486732"
+DOMAIN = "projectfive.co.ck"
+ORIGIN = f"https://{DOMAIN}"
+# Builds up to 0.10.2 read their feed from the old www address.
+LEGACY_FEED = "https://www.projectfive.co.ck/apps/appcast.xml"
+FEED = f"{ORIGIN}/downloads/appcast.xml"
+UA = "myKikau-deploy/1.0"
+CHUNK = 10 * 1024 * 1024
 
 
-# --- Helpers ---
+class DeployError(Exception):
+    def __init__(self, message, code):
+        super().__init__(message)
+        self.code = code
+
 
 def load_env(path: Path) -> dict:
-    """Load key=value env file."""
     if not path.exists():
-        print(f"ERROR: env file not found: {path}", file=sys.stderr)
-        sys.exit(1)
+        raise DeployError(f"credentials file not found: {path}", 1)
     env = {}
     for line in path.read_text().splitlines():
         line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        env[k.strip()] = v.strip().strip('"').strip("'")
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            env[key.strip()] = value.strip().strip("'\"")
     return env
 
 
-def http_req(url, method="GET", data=None, headers=None, auth=None, timeout=90):
-    """Make an HTTP request and return (status, headers, body_bytes)."""
-    headers = dict(headers or {})
-    if auth:
-        token = base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
-        headers["Authorization"] = f"Basic {token}"
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+def request(url, method="GET", data=None, headers=None, timeout=120):
+    """Returns (status, headers, body). HTTP errors raise DeployError without echoing credentials."""
+    req = urllib.request.Request(url, data=data, method=method, headers={"User-Agent": UA, **(headers or {})})
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as resp:
-            return resp.status, resp.headers, resp.read()
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, dict(resp.headers), resp.read()
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")[:1200]
-        raise RuntimeError(f"HTTP {e.code} {method} {url}: {body}")
+        body = e.read()[:400].decode("utf-8", "replace")
+        raise DeployError(f"HTTP {e.code} {method} {url.split('?')[0]}: {body}", 2) from None
 
 
-def plesk_api(base, path, method="GET", data=None, headers=None, auth=None, timeout=90):
-    """Call a Plesk API endpoint."""
-    return http_req(base.rstrip("/") + path, method, data, headers, auth, timeout)
+class Hostinger:
+    def __init__(self, token):
+        self.auth = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        self.upload = None
+
+    def _get(self, endpoint, **query):
+        url = f"{API}/api/hosting/v1/accounts/{HOSTING_USERNAME}/domains/{DOMAIN}/{endpoint}?{urllib.parse.urlencode(query)}"
+        return json.loads(request(url, headers=self.auth)[2])
+
+    def read_text(self, path):
+        """A text file's current content, or None if the API won't return it."""
+        try:
+            return self._get("files/content", path=path).get("content")
+        except DeployError as e:
+            log.warning("  could not read %s for backup: %s", path, e)
+            return None
+
+    def put(self, local: Path, dest: str):
+        if self.upload is None:
+            body = json.dumps({"username": HOSTING_USERNAME, "domain": DOMAIN}).encode()
+            creds = json.loads(request(f"{API}/api/hosting/v1/files/upload-urls", "POST", body,
+                                       {**self.auth, "Content-Type": "application/json"})[2])
+            self.upload = (creds["url"].rstrip("/"), creds["auth_key"], creds["rest_auth_key"])
+        base, key, rest_key = self.upload
+        url = f"{base}/{urllib.parse.quote(dest)}?override=true"
+        data = local.read_bytes()
+        tus = {"X-Auth": key, "X-Auth-Rest": rest_key, "Tus-Resumable": "1.0.0"}
+        status = request(url, "POST", b"", {**tus, "Upload-Length": str(len(data)), "Upload-Offset": "0"})[0]
+        if status != 201:
+            raise DeployError(f"upload of {dest} was not created (HTTP {status})", 2)
+        offset = 0
+        while offset < len(data):
+            chunk = data[offset:offset + CHUNK]
+            _, headers, _ = request(url, "PATCH", chunk, {**tus, "Upload-Offset": str(offset),
+                                                          "Content-Type": "application/offset+octet-stream"})
+            offset = int({k.lower(): v for k, v in headers.items()}.get("upload-offset", offset + len(chunk)))
+        log.info("  ✓ %s (%d bytes)", dest, len(data))
 
 
-def plesk_fs_put(base, domain_id, path, data, auth):
-    """Upload file content via Plesk fs API."""
-    q = urllib.parse.urlencode({"path": path})
-    return plesk_api(base, f"/api/v2/domains/{domain_id}/fs/content?{q}",
-                     method="PUT", data=data,
-                     headers={"Content-Type": "application/octet-stream"},
-                     auth=auth, timeout=180)
+def purge_cloudflare(urls):
+    path = SECRETS / "cloudflare.env"
+    if not path.exists():
+        log.warning("  no %s; skipping cache purge", path)
+        return
+    env = load_env(path)
+    auth = {"Authorization": f"Bearer {env['CLOUDFLARE_API_TOKEN']}", "Content-Type": "application/json"}
+    zone = env["CLOUDFLARE_ZONE"]
+    if not re.fullmatch(r"[0-9a-f]{32}", zone):
+        found = json.loads(request(f"https://api.cloudflare.com/client/v4/zones?name={zone}", headers=auth)[2])["result"]
+        if not found:
+            raise DeployError(f"Cloudflare zone {zone} not found", 2)
+        zone = found[0]["id"]
+    body = json.dumps({"files": urls}).encode()
+    result = json.loads(request(f"https://api.cloudflare.com/client/v4/zones/{zone}/purge_cache", "POST", body, auth)[2])
+    if not result.get("success"):
+        raise DeployError(f"Cloudflare purge failed: {result.get('errors')}", 2)
+    log.info("  ✓ purged %d URLs", len(urls))
 
 
-def plesk_fs_chmod(base, domain_id, path, mode, auth):
-    """Set file permissions via Plesk fs API."""
-    q = urllib.parse.urlencode({"path": path})
-    return plesk_api(base, f"/api/v2/domains/{domain_id}/fs/chmod?{q}",
-                     method="PUT", data=json.dumps({"mode": mode}).encode(),
-                     headers={"Content-Type": "application/json"}, auth=auth)
+def latest_version():
+    base = REPO_ROOT / "website-upload"
+    versions = [d.name for d in base.iterdir() if d.is_dir() and re.fullmatch(r"\d+\.\d+\.\d+", d.name)] if base.exists() else []
+    if not versions:
+        raise DeployError("no website-upload/<version>/ folder; run scripts/prepare-deploy.sh first", 1)
+    return max(versions, key=lambda v: tuple(map(int, v.split("."))))
 
 
-def plesk_fs_content(base, domain_id, path, auth):
-    """Read file content via Plesk fs API (returns bytes)."""
-    q = urllib.parse.urlencode({"path": path, "encoding": "base64"})
-    status, headers, body = plesk_api(base, f"/api/v2/domains/{domain_id}/fs/content?{q}", auth=auth)
-    txt = body.decode("utf-8", "replace")
-    try:
-        obj = json.loads(txt)
-        if isinstance(obj, dict):
-            for k in ("content", "data"):
-                if k in obj:
-                    return base64.b64decode(obj[k])
-        if isinstance(obj, str):
-            return base64.b64decode(obj)
-    except Exception:
-        pass
-    return base64.b64decode(txt)
+def stage_release(version, site: Path):
+    upload = REPO_ROOT / "website-upload" / version
+    dmg, appcast = upload / f"myKikau-{version}.dmg", upload / "appcast.xml"
+    for p in (dmg, appcast):
+        if not p.exists():
+            raise DeployError(f"missing {p}; run scripts/prepare-deploy.sh first", 1)
+    feed = appcast.read_text()
+    for marker in (f"<sparkle:shortVersionString>{version}</sparkle:shortVersionString>", f"myKikau-{version}.dmg"):
+        if marker not in feed:
+            raise DeployError(f"appcast.xml is missing {marker}", 1)
+    downloads = site / "public" / "downloads"
+    shutil.copy2(dmg, downloads / dmg.name)
+    shutil.copy2(appcast, downloads / "appcast.xml")
+    size = f"{dmg.stat().st_size / 1_000_000:.1f} MB"
+    (site / "src" / "mykikau.json").write_text(json.dumps({"version": version, "dmgSize": size}, indent=2) + "\n")
+    log.info("  staged %s (%s) and appcast.xml into %s", dmg.name, size, downloads)
+    return hashlib.sha256(dmg.read_bytes()).hexdigest()
 
 
-def plesk_fs_delete(base, domain_id, path, auth):
-    """Delete file via Plesk fs API."""
-    q = urllib.parse.urlencode({"path": path})
-    try:
-        plesk_api(base, f"/api/v2/domains/{domain_id}/fs?{q}", method="DELETE", auth=auth)
-    except Exception as e:
-        print(f"  WARN: delete failed: {e}")
+def build_site(site: Path):
+    for script in ("build", "check"):
+        result = subprocess.run(["npm", "run", "-s", script], cwd=site, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise DeployError(f"site {script} failed:\n{result.stdout}{result.stderr}", 1)
+        log.info("  %s", result.stdout.strip().splitlines()[-1])
 
 
-def replace_pf_apps(server_php: str, local_pf_apps: str) -> str:
-    """Replace the pf_apps() function in server functions.php with local content."""
-    start = server_php.index("function pf_apps")
-    depth = 0
-    i = start
-    while i < len(server_php):
-        if server_php[i] == "{":
-            depth += 1
-        elif server_php[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                break
-        i += 1
-    else:
-        raise RuntimeError("could not find end of pf_apps() function")
-    local_pf_apps = local_pf_apps.rstrip()
-    if not local_pf_apps.endswith("}"):
-        local_pf_apps += "}"
-    return server_php[:start] + local_pf_apps + server_php[end:]
+def verify(version, dmg_sha):
+    failures = []
+    if dmg_sha:
+        body = request(f"{ORIGIN}/downloads/myKikau-{version}.dmg", timeout=300)[2]
+        if hashlib.sha256(body).hexdigest() != dmg_sha:
+            failures.append("public DMG checksum differs from the local DMG")
+    for feed in (FEED, LEGACY_FEED):
+        body = request(f"{feed}?deploy-check={dt.datetime.now().timestamp():.0f}")[2]
+        if f"<sparkle:shortVersionString>{version}<" not in body.decode("utf-8", "replace"):
+            failures.append(f"{feed} does not list {version}")
+    page = request(f"{ORIGIN}/apps/")[2].decode("utf-8", "replace")
+    if f"/downloads/myKikau-{version}.dmg" not in page:
+        failures.append("/apps/ does not link the new DMG")
+    for f in failures:
+        log.error("  ✘ %s", f)
+    if failures:
+        raise DeployError("verification failed", 3)
+    log.info("  ✓ DMG checksum, both feed URLs and the /apps/ link all show %s", version)
 
-
-def find_domain_id(base, domain_name, auth):
-    """Look up Plesk domain ID by name."""
-    q = urllib.parse.urlencode({"name": domain_name})
-    status, headers, body = plesk_api(base, f"/api/v2/domains?{q}", auth=auth)
-    domains = json.loads(body.decode())
-    if isinstance(domains, dict) and "data" in domains:
-        domains = domains["data"]
-    if not domains:
-        raise RuntimeError(f"Plesk domain lookup returned no results for {domain_name}")
-    return domains[0]["id"]
-
-
-# --- Main ---
 
 def main():
-    parser = argparse.ArgumentParser(description="Deploy myKikau release to projectfive.co.ck")
-    parser.add_argument("--version", help="Version to deploy (default: auto-detect from website-upload/)")
-    parser.add_argument("--env", default=str(DEFAULT_ENV_PATH), help=f"Path to Plesk env file (default: {DEFAULT_ENV_PATH})")
-    parser.add_argument("--dry-run", action="store_true", help="Validate artifacts only, no uploads or page updates")
-    parser.add_argument("--skip-dmg", action="store_true", help="Skip DMG upload (e.g. already uploaded)")
-    parser.add_argument("--skip-appcast", action="store_true", help="Skip appcast upload")
-    parser.add_argument("--skip-page", action="store_true", help="Skip theme functions.php update")
-    parser.add_argument("--upload-dir", help="Override the upload directory (default: website-upload/<version>/)")
+    parser = argparse.ArgumentParser(description="Deploy a myKikau release to projectfive.co.ck (Hostinger)")
+    parser.add_argument("--version", help="release to deploy (default: newest website-upload/<version>/)")
+    parser.add_argument("--site", type=Path, default=DEFAULT_SITE, help=f"static site folder (default: {DEFAULT_SITE})")
+    parser.add_argument("--dry-run", action="store_true", help="stage, build and check the site; upload nothing")
+    parser.add_argument("--only", nargs="+", metavar="PATH",
+                        help="upload just these files from the built site (relative to dist/), with no release staging")
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    # --- Resolve version and paths ---
-    if args.version:
-        version = args.version
+    site = args.site.expanduser()
+    if not (site / "scripts" / "build.mjs").exists():
+        raise DeployError(f"{site} is not the Project Five site folder", 1)
+
+    dmg_sha = None
+    if args.only:
+        version = None
+        files = args.only
+        log.info("=== Building the site ===")
+        build_site(site)
     else:
-        # Auto-detect from website-upload/ — find the newest version subdir
-        upload_base = REPO_ROOT / "website-upload"
-        if not upload_base.exists():
-            print(f"ERROR: {upload_base} not found. Run scripts/prepare-deploy.sh first.", file=sys.stderr)
-            sys.exit(1)
-        versions = sorted([d.name for d in upload_base.iterdir() if d.is_dir() and re.match(r"^\d+\.\d+\.\d+$", d.name)])
-        if not versions:
-            print(f"ERROR: no version dirs in {upload_base}. Run scripts/prepare-deploy.sh first.", file=sys.stderr)
-            sys.exit(1)
-        version = versions[-1]
-        print(f"Auto-detected latest version: {version}")
+        version = args.version or latest_version()
+        log.info("=== Staging myKikau %s ===", version)
+        dmg_sha = stage_release(version, site)
+        log.info("=== Building the site ===")
+        build_site(site)
+        files = [f"downloads/myKikau-{version}.dmg", "apps/index.html", ".htaccess", "downloads/appcast.xml"]
 
-    upload_dir = Path(args.upload_dir) if args.upload_dir else REPO_ROOT / "website-upload" / version
-    dmg_path = upload_dir / f"myKikau-{version}.dmg"
-    appcast_path = upload_dir / "appcast.xml"
-    pf_apps_path = upload_dir / "pf-apps.php"
-
-    # --- Validate artifacts ---
-    print(f"\n=== Validating artifacts for v{version} ===")
-    missing = []
-    for p in [dmg_path, appcast_path, pf_apps_path]:
-        if not p.exists():
-            missing.append(str(p))
+    dist = site / "dist"
+    missing = [f for f in files if not (dist / f).is_file()]
     if missing:
-        print(f"ERROR: missing files: {', '.join(missing)}", file=sys.stderr)
-        print(f"  Run: scripts/prepare-deploy.sh", file=sys.stderr)
-        sys.exit(1)
-
-    dmg_bytes = dmg_path.read_bytes()
-    appcast_text = appcast_path.read_text()
-    pf_apps_text = pf_apps_path.read_text()
-
-    dmg_name = f"myKikau-{version}.dmg"
-    dmg_size = len(dmg_bytes)
-    dmg_sha = hashlib.sha256(dmg_bytes).hexdigest()
-
-    print(f"  DMG:        {dmg_name} ({dmg_size} bytes, sha256={dmg_sha[:16]}...)")
-    print(f"  Appcast:    {appcast_path.name} ({len(appcast_text)} chars)")
-    print(f"  pf-apps:    {pf_apps_path.name} ({len(pf_apps_text)} chars)")
-
-    # Validate appcast markers
-    appcast_markers = [
-        f"myKikau-{version}.dmg",
-        f"<sparkle:shortVersionString>{version}</sparkle:shortVersionString>",
-    ]
-    for marker in appcast_markers:
-        if marker not in appcast_text:
-            print(f"ERROR: appcast missing marker: {marker}", file=sys.stderr)
-            sys.exit(1)
-
-    # Validate pf-apps.php markers
-    if "function pf_apps" not in pf_apps_text:
-        print(f"ERROR: pf-apps.php missing 'function pf_apps' declaration", file=sys.stderr)
-        sys.exit(1)
-    pf_apps_markers = [f"myKikau-{version}", f"myKikau-{version}.dmg", f"'version'  => '{version}'"]
-    for marker in pf_apps_markers:
-        if marker not in pf_apps_text:
-            print(f"ERROR: pf-apps.php missing marker: {marker}", file=sys.stderr)
-            sys.exit(1)
-
-    # Check pf-apps.php doesn't reference old DMG versions
-    old_version_pattern = re.compile(r"myKikau-\d+\.\d+\.\d+\.dmg")
-    all_versions_in_pf_apps = set(old_version_pattern.findall(pf_apps_text))
-    if all_versions_in_pf_apps - {dmg_name}:
-        print(f"  WARN: pf-apps.php references other DMG versions: {all_versions_in_pf_apps - {dmg_name}}")
-
-    print(f"  All artifact markers validated.")
-
+        raise DeployError(f"not in the built site: {', '.join(missing)}", 1)
     if args.dry_run:
-        print(f"\n=== DRY RUN: validation complete. No uploads performed. ===")
-        print(f"  Ready to deploy v{version}:")
-        print(f"    DMG       -> {DOWNLOAD_URL_PREFIX}{dmg_name}")
-        print(f"    Appcast   -> {DOWNLOAD_URL_PREFIX}appcast.xml")
-        print(f"    Theme     -> {THEME_FUNCTIONS_PATH} (pf_apps function)")
-        print(f"    Apps page -> {APPS_LANDING_URL}")
-        sys.exit(0)
+        log.info("=== Dry run: would upload %s ===", ", ".join(files))
+        return
 
-    # --- Load credentials ---
-    print(f"\n=== Loading credentials from {args.env} ===")
-    env = load_env(Path(args.env))
-    base = env["PLESK_HOSTME_URL"].rstrip("/")
-    auth = (env["PLESK_HOSTME_USERNAME"], env["PLESK_HOSTME_PASSWORD"])
-    wp_url = env.get("PROJECTFIVE_WP_URL", "https://www.projectfive.co.ck").rstrip("/")
-    print(f"  Plesk API: {base}")
-    print(f"  WP URL:    {wp_url}")
+    host = Hostinger(load_env(SECRETS / "hostinger.env")["HOSTINGER_API_TOKEN"])
+    backup = BACKUP_BASE / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    log.info("=== Backing up remote text files to %s ===", backup)
+    for path in files:
+        if path.endswith(".dmg"):
+            continue
+        content = host.read_text(path)
+        if content is not None:
+            (backup / path).parent.mkdir(parents=True, exist_ok=True)
+            (backup / path).write_text(content)
 
-    # --- Create backup dir ---
-    backup_dir = BACKUP_BASE / dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    print(f"  Backup dir: {backup_dir}")
+    log.info("=== Uploading to %s ===", DOMAIN)
+    for path in files:
+        host.put(dist / path, path)
 
-    # --- Find domain ID ---
-    print(f"\n=== Looking up Plesk domain: {DOMAIN} ===")
-    domain_id = find_domain_id(base, DOMAIN, auth)
-    print(f"  Domain ID: {domain_id}")
-
-    # --- Backup remote appcast ---
-    print(f"\n=== Backing up remote state ===")
+    log.info("=== Purging Cloudflare ===")
+    urls = []
+    for path in files:
+        public = "/apps/" if path == "apps/index.html" else f"/{path}"
+        urls += [f"{ORIGIN}{public}", f"https://www.{DOMAIN}{public}"]
+    if "downloads/appcast.xml" in files or ".htaccess" in files:
+        urls.append(LEGACY_FEED)
+    # Cloudflare doesn't cache the pages or the feed today, and each DMG has a
+    # new name, so a failed purge is reported but doesn't fail the deploy.
     try:
-        old_appcast = plesk_fs_content(base, domain_id, "downloads/appcast.xml", auth)
-        (backup_dir / "remote-appcast-before.xml").write_bytes(old_appcast)
-        print(f"  Backed up remote appcast: {len(old_appcast)} bytes")
-    except Exception as e:
-        print(f"  WARN: appcast backup failed: {e}")
+        purge_cloudflare(sorted(set(u for u in urls if not u.endswith("/.htaccess"))))
+    except DeployError as e:
+        log.warning("  ⚠ cache purge skipped: %s", e)
 
-    # --- Backup remote theme functions.php ---
-    server_functions_before = None
-    if not args.skip_page:
-        try:
-            server_functions_before = plesk_fs_content(base, domain_id, THEME_FUNCTIONS_PATH, auth)
-            (backup_dir / "functions-before.php").write_bytes(server_functions_before)
-            print(f"  Backed up {THEME_FUNCTIONS_PATH}: {len(server_functions_before)} bytes")
-        except Exception as e:
-            print(f"  WARN: functions.php backup failed: {e}")
-
-    # --- Upload DMG ---
-    if not args.skip_dmg:
-        print(f"\n=== Uploading DMG: {dmg_name} ({dmg_size} bytes) ===")
-        plesk_fs_put(base, domain_id, f"downloads/{dmg_name}", dmg_bytes, auth)
-        plesk_fs_chmod(base, domain_id, f"downloads/{dmg_name}", "0644", auth)
-        print(f"  Uploaded: sha256={dmg_sha}")
-    else:
-        print(f"\n=== Skipping DMG upload (--skip-dmg) ===")
-
-    # --- Upload appcast.xml ---
-    if not args.skip_appcast:
-        print(f"\n=== Uploading appcast.xml ===")
-        appcast_bytes = appcast_path.read_bytes()
-        plesk_fs_put(base, domain_id, "downloads/appcast.xml", appcast_bytes, auth)
-        plesk_fs_chmod(base, domain_id, "downloads/appcast.xml", "0644", auth)
-        print(f"  Uploaded: {len(appcast_bytes)} bytes sha256={hashlib.sha256(appcast_bytes).hexdigest()}")
-    else:
-        print(f"\n=== Skipping appcast upload (--skip-appcast) ===")
-
-    # --- Update pf_apps() in theme functions.php ---
-    if not args.skip_page:
-        print(f"\n=== Updating pf_apps() in {THEME_FUNCTIONS_PATH} ===")
-        # Re-read current server file (in case it changed since backup) and patch it
-        current_server = plesk_fs_content(base, domain_id, THEME_FUNCTIONS_PATH, auth)
-        current_text = current_server.decode("utf-8")
-        patched = replace_pf_apps(current_text, pf_apps_text)
-        if patched == current_text:
-            print(f"  WARN: no changes applied (pf_apps function not found or identical)")
-        else:
-            plesk_fs_put(base, domain_id, THEME_FUNCTIONS_PATH, patched.encode("utf-8"), auth)
-            print(f"  Updated: {len(patched)} bytes (was {len(current_text)} bytes)")
-    else:
-        print(f"\n=== Skipping theme functions.php update (--skip-page) ===")
-
-    # --- Verify ---
-    print(f"\n=== Verifying public URLs ===")
-    errors = []
-
-    # Verify DMG
-    try:
-        status, _, pub_dmg = http_req(f"{wp_url}/downloads/{dmg_name}", timeout=120)
-        pub_hash = hashlib.sha256(pub_dmg).hexdigest()
-        if len(pub_dmg) != dmg_size or pub_hash != dmg_sha:
-            errors.append(f"DMG mismatch: remote {len(pub_dmg)} bytes vs local {dmg_size}")
-        else:
-            print(f"  DMG:      OK ({len(pub_dmg)} bytes, sha256={pub_hash[:16]}...)")
-    except Exception as e:
-        errors.append(f"DMG fetch failed: {e}")
-        print(f"  DMG:      FAIL - {e}")
-
-    # Verify appcast
-    try:
-        status, _, pub_app = http_req(f"{wp_url}/downloads/appcast.xml")
-        pub_text = pub_app.decode("utf-8", "replace")
-        if f"<sparkle:shortVersionString>{version}</sparkle:shortVersionString>" not in pub_text:
-            errors.append(f"appcast missing version {version}")
-        else:
-            print(f"  Appcast:  OK (version {version} found, {len(pub_app)} bytes)")
-    except Exception as e:
-        errors.append(f"appcast fetch failed: {e}")
-        print(f"  Appcast:  FAIL - {e}")
-
-    # Verify apps landing page
-    try:
-        status, _, pub_page = http_req(APPS_LANDING_URL)
-        page_text = pub_page.decode("utf-8", "replace")
-        if f"myKikau-{version}.dmg" not in page_text:
-            errors.append(f"apps page missing myKikau-{version}.dmg")
-        elif f"Download myKikau {version}" not in page_text:
-            errors.append(f"apps page missing visible 'Download myKikau {version}' text")
-        else:
-            print(f"  Apps page: OK (version {version} confirmed)")
-    except Exception as e:
-        errors.append(f"apps page fetch failed: {e}")
-        print(f"  Apps page: FAIL - {e}")
-
-    # --- Summary ---
-    print(f"\n{'='*50}")
-    if errors:
-        print(f"DEPLOY COMPLETE WITH {len(errors)} VERIFICATION ERROR(S):")
-        for e in errors:
-            print(f"  - {e}")
-        print(f"\nBackups saved: {backup_dir}")
-        sys.exit(3)
-    else:
-        print(f"DEPLOY SUCCESSFUL - v{version}")
-        print(f"  DMG:       {wp_url}/downloads/{dmg_name}")
-        print(f"  Appcast:   {wp_url}/downloads/appcast.xml")
-        print(f"  Theme:     {THEME_FUNCTIONS_PATH}")
-        print(f"  Apps page: {APPS_LANDING_URL}")
-        print(f"  Backups:   {backup_dir}")
-        sys.exit(0)
+    if version:
+        log.info("=== Verifying ===")
+        verify(version, dmg_sha)
+    log.info("Done.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except DeployError as e:
+        log.error("✘ %s", e)
+        sys.exit(e.code)
