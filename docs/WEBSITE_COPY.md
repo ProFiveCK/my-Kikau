@@ -4,6 +4,12 @@
 
 ## Release notes
 
+### Version 0.10.5 — October 2026
+
+- **Check for updates without the Dock icon** — the menu-bar companion now has Check for Updates and About myKikau, and Settings → Advanced shows your version with a Check Now button. With the Dock icon hidden, the app menu that held them isn't shown.
+- **An Overview that fits** — the main screen fits the window without scrolling: a shorter banner with the Quick/Full switch beside the scan button, compact cards with each area's figures, and scan-coverage details in a popover.
+- **A visible scan button** — the main button keeps its colour when the window isn't in front.
+
 ### Version 0.10.4 — October 2026
 
 - **Remove system-wide startup items** — with the administrator helper turned on, System care → Startup items can remove background services installed for all users, such as an app's leftover updater. Each one is stopped straight away, the helper tool it runs is removed with it, and everything goes to the Trash after you approve with an administrator password.

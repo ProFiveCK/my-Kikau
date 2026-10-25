@@ -9,6 +9,7 @@ import UI
 struct HUDView: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject private var metrics = MetricsService.shared
+    @EnvironmentObject private var updaterViewModel: UpdaterViewModel
     @ObservedObject private var work = WorkCoordinator.shared
     @State private var netInfo: NetworkInfo?
     @State private var copiedIP = false
@@ -122,11 +123,27 @@ struct HUDView: View {
                 Button { navigate(.status) } label: {
                     HStack { Text("Open myKikau"); Spacer(); Image(systemName: "arrow.up.right") }
                 }.carePrimaryAction()
-                HStack {
-                    AppSettingsButton(dismissesSourceWindow: true) { Label("Settings", systemImage: "gearshape") }
-                    Spacer()
-                    // Escape dismisses the popover; it never quits the app.
-                    Button("Quit myKikau") { NSApp.terminate(nil) }
+                // With the Dock icon hidden there's no app menu, so About and
+                // Check for Updates must be reachable from here.
+                VStack(spacing: 8) {
+                    HStack {
+                        AppSettingsButton(dismissesSourceWindow: true) { Label("Settings", systemImage: "gearshape") }
+                        Spacer()
+                        Button("Check for Updates…") {
+                            NSApp.activate(ignoringOtherApps: true)
+                            updaterViewModel.checkForUpdates()
+                        }
+                        .disabled(!updaterViewModel.canCheckForUpdates)
+                    }
+                    HStack {
+                        Button("About myKikau") {
+                            openWindow(id: "about")
+                            NSApp.activate(ignoringOtherApps: true)
+                        }
+                        Spacer()
+                        // Escape dismisses the popover; it never quits the app.
+                        Button("Quit myKikau") { NSApp.terminate(nil) }
+                    }
                 }.buttonStyle(.plain).font(.caption).foregroundStyle(CareTheme.secondaryInk)
             }.padding(16).background(CareTheme.panel)
         }

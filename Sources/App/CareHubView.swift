@@ -13,7 +13,7 @@ struct CareHubView: View {
     @ObservedObject private var work = WorkCoordinator.shared
     @AppStorage(AppStorageKey.careScanMode) private var scanMode: ScanEverythingCoordinator.ScanMode = .quick
     @State private var volume: DiskScanner.VolumeInfo?
-    @State private var totals = OperationLog.Totals()
+    @State private var showingCoverage = false
     private var cleanBytes: Int64 {
         coordinator.cleanPlans?.values.reduce(0) { $0 + $1.totalReclaimable } ?? 0
     }
@@ -52,64 +52,33 @@ struct CareHubView: View {
     }
 
     var body: some View {
+        // Sized to fit the window (its minimum is 860 × 600) without
+        // scrolling: shorter windows get tighter spacing and a smaller hero.
         GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    HStack {
-                        Text("OVERVIEW").font(.system(size: 10, weight: .bold)).tracking(1.8).foregroundStyle(.secondary)
-                        Spacer()
-                        Button(action: onShowActivity) { Label("Live activity", systemImage: "waveform.path.ecg") }
-                            .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
-                            .accessibilityHint("Open CPU, memory, battery and network monitoring")
-                    }
-                    hero(compact: geometry.size.width < 630)
-                    if coordinator.isScanning {
-                        ScanProgressBar(
-                            coordinator.phase?.label ?? "Starting scan…",
-                            detail: coordinator.progressDetail,
-                            fraction: coordinator.progress,
-                            onCancel: coordinator.cancelScan
-                        )
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Picker("Scan mode", selection: $scanMode) {
-                            ForEach(ScanEverythingCoordinator.ScanMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
-                            }
-                        }.pickerStyle(.segmented).frame(maxWidth: 320).disabled(work.isBusy)
-                        Text(scanMode.summary).font(.caption).foregroundStyle(.secondary)
-                    }
-                    tools
-                    if canCare {
-                        systemCare
-                    }
-                    if !coordinator.coverage.isEmpty {
-                        let partial = coordinator.coverage.filter(\.value.isPartial)
-                        if !partial.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Some locations couldn’t be checked").font(.subheadline.weight(.semibold))
-                                ForEach(ScanEverythingCoordinator.Area.allCases.filter { partial[$0] != nil }, id: \.self) { area in
-                                    if let report = partial[area] {
-                                        ScanCoverageView(report)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    storage
-                    if totals.trashedBytes > 0 || totals.freedBytes > 0 {
-                        let moved = ByteSizeFormatter.format(totals.trashedBytes)
-                        let removed = ByteSizeFormatter.format(totals.freedBytes)
-                        Text("Activity totals · \(moved) moved to Trash · \(removed) permanently removed")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+            let compact = geometry.size.width < 630
+            let short = geometry.size.height < 700
+            VStack(alignment: .leading, spacing: short ? 12 : 18) {
+                HStack {
+                    Text("OVERVIEW").font(.system(size: 10, weight: .bold)).tracking(1.8).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(action: onShowActivity) { Label("Live activity", systemImage: "waveform.path.ecg") }
+                        .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityHint("Open CPU, memory, battery and network monitoring")
                 }
-                .padding(26)
-                .frame(maxWidth: 1100, alignment: .leading)
-                .frame(maxWidth: .infinity)
+                hero(compact: compact, short: short)
+                tools
+                if canCare {
+                    systemCare
+                }
+                coverageNote
+                Spacer(minLength: 0)
+                storage
             }
-            .background(CareTheme.background)
+            .padding(short ? 18 : 24)
+            .frame(maxWidth: 1100, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity)
         }
+        .background(CareTheme.background)
         .task { await refreshStorage() }
         .onChange(of: coordinator.lastScanAt) { _, _ in Task { await refreshStorage() } }
         .onChange(of: work.isBusy) { _, busy in
@@ -119,50 +88,102 @@ struct CareHubView: View {
         }
     }
 
-    private func hero(compact: Bool) -> some View {
-        HStack(spacing: compact ? 4 : 22) {
-            VStack(alignment: .leading, spacing: 13) {
+    /// One line when any area was only partly checked; the details open in a
+    /// popover instead of growing the page.
+    @ViewBuilder private var coverageNote: some View {
+        let partial = ScanEverythingCoordinator.Area.allCases.compactMap { area in
+            coordinator.coverage[area].flatMap { $0.isPartial ? (area, $0) : nil }
+        }
+        if !partial.isEmpty {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
+                Text("Some locations couldn’t be checked").font(.caption)
+                Button("Details") { showingCoverage = true }
+                    .buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(CareTheme.accent)
+                    .popover(isPresented: $showingCoverage) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(partial, id: \.0) { area, report in
+                                    Text(Self.areaName(area)).font(.subheadline.weight(.semibold))
+                                    ScanCoverageView(report)
+                                }
+                            }.padding()
+                        }.frame(width: 420, height: 320)
+                    }
+            }
+        }
+    }
+
+    private static func areaName(_ area: ScanEverythingCoordinator.Area) -> String {
+        switch area {
+        case .clean: String(localized: "Cleanup")
+        case .apps: String(localized: "Applications")
+        case .files: String(localized: "My files")
+        case .startup: String(localized: "Startup items")
+        case .storage: String(localized: "Storage")
+        case .maintenance: String(localized: "System care")
+        case .developer: String(localized: "Project Purge")
+        }
+    }
+
+    private func hero(compact: Bool, short: Bool) -> some View {
+        HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: short ? 8 : 11) {
                 Text(headline)
-                    .font(.system(size: compact ? 29 : 36, weight: .bold, design: .rounded))
-                    .tracking(-1.1).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: short ? 26 : 32, weight: .bold, design: .rounded))
+                    .tracking(-1).fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
-                Text(coordinator.hasResults
-                    ? "Nothing is removed until you review it."
-                    : "Clear the clutter. Find your space. Give your Mac a little breathing room.")
-                    .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 310, alignment: .leading)
-                HStack(spacing: 9) {
-                    Button {
-                        if let destination = reviewDestination {
-                            open(destination)
-                        } else {
-                            Task { await coordinator.scanEverything(mode: scanMode) }
+                if coordinator.isScanning {
+                    ScanProgressBar(
+                        coordinator.phase?.label ?? "Starting scan…",
+                        detail: coordinator.progressDetail,
+                        fraction: coordinator.progress,
+                        onCancel: coordinator.cancelScan
+                    )
+                } else {
+                    Text(coordinator.hasResults
+                        ? "Nothing is removed until you review it."
+                        : "Clear the clutter. Find your space. Give your Mac a little breathing room.")
+                        .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 360, alignment: .leading)
+                    HStack(spacing: 10) {
+                        Button {
+                            if let destination = reviewDestination {
+                                open(destination)
+                            } else {
+                                Task { await coordinator.scanEverything(mode: scanMode) }
+                            }
+                        } label: {
+                            Label(primaryTitle, systemImage: reviewDestination == nil ? "viewfinder" : "arrow.right")
                         }
-                    } label: {
-                        Label(primaryTitle, systemImage: reviewDestination == nil ? "viewfinder" : "arrow.right")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(CareTheme.onAccent)
-                            .padding(.horizontal, 8).padding(.vertical, 5)
+                        // The shared style keeps its colour when the window is
+                        // inactive; .borderedProminent turns white, hiding the text.
+                        .carePrimaryAction().disabled(work.isBusy)
+                        if reviewDestination != nil {
+                            Button("Scan again") { Task { await coordinator.scanEverything(mode: scanMode) } }
+                                .buttonStyle(.plain).font(.caption.weight(.medium)).foregroundStyle(CareTheme.accent)
+                                .disabled(work.isBusy)
+                        }
+                        Picker("Scan mode", selection: $scanMode) {
+                            Text("Quick").tag(ScanEverythingCoordinator.ScanMode.quick)
+                            Text("Full").tag(ScanEverythingCoordinator.ScanMode.full)
+                        }
+                        .pickerStyle(.segmented).labelsHidden().fixedSize().disabled(work.isBusy)
+                        .help(scanMode.summary)
                     }
-                    .buttonStyle(.borderedProminent).tint(CareTheme.accent).disabled(work.isBusy)
-                    if reviewDestination != nil {
-                        Button(scanMode.title) { Task { await coordinator.scanEverything(mode: scanMode) } }
-                            .buttonStyle(.plain).font(.caption.weight(.medium)).foregroundStyle(CareTheme.accent).disabled(work.isBusy)
-                    }
-                }.padding(.top, 4)
-                Label(
-                    coordinator.hasResults ? "Review first. You’re in control." : "On your Mac. In your control.",
-                    systemImage: coordinator.hasResults ? "checkmark" : "lock"
-                )
-                .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            CareMacIllustration().frame(width: compact ? 160 : 222, height: 208).accessibilityHidden(true)
+            if !compact {
+                CareMacIllustration().scaleEffect(short ? 0.68 : 0.8)
+                    .frame(width: short ? 150 : 180, height: short ? 140 : 170).accessibilityHidden(true)
+            }
         }
-        .padding(compact ? 23 : 29)
-        .frame(maxWidth: .infinity, minHeight: 258, alignment: .leading)
+        .padding(short ? 18 : 24)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             LinearGradient(colors: [CareTheme.lilac, CareTheme.pink], startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 22)
+            in: RoundedRectangle(cornerRadius: 20)
         )
     }
 
@@ -189,23 +210,24 @@ struct CareHubView: View {
     }
 
     private var tools: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack {
-                Text(coordinator.hasResults ? "Your scan, at a glance" : "Care for every corner").font(.headline)
-                Spacer()
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            Text(coordinator.hasResults ? "Your scan, at a glance" : "Care for every corner").font(.headline)
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(minimum: 150), spacing: 12), count: max(
+                columns: Array(repeating: GridItem(.flexible(minimum: 150), spacing: 10), count: max(
                     1,
                     [canClean, canApps, canFiles].filter { $0 }.count
                 )),
-                spacing: 12
+                spacing: 10
             ) {
+                // Fixed titles; the scan's figures go in the line beneath, so
+                // nothing is cut off at the narrowest window.
                 if canClean {
                     tool(
                         .clean,
-                        title: coordinator.cleanPlans == nil ? "Clean up" : ByteSizeFormatter.format(cleanBytes) + " to review",
-                        detail: coordinator.cleanPlans == nil ? "Clear everyday clutter" : "Caches, logs & Trash contents",
+                        title: "Clean up",
+                        detail: coordinator.cleanPlans == nil
+                            ? "Clear everyday clutter"
+                            : "\(ByteSizeFormatter.format(cleanBytes)) of caches, logs & Trash",
                         icon: "paintbrush.pointed",
                         tint: CareTheme.accent
                     )
@@ -213,19 +235,23 @@ struct CareHubView: View {
                 if canApps {
                     tool(
                         .uninstall,
-                        title: coordinator.apps.map { "\($0.count) applications" } ?? "Applications",
-                        detail: coordinator.apps == nil ? "Remove apps and leftovers" : ByteSizeFormatter
-                            .format(coordinator.appFootprintBytes) + " installed",
+                        title: "Applications",
+                        detail: coordinator.apps.map {
+                            "\($0.count) apps · \(ByteSizeFormatter.format(coordinator.appFootprintBytes))"
+                        } ?? "Remove apps and leftovers",
                         icon: "square.grid.2x2",
                         tint: CareTheme.teal
                     )
                 }
                 if canFiles {
+                    let large = coordinator.largeFiles.map { "\($0.count) large files" }
                     tool(
                         .duplicates,
-                        title: coordinator.duplicateGroups == nil ? "My files" : duplicateBytes > 0 ? ByteSizeFormatter
-                            .format(duplicateBytes) + " in duplicates" : "Explore your files",
-                        detail: coordinator.largeFiles.map { "\($0.count) large files to explore" } ?? "Find space to breathe",
+                        title: "My files",
+                        detail: duplicateBytes > 0
+                            ? ["\(ByteSizeFormatter.format(duplicateBytes)) in duplicates", large]
+                            .compactMap { $0 }.joined(separator: " · ")
+                            : large.map { "\($0) to explore" } ?? "Find space to breathe",
                         icon: "folder",
                         tint: CareTheme.blue
                     )
@@ -255,15 +281,18 @@ struct CareHubView: View {
 
     private func tool(_ destination: ContentView.SidebarItem, title: String, detail: String, icon: String, tint: Color) -> some View {
         Button { open(destination) } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: icon).font(.system(size: 21, weight: .medium)).foregroundStyle(tint)
-                    .frame(width: 41, height: 41).background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 13))
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
-                Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Label("Review", systemImage: "arrow.up.right").font(.caption.weight(.medium)).foregroundStyle(CareTheme.accent)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Image(systemName: icon).font(.system(size: 16, weight: .medium)).foregroundStyle(tint)
+                        .frame(width: 32, height: 32).background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 10))
+                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.up.right").font(.caption.weight(.semibold)).foregroundStyle(CareTheme.accent)
+                }
+                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
-            .frame(maxWidth: .infinity, minHeight: 139, alignment: .topLeading)
-            .padding(18).background(CareTheme.panel, in: RoundedRectangle(cornerRadius: 17))
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(14).background(CareTheme.panel, in: RoundedRectangle(cornerRadius: 15))
         }
         .buttonStyle(.plain).accessibilityHint("Open \(destination.label) with the current scan results")
     }
@@ -291,7 +320,7 @@ struct CareHubView: View {
             Button("Review") { onNavigate(.optimize) }.buttonStyle(.plain).font(.caption.weight(.semibold))
                 .foregroundStyle(CareTheme.accent)
         }
-        .padding(15).background(CareTheme.panel, in: RoundedRectangle(cornerRadius: 13))
+        .padding(12).background(CareTheme.panel, in: RoundedRectangle(cornerRadius: 13))
     }
 
     @ViewBuilder private var storage: some View {
@@ -318,8 +347,7 @@ struct CareHubView: View {
     }
 
     private func refreshStorage() async {
-        let values = await Task.detached { (DiskScanner.startupVolumeInfo(), OperationLog.shared.totals()) }.value
-        volume = values.0; totals = values.1
+        volume = await Task.detached { DiskScanner.startupVolumeInfo() }.value
     }
 }
 

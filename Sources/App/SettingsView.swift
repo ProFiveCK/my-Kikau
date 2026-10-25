@@ -381,6 +381,12 @@ private struct AdvancedSettings: View {
                 if policy.disableAutomaticUpdates {
                     ManagedNote()
                 }
+                // Also here because, with the Dock icon hidden, the app menu's
+                // "Check for Updates…" isn't visible.
+                LabeledContent("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")") {
+                    Button("Check Now") { updaterViewModel.checkForUpdates() }
+                        .disabled(!updaterViewModel.canCheckForUpdates)
+                }
             }
 
             if policy.isManaged {
