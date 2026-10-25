@@ -90,81 +90,6 @@ struct StatusMetricsTests {
         #expect(count == 0)
     }
 
-    @Test("parseAppleSmartBatteryThermal extracts battery temp in centi-Celsius")
-    func batteryTempCentiCelsius() {
-        let output = """
-        "Temperature" = 3000
-        """
-        let thermal = ThermalMonitor.parseAppleSmartBatteryThermal(output)
-        #expect(abs(thermal.batteryTemp - 30.0) < 0.001)
-    }
-
-    @Test("parseAppleSmartBatteryThermal keeps small temps as direct Celsius")
-    func batteryTempDirectCelsius() {
-        let output = """
-        "Temperature" = 28
-        """
-        let thermal = ThermalMonitor.parseAppleSmartBatteryThermal(output)
-        #expect(abs(thermal.batteryTemp - 28.0) < 0.001)
-    }
-
-    @Test("parseAppleSmartBatteryThermal extracts adapter watts, skipping AppleRaw")
-    func adapterWattsSkipsAppleRaw() {
-        // ioreg prints adapter details on separate lines: the line containing
-        // "AdapterDetails" (not AppleRaw) with a "Watts" key on the same line wins.
-        let output = "\"AppleRawAdapterDetails\" = \"Watts\"=100\n\"AdapterDetails\" = \"Watts\"=61"
-        let thermal = ThermalMonitor.parseAppleSmartBatteryThermal(output)
-        #expect(abs(thermal.adapterPower - 61.0) < 0.001)
-    }
-
-    @Test("parseAppleSmartBatteryThermal converts system power mW to W")
-    func systemPowerMWToW() {
-        let output = """
-        "SystemPowerIn" = 12500
-        """
-        let thermal = ThermalMonitor.parseAppleSmartBatteryThermal(output)
-        #expect(abs(thermal.systemPower - 12.5) < 0.001)
-    }
-
-    @Test("parseAppleSmartBatteryThermal rejects out-of-range system power")
-    func systemPowerOutOfRange() {
-        let output = """
-        "SystemPowerIn" = 2000000
-        """
-        let thermal = ThermalMonitor.parseAppleSmartBatteryThermal(output)
-        #expect(thermal.systemPower == 0)
-    }
-
-    @Test("parseAppleSmartBatteryThermal converts battery power mW to W")
-    func batteryPowerMWToW() {
-        let output = """
-        "BatteryPower" = 8000
-        """
-        let thermal = ThermalMonitor.parseAppleSmartBatteryThermal(output)
-        #expect(abs(thermal.batteryPower - 8.0) < 0.001)
-    }
-
-    @Test("parseAppleSmartBatteryThermal derives battery power from V×A fallback")
-    func batteryPowerFallback() {
-        // 12500 mV * -1600 mA / 1e6 = 20 W (discharging -> positive)
-        let output = """
-        "Voltage" = 12500
-        "InstantAmperage" = -1600
-        """
-        let thermal = ThermalMonitor.parseAppleSmartBatteryThermal(output)
-        #expect(abs(thermal.batteryPower - 20.0) < 0.001)
-    }
-
-    @Test("parseAppleSmartBatteryThermal leaves cpuTemp at 0")
-    func cpuTempNotSynthesized() {
-        let output = """
-        "Temperature" = 3000
-        "InstantAmperage" = -1600
-        """
-        let thermal = ThermalMonitor.parseAppleSmartBatteryThermal(output)
-        #expect(thermal.cpuTemp == 0)
-    }
-
     // MARK: - GPU parsing
 
     @Test("parseDisplaysJSON builds GPU statuses")
@@ -347,7 +272,16 @@ struct StatusMetricsTests {
         #expect(SmartBattery.health(from: ["CycleCount": 10]).capacityPercent == 0)
     }
 
-    @Test("Registry properties map to the same thermal fields as the text parser")
+    @Test("Registry readings: direct Celsius kept, out-of-range system power rejected")
+    func thermalRegistryEdgeCases() {
+        let thermal = ThermalMonitor.status(fromBatteryProperties: ["Temperature": 28, "SystemPower": 2_000_000])
+        #expect(abs(thermal.batteryTemp - 28.0) < 0.001)
+        #expect(thermal.systemPower == 0)
+        // A Mac without a battery has no registry entry, so no readings at all.
+        #expect(ThermalMonitor.status(fromBatteryProperties: [:]) == ThermalStatus())
+    }
+
+    @Test("Registry properties map to thermal and power fields")
     func thermalFromRegistryProperties() {
         let properties: [String: Any] = [
             "Temperature": 3055,

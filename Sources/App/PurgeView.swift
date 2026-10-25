@@ -5,7 +5,7 @@ import UI
 
 /// Build artifacts in project folders (`node_modules`, `target`, `build`,
 /// `dist`, `.build`, `venv`). A developer feature: shown only when
-/// "Developer tools" is on in Settings.
+/// "Advanced tools" is on in Settings.
 struct PurgeView: View {
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
     @ObservedObject private var model = PurgeModel.shared

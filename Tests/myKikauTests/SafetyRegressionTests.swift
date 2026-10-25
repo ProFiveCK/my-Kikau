@@ -588,6 +588,30 @@ struct ScanningTests {
         #expect(cache.size(for: root.appendingPathComponent("parent").path) == nil)
     }
 
+    @Test("An unreadable folder elsewhere doesn't stop caching complete folders, but its ancestors aren't cached")
+    func sizeCacheSurvivesPartialCoverage() throws {
+        let root = makeTempDir()
+        let denied = root.appendingPathComponent("parent/denied")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: denied.path)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let big = root.appendingPathComponent("parent/big")
+        touch(big.appendingPathComponent("data.bin"), size: 9_000_000)
+        touch(denied.appendingPathComponent("data.bin"), size: 9_000_000)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: denied.path)
+
+        // Another walk sharing this recorder has already hit a denied read.
+        let coverage = ScanCoverageRecorder()
+        coverage.record(URL(fileURLWithPath: "/elsewhere"), kind: .denied, detail: "denied")
+        let cache = DiskScanner.SizeCache()
+        _ = DiskScanner.scan(root, cache: cache, coverage: coverage)
+
+        #expect((cache.size(for: big.path) ?? 0) >= 9_000_000)
+        // `parent` holds an unreadable folder, so its total is a lower bound.
+        #expect(cache.size(for: root.appendingPathComponent("parent").path) == nil)
+    }
+
     @Test("A cancelled walk returns nothing and records nothing")
     func cancelledWalkStops() {
         let root = makeTempDir()

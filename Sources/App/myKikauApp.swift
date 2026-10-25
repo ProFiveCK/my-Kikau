@@ -62,6 +62,11 @@ struct myKikauApp: App {
         .defaultSize(width: 1060, height: 760)
         .windowStyle(.hiddenTitleBar)
         .commands {
+            // The full About screen (version, updates, diagnostics) instead
+            // of the standard panel; it used to take a sidebar row.
+            CommandGroup(replacing: .appInfo) {
+                AboutCommand()
+            }
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesCommand(updaterViewModel: updaterViewModel)
             }
@@ -78,6 +83,14 @@ struct myKikauApp: App {
                 }
             }
         }
+
+        Window("About myKikau", id: "about") {
+            AboutView()
+                .frame(minWidth: 640, minHeight: 560)
+                .environmentObject(updaterViewModel)
+        }
+        .defaultSize(width: 680, height: 680)
+        .windowResizability(.contentMinSize)
 
         MenuBarExtra {
             HUDView()
@@ -253,17 +266,27 @@ struct ContentView: View {
             }
         }
 
-        /// Sidebar items shown to the user, in order. Purge is a developer
-        /// feature, shown only when "Developer tools" is on in Settings; any
-        /// feature an administrator has disabled by policy is left out.
+        /// Sidebar items shown to the user, in order. Purge and Network are
+        /// advanced tools, shown only when "Advanced tools" is on in Settings.
+        /// Startup is a part of System care rather than a row of its own, and
+        /// About lives in the app menu. Any feature an administrator has
+        /// disabled by policy is left out.
         static func visibleCases(developerTools: Bool) -> [SidebarItem] {
             let policy = ManagedPolicy.shared
             return allCases.filter { item in
-                if item == .purge, !developerTools {
+                switch item {
+                case .startup, .about:
                     return false
-                }
-                if item == .status || item == .about || item == .history {
+                case .purge, .network:
+                    if !developerTools {
+                        return false
+                    }
+                case .status, .history:
                     return true
+                case .optimize:
+                    return SystemCareView.Part.available.isEmpty == false
+                default:
+                    break
                 }
                 return !policy.isFeatureDisabled(item.rawValue)
             }
@@ -278,14 +301,6 @@ struct ContentView: View {
             case app = "myKikau"
             var id: String {
                 rawValue
-            }
-
-            /// Caption shown above the group, if it has one.
-            var title: String? {
-                switch self {
-                case .overview, .app: nil
-                default: rawValue
-                }
             }
         }
 
@@ -376,12 +391,6 @@ struct ContentView: View {
                                     .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                                     .listRowBackground(Color.clear)
                                 }
-                            } header: {
-                                // The first and last groups need no caption;
-                                // skipping them keeps the list inside the window.
-                                if let title = group.title {
-                                    Text(title).foregroundStyle(CareTheme.secondaryInk)
-                                }
                             }
                         }
                     }
@@ -407,8 +416,9 @@ struct ContentView: View {
             .background(CareTheme.sidebar)
             .navigationSplitViewColumnWidth(min: 190, ideal: 200, max: 230)
         } detail: {
-            // A screen that's hidden (developer tools off, or disabled by
-            // policy) falls back to Status — e.g. a stale stored selection.
+            // A screen that's hidden (advanced tools off, disabled by policy,
+            // or no longer a sidebar row) falls back to Status — e.g. a stale
+            // stored selection.
             Group {
                 switch selection.flatMap({ items.contains($0) ? $0 : nil }) ?? .status {
                 case .status: StatusView(onNavigate: { selection = $0 })
@@ -417,8 +427,7 @@ struct ContentView: View {
                 case .analyze: AnalyzeView()
                 case .duplicates: DuplicatesView()
                 case .network: NetworkView()
-                case .optimize: OptimizeView()
-                case .startup: StartupView()
+                case .optimize, .startup: SystemCareView()
                 case .purge: PurgeView()
                 case .history: HistoryView()
                 case .about: AboutView()

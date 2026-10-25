@@ -313,23 +313,38 @@ public enum DiskScanner {
     /// mounted volume (a network share or disk image under the folder is not
     /// part of *this* disk's usage).
     static func measure(_ url: URL, token: Token?, cache: SizeCache?, coverage: ScanCoverageRecorder? = nil) -> Int64 {
+        subtreeSize(url, token: token, cache: cache, coverage: coverage).bytes
+    }
+
+    /// `complete` is false when a read inside this subtree failed. Only a
+    /// complete subtree's total is cached: a denied folder elsewhere in the
+    /// scan (or in a concurrent walk sharing `coverage`) says nothing about
+    /// this one.
+    private static func subtreeSize(
+        _ url: URL,
+        token: Token?,
+        cache: SizeCache?,
+        coverage: ScanCoverageRecorder?
+    ) -> (bytes: Int64, complete: Bool) {
         if token?.isCancelled == true {
-            return 0
+            return (0, false)
         }
         let entries: [URL]
         do {
             let values = try url.resourceValues(forKeys: [.isDirectoryKey])
             if values.isDirectory != true {
-                return allocatedSize(url)
+                return (allocatedSize(url), true)
             }
             entries = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: walkKeys, options: [])
-        } catch { coverage?.failed(url, error: error); return 0 }
+        } catch { coverage?.failed(url, error: error); return (0, false) }
         token?.report(url.path)
+        let keys = Set(walkKeys)
         var total: Int64 = 0
+        var complete = true
         for entry in entries {
             let values: URLResourceValues
-            do { values = try entry.resourceValues(forKeys: Set(walkKeys)) }
-            catch { coverage?.failed(entry, error: error); continue }
+            do { values = try entry.resourceValues(forKeys: keys) }
+            catch { coverage?.failed(entry, error: error); complete = false; continue }
             if values.isSymbolicLink == true {
                 continue
             }
@@ -337,15 +352,20 @@ public enum DiskScanner {
                 if values.isVolume == true {
                     continue
                 }
-                total += measure(entry, token: token, cache: cache, coverage: coverage)
+                let child = subtreeSize(entry, token: token, cache: cache, coverage: coverage)
+                total += child.bytes
+                complete = complete && child.complete
             } else if let size = fileSize(values) {
                 total += size
             }
         }
-        if token?.isCancelled != true, coverage?.snapshot.isPartial != true {
+        if token?.isCancelled == true {
+            return (total, false)
+        }
+        if complete {
             cache?.record(url.path, total)
         }
-        return total
+        return (total, complete)
     }
 
     private static func fileSize(_ values: URLResourceValues?) -> Int64? {

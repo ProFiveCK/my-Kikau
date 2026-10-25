@@ -8,6 +8,8 @@ import UI
 /// they run for. The user's own agents can be removed; system-wide ones are
 /// shown so you can see what's there.
 struct StartupView: View {
+    /// Set when System care shows both parts.
+    var part: Binding<SystemCareView.Part>?
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
     @ObservedObject private var model = StartupModel.shared
     @ObservedObject private var activity = WorkCoordinator.shared
@@ -25,7 +27,7 @@ struct StartupView: View {
         model.loading
     }
 
-    private let tint = ContentView.SidebarItem.startup.tint
+    private let tint = ContentView.SidebarItem.optimize.tint
 
     private var subtitle: String {
         guard let items else { return "Background items that start with your Mac" }
@@ -35,7 +37,10 @@ struct StartupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeader("Startup", subtitle: subtitle, systemImage: ContentView.SidebarItem.startup.icon, tint: tint) {
+            ScreenHeader("System care", subtitle: subtitle, systemImage: ContentView.SidebarItem.optimize.icon, tint: tint) {
+                if let part {
+                    SystemCarePartPicker(part: part)
+                }
                 Button("Login Items Settings…") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
                         NSWorkspace.shared.open(url)

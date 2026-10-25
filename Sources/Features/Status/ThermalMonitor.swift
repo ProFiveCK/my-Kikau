@@ -27,15 +27,10 @@ public enum ThermalMonitor {
             thermal.fanCount = count
         }
 
-        // Battery temp + power straight from the IORegistry — this runs on
-        // every tick, so it must not spawn a process. `ioreg` text is only a
-        // fallback for a registry read that fails.
-        let battery: ThermalStatus? = if let properties = SmartBattery.properties() {
-            status(fromBatteryProperties: properties)
-        } else {
-            captureIOReg().map(parseAppleSmartBatteryThermal)
-        }
-        if let battery {
+        // Battery temp + power straight from the IORegistry. This runs on
+        // every tick, so it never spawns a process: a Mac without a battery
+        // simply has no battery readings.
+        if let battery = SmartBattery.properties().map(status(fromBatteryProperties:)) {
             thermal.batteryTemp = battery.batteryTemp
             thermal.systemPower = battery.systemPower
             thermal.adapterPower = battery.adapterPower
@@ -73,7 +68,7 @@ public enum ThermalMonitor {
     // MARK: - AppleSmartBattery properties (pure, tested)
 
     /// Builds thermal/power fields from the `AppleSmartBattery` registry
-    /// entry's property dictionary. Same rules as the text parser below.
+    /// entry's property dictionary.
     public static func status(fromBatteryProperties properties: [String: Any]) -> ThermalStatus {
         var thermal = ThermalStatus()
         let telemetry = properties["PowerTelemetryData"] as? [String: Any] ?? [:]
@@ -117,121 +112,6 @@ public enum ThermalMonitor {
         return thermal
     }
 
-    // MARK: - AppleSmartBattery parsing (pure, tested)
-
-    /// Parses `ioreg -rn AppleSmartBattery` output into thermal/power fields.
-    public static func parseAppleSmartBatteryThermal(_ output: String) -> ThermalStatus {
-        var thermal = ThermalStatus()
-        var voltageMV: Double = 0
-        var amperageMA: Double = 0
-
-        for raw in output.split(separator: "\n", omittingEmptySubsequences: true) {
-            let line = String(raw).trimmingCharacters(in: .whitespaces)
-
-            // Battery temperature in centi-degrees Celsius (some fixtures report Celsius directly).
-            if let tempRaw = ioRegFloat(line, "Temperature"), tempRaw > 0 {
-                thermal.batteryTemp = tempRaw < 1000 ? tempRaw : tempRaw / 100.0
-            }
-
-            // Adapter power (Watts). Ignore AppleRawAdapterDetails entries: raw entries can
-            // appear before the normalized adapter details and should not win the display value.
-            if line.contains("\"AdapterDetails\""), !line.contains("AppleRaw"), thermal.adapterPower == 0 {
-                if let watts = ioRegFloat(line, "Watts"), watts > 0 {
-                    thermal.adapterPower = watts
-                }
-            }
-
-            // System power consumption (mW -> W).
-            if let powerMW = ioRegFloat(line, "SystemPowerIn") {
-                setSystemPowerMW(&thermal, powerMW)
-            }
-            if thermal.systemPower == 0, let powerMW = ioRegFloat(line, "SystemPower") {
-                setSystemPowerMW(&thermal, powerMW)
-            }
-
-            // Battery power (mW -> W; positive = discharging, negative = charging).
-            if let powerMW = ioRegSignedNumber(line, "BatteryPower") {
-                setBatteryPowerMW(&thermal, powerMW)
-            }
-
-            if let voltage = ioRegFloat(line, "Voltage"), voltage > 0 {
-                voltageMV = voltage
-            }
-            if let voltage = ioRegFloat(line, "AppleRawBatteryVoltage"), voltage > 0 {
-                voltageMV = voltage
-            }
-            if let amperage = ioRegSignedNumber(line, "InstantAmperage"), amperage != 0 {
-                amperageMA = amperage
-            }
-            if amperageMA == 0, let amperage = ioRegSignedNumber(line, "Amperage"), amperage != 0 {
-                amperageMA = amperage
-            }
-        }
-
-        // Fallback: derive battery power from voltage × amperage when BatteryPower was absent.
-        if thermal.batteryPower == 0, voltageMV > 0, amperageMA != 0 {
-            // AppleSmartBattery amperage is signed mA. Negative current = discharging,
-            // so keep BatteryPower positive for discharge.
-            let batteryPowerW = -(voltageMV * amperageMA) / 1_000_000.0
-            if batteryPowerW > -200, batteryPowerW < 200 {
-                thermal.batteryPower = batteryPowerW
-            }
-        }
-        return thermal
-    }
-
-    // MARK: - ioreg line helpers (pure)
-
-    /// Extracts the numeric value for `key` from an ioreg line of the form `"Key" = Value`.
-    static func ioRegFloat(_ line: String, _ key: String) -> Double? {
-        guard let raw = ioRegValueForKey(line, key) else { return nil }
-        return Double(raw)
-    }
-
-    /// Extracts a signed numeric value for `key`, accepting both int and uint forms
-    /// (ioreg sometimes prints negative int64 as uint64 two's-complement).
-    static func ioRegSignedNumber(_ line: String, _ key: String) -> Double? {
-        guard let raw = ioRegValueForKey(line, key) else { return nil }
-        if let v = Int64(raw) {
-            return Double(v)
-        }
-        if let v = UInt64(raw), v <= UInt64(Int64.max) {
-            return Double(Int64(v))
-        }
-        return nil
-    }
-
-    /// Returns the raw string token after `"Key" =` in an ioreg line, or nil.
-    /// Scans for the value terminator (`,`, `}`, `)`, space, tab, newline),
-    /// then strips surrounding quotes.
-    static func ioRegValueForKey(_ line: String, _ key: String) -> String? {
-        let marker = "\"\(key)\""
-        guard let markerRange = line.range(of: marker) else { return nil }
-        var rest = line[markerRange.upperBound...]
-        rest = rest.drop(while: { $0 == " " || $0 == "\t" })
-        guard rest.hasPrefix("=") else { return nil }
-        rest = rest.dropFirst().drop(while: { $0 == " " || $0 == "\t" })
-        guard !rest.isEmpty, rest.first != "," else { return nil }
-
-        let terminators: Set<Character> = [",", "}", ")", " ", "\t", "\n", "\r"]
-        var end = rest.startIndex
-        for i in rest.indices {
-            if terminators.contains(rest[i]) {
-                break
-            }
-            end = rest.index(after: i)
-        }
-        var value = String(rest[rest.startIndex ..< end])
-        if value.hasPrefix("\"") {
-            value.removeFirst()
-        }
-        if value.hasSuffix("\"") {
-            value.removeLast()
-        }
-        guard !value.isEmpty else { return nil }
-        return value
-    }
-
     static func setSystemPowerMW(_ thermal: inout ThermalStatus, _ powerMW: Double) {
         // SystemPower should always be positive; reject values outside 0–1000W.
         if powerMW >= 0, powerMW < 1_000_000 {
@@ -252,12 +132,6 @@ public enum ThermalMonitor {
     static func capturePowerOutput() -> String {
         let output = ProcessRunner.runBlocking("/usr/sbin/system_profiler", ["SPPowerDataType"], timeout: 20)
         return output.succeeded ? output.stdout : ""
-    }
-
-    /// Captures `ioreg -rn AppleSmartBattery` output.
-    static func captureIOReg() -> String? {
-        let output = ProcessRunner.runBlocking("/usr/sbin/ioreg", ["-rn", "AppleSmartBattery"], timeout: 10)
-        return output.succeeded && !output.stdout.isEmpty ? output.stdout : nil
     }
 }
 

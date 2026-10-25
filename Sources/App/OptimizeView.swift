@@ -4,6 +4,47 @@ import Core
 import Features
 import UI
 
+/// One sidebar entry for maintenance checks and the startup items, the way
+/// CleanMyMac keeps both under Performance. Each part keeps its own policy key.
+struct SystemCareView: View {
+    enum Part: String, CaseIterable, Identifiable {
+        case maintenance = "Maintenance"
+        case startup = "Startup items"
+        var id: String {
+            rawValue
+        }
+
+        static var available: [Part] {
+            allCases.filter { !ManagedPolicy.shared.isFeatureDisabled($0 == .maintenance ? "optimize" : "startup") }
+        }
+    }
+
+    @State private var part: Part = .maintenance
+
+    var body: some View {
+        let parts = Part.available
+        let picker = parts.count > 1 ? $part : nil
+        switch parts.contains(part) ? part : parts.first ?? .maintenance {
+        case .maintenance: OptimizeView(part: picker)
+        case .startup: StartupView(part: picker)
+        }
+    }
+}
+
+/// The Maintenance / Startup items switch, shown in either part's header.
+struct SystemCarePartPicker: View {
+    @Binding var part: SystemCareView.Part
+
+    var body: some View {
+        Picker("Show", selection: $part) {
+            ForEach(SystemCareView.Part.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+    }
+}
+
 /// Maintenance, redesigned around a scan-first flow: instead of a flat grid
 /// of technical checkboxes with no signal on which ones actually matter, a
 /// scan runs every task in dry-run mode (which already reports exactly what
@@ -14,6 +55,9 @@ import UI
 /// recommended set for real.
 struct OptimizeView: View {
     private enum ScanState { case notScanned, scanning, scanned }
+
+    /// Set when System care shows both parts.
+    var part: Binding<SystemCareView.Part>?
 
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
     @ObservedObject private var model = MaintenanceModel.shared
@@ -44,7 +88,6 @@ struct OptimizeView: View {
         model.inFlight
     }
 
-    @State private var lastRuns: [String: MaintenanceRunStatus] = [:]
     @State private var guidedTask: MaintenanceCatalog.Task?
     @State private var confirmingFix = false
 
@@ -101,6 +144,9 @@ struct OptimizeView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScreenHeader("System care", subtitle: headerSubtitle, systemImage: ContentView.SidebarItem.optimize.icon, tint: tint) {
+                if let part {
+                    SystemCarePartPicker(part: part)
+                }
                 if scanState == .scanned, !selectedTasks.isEmpty {
                     Button(applying ? "Applying…" : "Review \(selectedTasks.count) Recommendation\(selectedTasks.count == 1 ? "" : "s")…") {
                         confirmingFix = true
@@ -122,15 +168,6 @@ struct OptimizeView: View {
                         .disabled(activity.isBusy)
                 }
             }
-
-            Label(
-                "Review each recommendation before applying it. Privacy notes and incomplete checks are shown separately.",
-                systemImage: "checkmark.shield"
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal)
-            .padding(.bottom, 8)
 
             switch scanState {
             case .notScanned:
@@ -155,10 +192,6 @@ struct OptimizeView: View {
             case .scanned:
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        if !applyResults.isEmpty {
-                            SummaryBanner(results: applyResults)
-                        }
-
                         if recommendedTasks.isEmpty, incompleteTasks.isEmpty {
                             AllClearBanner()
                         } else if !recommendedTasks.isEmpty {
@@ -183,9 +216,12 @@ struct OptimizeView: View {
                             }
                         }
                         if !cleanTasks.isEmpty {
-                            TaskSection(title: "Already Optimised", subtitle: "No issues found", color: .secondary) {
-                                taskGrid(cleanTasks)
+                            // Collapsed: a check with nothing to do needs no attention.
+                            DisclosureGroup("\(cleanTasks.count) check\(cleanTasks.count == 1 ? "" : "s") with nothing to do") {
+                                taskGrid(cleanTasks).padding(.top, 8)
                             }
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         }
                     }
                     .padding()
@@ -193,12 +229,6 @@ struct OptimizeView: View {
             }
         }
         .careScreen()
-        .onAppear { reloadLastRuns() }
-        .onChange(of: model.applying) {
-            _, applying in if !applying {
-                reloadLastRuns()
-            }
-        }
         .sheet(item: $guidedTask) { task in
             NetworkPrivacyReviewSheet(initialReport: ScanEverythingCoordinator.shared.systemHealthReport) { report in
                 scanResults[task.id] = .init(outcome: MaintenanceRunner().networkPrivacyOutcome(for: report))
@@ -223,9 +253,9 @@ struct OptimizeView: View {
             ForEach(tasks) { task in
                 MaintenanceTaskCard(
                     task: task,
+                    selectable: isRecommended(task.id),
                     selected: selectedTasks.contains(task.id),
                     result: applyResults[task.id] ?? scanResults[task.id],
-                    lastRun: lastRuns[task.id],
                     inFlight: inFlight.contains(task.id)
                 ) {
                     if task.kind == .guidedDiagnostic {
@@ -240,22 +270,6 @@ struct OptimizeView: View {
                 }
             }
         }
-    }
-
-    private func reloadLastRuns() {
-        let prefix = "optimize."
-        var statuses: [String: MaintenanceRunStatus] = [:]
-        for entry in OperationLog.shared.recent(limit: 10000) where entry.action.hasPrefix(prefix) {
-            let id = String(entry.action.dropFirst(prefix.count))
-            guard statuses[id] == nil else { continue }
-            statuses[id] = MaintenanceRunStatus(
-                timestamp: entry.timestamp,
-                outcome: entry.outcome.displayLabel,
-                detail: entry.detail,
-                dryRun: entry.dryRun
-            )
-        }
-        lastRuns = statuses
     }
 }
 
@@ -327,13 +341,6 @@ private struct FixConfirmationSheet: View {
     }
 }
 
-private struct MaintenanceRunStatus: Hashable {
-    let timestamp: Date
-    let outcome: String
-    let detail: String?
-    let dryRun: Bool
-}
-
 /// Section grouping for the scanned state — "Recommended" vs. "Already
 /// Optimised" — with a small colored count badge instead of a plain heading,
 /// so the recommendation reads as a recommendation and not just a category label.
@@ -372,9 +379,10 @@ private struct AllClearBanner: View {
 
 private struct MaintenanceTaskCard: View {
     let task: MaintenanceCatalog.Task
+    /// Only a recommendation can be ticked; other cards show no checkbox.
+    let selectable: Bool
     let selected: Bool
     let result: MaintenanceRunner.Result?
-    let lastRun: MaintenanceRunStatus?
     let inFlight: Bool
     let onToggle: () -> Void
 
@@ -424,7 +432,7 @@ private struct MaintenanceTaskCard: View {
                         Image(systemName: "chevron.right.circle.fill")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(category.color)
-                    } else {
+                    } else if selectable {
                         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(selected ? tintColor : .secondary)
@@ -443,9 +451,6 @@ private struct MaintenanceTaskCard: View {
                             .controlSize(.small)
                     } else if let result {
                         OutcomeBadge(outcome: result.outcome)
-                    } else if let lastRun {
-                        Label(lastRun.outcome, systemImage: "clock")
-                            .foregroundStyle(.secondary)
                     } else {
                         Label("Not checked", systemImage: "questionmark.circle")
                             .foregroundStyle(.secondary)
@@ -468,19 +473,6 @@ private struct MaintenanceTaskCard: View {
                     }
                 }
                 .font(.caption)
-
-                if let lastRun {
-                    Text(
-                        "Last run \(lastRun.timestamp.formatted(date: .abbreviated, time: .shortened))\(lastRun.dryRun ? " · dry run" : "")"
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(CareTheme.secondaryInk)
-                    .lineLimit(1)
-                } else {
-                    Text("Never run")
-                        .font(.caption2)
-                        .foregroundStyle(CareTheme.secondaryInk)
-                }
 
                 if let result, let detail = result.outcome.detail, !detail.isEmpty {
                     Text(detail)
@@ -515,7 +507,7 @@ private struct MaintenanceTaskCard: View {
         if let detail = result?.outcome.detail, !detail.isEmpty {
             parts.append(detail)
         }
-        if task.kind != .guidedDiagnostic {
+        if task.kind != .guidedDiagnostic, selectable {
             parts.append(selected ? "Selected" : "Not selected")
         }
         return parts.joined(separator: ", ")
@@ -523,17 +515,6 @@ private struct MaintenanceTaskCard: View {
 
     private var tintColor: Color {
         ContentView.SidebarItem.optimize.tint
-    }
-}
-
-private extension OperationLog.Outcome {
-    var displayLabel: String {
-        switch self {
-        case .success: "Applied"
-        case .failed: "Failed"
-        case .skipped: "Skipped"
-        case .dryRun: "Dry Run"
-        }
     }
 }
 
@@ -547,70 +528,5 @@ private struct OutcomeBadge: View {
         }
         .font(.caption)
         .foregroundStyle(outcome.color)
-    }
-}
-
-private struct SummaryBanner: View {
-    let results: [String: MaintenanceRunner.Result]
-
-    var body: some View {
-        HStack(spacing: 16) {
-            CountBadge(label: "Applied", count: count(.applied(nil)), color: .green)
-            CountBadge(label: "No Change", count: count(.unchanged(nil)), color: .secondary)
-            CountBadge(label: "Skipped", count: skippedCount, color: .blue)
-            CountBadge(label: "Failed", count: count(.failed(nil)), color: .red)
-            Spacer()
-            Text("\(results.count) task(s)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(8)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func count(_ outcome: MaintenanceOutcome) -> Int {
-        results.values.filter { sameCase($0.outcome, outcome) }.count
-    }
-
-    private var skippedCount: Int {
-        results.values.filter {
-            if case .skipped = $0.outcome {
-                return true
-            }
-            if case .unavailable = $0.outcome {
-                return true
-            }
-            if case .attention = $0.outcome {
-                return true
-            }
-            return false
-        }.count
-    }
-
-    /// Compare by case (ignoring associated detail).
-    private func sameCase(_ a: MaintenanceOutcome, _ b: MaintenanceOutcome) -> Bool {
-        switch (a, b) {
-        case (.recommended, .recommended), (.applied, .applied), (.unchanged, .unchanged), (.failed, .failed):
-            true
-        default:
-            false
-        }
-    }
-}
-
-private struct CountBadge: View {
-    let label: String
-    let count: Int
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text("\(count)")
-                .font(.body.bold())
-                .monospacedDigit()
-            Text(label)
-                .font(.caption)
-        }
-        .foregroundStyle(count > 0 ? color : .secondary) // swiftlint:disable:this empty_count
     }
 }

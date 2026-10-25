@@ -10,6 +10,7 @@ import UI
 /// log is still one click away via "Reveal Log File" rather than gone.
 struct AboutView: View {
     @EnvironmentObject private var updaterViewModel: UpdaterViewModel
+    @Environment(\.openWindow) private var openWindow
     @State private var totalFreed: Int64 = 0
     @State private var operationCount: Int = 0
 
@@ -103,6 +104,7 @@ struct AboutView: View {
                         Spacer()
                         Button("Open History") {
                             AppNavigation.shared.pendingSelection = .history
+                            openWindow(id: "main")
                         }
                         .font(.caption)
                     }
@@ -174,5 +176,14 @@ private struct InfoRow: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
+    }
+}
+
+/// App menu → About myKikau: opens the About window.
+struct AboutCommand: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("About myKikau") { openWindow(id: "about") }
     }
 }
