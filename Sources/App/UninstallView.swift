@@ -211,9 +211,10 @@ struct UninstallView: View {
                 },
                 // Only when the administrator helper is installed and approved.
                 elevate: item.helperEnabled ? { paths in
-                    await removeWithHelper(
+                    await PrivilegedHelperClient.removeItems(
                         paths,
-                        sizes: Dictionary(uniqueKeysWithValues: item.plan.items.map { ($0.url.path, $0.sizeBytes) })
+                        sizes: Dictionary(uniqueKeysWithValues: item.plan.items.map { ($0.url.path, $0.sizeBytes) }),
+                        logAction: "uninstall.admin"
                     )
                 } : nil,
                 onClose: { result in
@@ -496,26 +497,6 @@ struct UninstallView: View {
             notes.append("Left in place (needs an administrator): \(names)")
         }
         return notes
-    }
-
-    /// Removes root-owned items through the administrator helper (which asks
-    /// for a password and applies its own rules), and records the outcome.
-    private func removeWithHelper(_ paths: [String], sizes: [String: Int64]) async -> (removed: Set<String>, failed: [String: String]) {
-        let outcome = await PrivilegedHelperClient.removeItems(paths)
-        for (path, trashed) in outcome.removed {
-            OperationLog.shared.append(.init(
-                action: "uninstall.admin", path: path, sizeBytes: sizes[path] ?? 0, mode: .trash,
-                outcome: .success, dryRun: false,
-                detail: "Removed with administrator rights", trashedPath: trashed
-            ))
-        }
-        for (path, reason) in outcome.failed {
-            OperationLog.shared.append(.init(
-                action: "uninstall.admin", path: path, sizeBytes: 0, mode: .trash,
-                outcome: .failed, dryRun: false, detail: reason
-            ))
-        }
-        return (Set(outcome.removed.keys), outcome.failed)
     }
 
     /// Looks for files left by apps that are no longer installed. Nothing is

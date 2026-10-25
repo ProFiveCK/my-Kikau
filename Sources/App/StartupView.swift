@@ -5,8 +5,8 @@ import Features
 import UI
 
 /// What starts in the background: launch agents and daemons, grouped by who
-/// they run for. The user's own agents can be removed; system-wide ones are
-/// shown so you can see what's there.
+/// they run for. The user's own agents can be removed directly; system-wide
+/// ones only through the administrator helper, which asks for a password.
 struct StartupView: View {
     /// Set when System care shows both parts.
     var part: Binding<SystemCareView.Part>?
@@ -23,6 +23,8 @@ struct StartupView: View {
     }
 
     @State private var review: ReviewRequest?
+    /// Read when the screen appears or rescans, not on every render.
+    @State private var helperEnabled = false
     private var loading: Bool {
         model.loading
     }
@@ -31,7 +33,7 @@ struct StartupView: View {
 
     private var subtitle: String {
         guard let items else { return "Background items that start with your Mac" }
-        let broken = items.filter { $0.programMissing && $0.isRemovable }.count
+        let broken = items.filter { $0.programMissing && !$0.isProtected }.count
         return "\(items.count) background items" + (broken > 0 ? " · \(broken) pointing at software that's gone" : "")
     }
 
@@ -76,7 +78,7 @@ struct StartupView: View {
                             if !scoped.isEmpty {
                                 Section {
                                     ForEach(scoped) { item in
-                                        StartupRow(item: item, isSelected: Binding(
+                                        StartupRow(item: item, canRemove: item.canRemove(helperEnabled: helperEnabled), isSelected: Binding(
                                             get: { selection.contains(item.id) },
                                             set: { isOn in
                                                 if isOn {
@@ -95,22 +97,35 @@ struct StartupView: View {
                     }.careResults()
 
                     HStack {
-                        let selected = items.filter { selection.contains($0.id) && $0.isRemovable }
-                        Text(selected.isEmpty
-                            ? "Tick items under “For You” to remove them. System-wide items need an administrator."
-                            : "\(selected.count) selected")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        let selected = items.filter { selection.contains($0.id) && $0.canRemove(helperEnabled: helperEnabled) }
+                        if selected.isEmpty, !helperEnabled {
+                            Text("Tick items under “For You” to remove them. System-wide items need the administrator helper.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            AppSettingsButton { Text("Settings…") }
+                                .font(.caption)
+                                .help("Settings → Advanced → Administrator helper")
+                        } else {
+                            Text(selected.isEmpty ? "Tick the items you no longer need." : "\(selected.count) selected")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
                         Button("Select Broken") {
-                            selection = Set(items.filter { $0.programMissing && $0.isRemovable }.map(\.id))
+                            selection = Set(items.filter { $0.programMissing && $0.canRemove(helperEnabled: helperEnabled) }.map(\.id))
                         }
-                        .disabled(!items.contains { $0.programMissing && $0.isRemovable })
+                        .disabled(!items.contains { $0.programMissing && $0.canRemove(helperEnabled: helperEnabled) })
                         Button("Remove Selected…") {
+                            let elevated = selected.contains(where: \.needsAdministrator)
                             review = ReviewRequest(
-                                plan: StartupItems.removalPlan(for: selected),
+                                plan: StartupItems.removalPlan(for: selected, helperEnabled: helperEnabled),
                                 title: "Remove Startup Items",
-                                subtitle: "Each item is stopped, then its file moves to the Trash. The software it belongs to is not removed.",
+                                subtitle: "Each item is stopped, then its file moves to the Trash. "
+                                    + "The software it belongs to is not removed."
+                                    + (elevated
+                                        ? " System-wide items, and the helper tools they run, "
+                                        + "need an administrator password after the first pass."
+                                        : ""),
                                 action: "startup"
                             )
                         }
@@ -146,6 +161,15 @@ struct StartupView: View {
                     }
                     return toStop.isEmpty ? [] : ["\(toStop.count) item(s) stopped"]
                 },
+                // Root-owned items fail the first pass; the helper stops each
+                // job and moves it after an administrator approves.
+                elevate: helperEnabled ? { paths in
+                    await PrivilegedHelperClient.removeItems(
+                        paths,
+                        sizes: Dictionary(uniqueKeysWithValues: request.plan.items.map { ($0.url.path, $0.sizeBytes) }),
+                        logAction: "startup.admin"
+                    )
+                } : nil,
                 onClose: { result in
                     review = nil
                     if let result, !result.dryRun, !result.removedIDs.isEmpty {
@@ -156,6 +180,7 @@ struct StartupView: View {
             )
         }
         .task {
+            helperEnabled = PrivilegedHelperClient.isEnabled
             if items == nil {
                 load()
             }
@@ -171,12 +196,14 @@ struct StartupView: View {
     }
 
     private func load() {
+        helperEnabled = PrivilegedHelperClient.isEnabled
         model.scan()
     }
 }
 
 private struct StartupRow: View {
     let item: StartupItems.Item
+    let canRemove: Bool
     @Binding var isSelected: Bool
 
     private var detail: String {
@@ -187,6 +214,9 @@ private struct StartupRow: View {
         if let program = item.program {
             parts.append(program)
         }
+        if item.helperTool != nil {
+            parts.append(String(localized: "removes its helper tool too"))
+        }
         return parts.isEmpty ? item.url.lastPathComponent : parts.joined(separator: " · ")
     }
 
@@ -195,7 +225,7 @@ private struct StartupRow: View {
             Toggle(isOn: $isSelected) { EmptyView() }
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .disabled(!item.isRemovable)
+                .disabled(!canRemove)
                 .accessibilityLabel("Select \(item.label)")
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.label).lineLimit(1)
@@ -215,6 +245,13 @@ private struct StartupRow: View {
                 Label("Protected", systemImage: "lock.shield")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } else if item.needsAdministrator {
+                Label("Administrator", systemImage: "lock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help(canRemove
+                        ? "Removing this asks for an administrator password."
+                        : "Turn on the administrator helper in Settings → Advanced to remove this.")
             } else if item.runsAtLoad {
                 Text("Runs at start")
                     .font(.caption)
