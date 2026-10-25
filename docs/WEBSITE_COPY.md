@@ -4,6 +4,11 @@
 
 ## Release notes
 
+### Version 0.10.6 — October 2026
+
+- **No false scan warning** — a startup file that only its owner (root) can read, such as NordVPN's background service, is now listed as such instead of reported as a partial scan that no permission could fix.
+- **Startup list stays current** — items removed with the administrator helper, or by an app's own uninstaller, drop out of the list as soon as you open it, without a rescan.
+
 ### Version 0.10.5 — October 2026
 
 - **Check for updates without the Dock icon** — the menu-bar companion now has Check for Updates and About myKikau, and Settings → Advanced shows your version with a Check Now button. With the Dock icon hidden, the app menu that held them isn't shown.

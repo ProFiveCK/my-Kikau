@@ -416,6 +416,17 @@ public final class ScanEverythingCoordinator: ObservableObject {
         }; scannedAt[.startup] = Date()
     }
 
+    /// Drops startup items whose file is gone: removed here, by the
+    /// administrator helper, or by the vendor's own uninstaller. A cheap
+    /// existence check, so the list is right even when no rescan ran.
+    public func pruneMissingStartupItems(fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) {
+        guard let items = startupItems else { return }
+        let present = items.filter { fileExists($0.url.path) }
+        guard present.count != items.count else { return }
+        startupItems = present
+        selectedStartupIDs.formIntersection(Set(present.map(\.id)))
+    }
+
     public func setCoverage(_ report: ScanCoverage, for area: Area) {
         coverage[area] = report; scannedAt[area] = Date()
     }
