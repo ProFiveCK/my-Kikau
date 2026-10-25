@@ -19,9 +19,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.10.2</string>
+	<string>0.10.3</string>
 	<key>CFBundleVersion</key>
-	<string>22</string>
+	<string>23</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
@@ -41,7 +41,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://www.projectfive.co.ck/apps/appcast.xml</string>
+	<string>https://projectfive.co.ck/downloads/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>2kThk3D7f9IzQZOZxdyAV554R0X7NHbpdWdutkbO0p4=</string>
 	<key>SUScheduledCheckInterval</key>

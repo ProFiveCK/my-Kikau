@@ -1,78 +1,17 @@
-# Website copy — /apps/ page (myKikau section)
+# Release notes — myKikau
 
-*Canonical copy for the myKikau section of the /apps/ page. The live page renders from `pf_apps()` in the theme `functions.php`; this document mirrors that copy for editing and review. The deploy script edits `functions.php` from `docs/pf-apps.php`, not from this file — keep both in sync when you change wording.*
-
-## Page hero (apps landing)
-
-**Eyebrow:** Project Five Apps
-**Headline:** Native Tools, Built in the Pacific.
-**Subhead:** Software we design and maintain in Rarotonga — direct downloads, open source, and supported by the team that builds it.
-
-## App section — myKikau
-
-**Section number:** 01
-**Eyebrow:** macOS utility
-**Title:** myKikau — Clean your Mac with confidence
-**Summary:** A native macOS maintenance app with a Care hub, Quick and Full scans, safe cleanup, app uninstall, duplicate and large-file review, and live system monitoring. It previews everything first and moves deletions to the Trash rather than destroying them.
-
-**Spec pills:**
-- macOS 14 Sonoma or later
-- Apple Silicon
-- 5.7 MB DMG
-- Signed & notarized by Apple
-- Open source (GPL-3.0)
-
-**Primary button:** Download myKikau 0.10.2
-**Secondary button:** Release notes
-**Download note:** Automatic updates are delivered through Sparkle. Full Disk Access is requested and explained on first launch.
-
-### Feature cards
-
-- **Preview before delete.** Review file paths, sizes, and protected items — with a checkbox on every item — before anything moves to the Trash. Restore recorded files individually or by cleanup session from History while they remain in the Trash.
-- **Leftover-aware uninstall.** Removes the app bundle plus LaunchAgents, login items, and related files in your Library.
-- **Live system dashboard.** Open Live activity from the Care hub for CPU, memory, disk, network, GPU, thermals, and battery metrics refreshed every two seconds. The menu-bar companion offers live metrics, task progress and shortcuts, with an exact-item review before emptying the Trash.
-- **Duplicate and similar-photo finder.** Content-hash verification identifies real duplicates, and on-device image analysis groups pictures that look alike, before you decide what to remove.
-- **Large-file review.** Find big items across Downloads, Documents, Desktop, Pictures, and Movies.
-- **Local activity log.** When logging is enabled, file operations are recorded locally at ~/Library/Logs/myKikau/operations.log, with cleanup sessions for reviewed file recovery.
-
-### Trust / safety split
-
-**Safety guardrails:** myKikau avoids macOS system files and protects over 90 critical Apple bundle IDs including Finder, Dock, and System Settings. It also recognises endpoint-security agents such as CrowdStrike, SentinelOne, and Jamf so managed Macs stay protected.
-
-**What to expect:**
-- Full Disk Access is requested and explained on first launch
-- Cleanup and uninstall actions are previewed before execution
-- Files are moved to the Trash, never silently destroyed
-- Signed and notarized by Apple
-- Source code is public and inspectable on GitHub
-
-**Source line:** myKikau is open source under GPL-3.0. View source on GitHub.
-
-## Coming next (roadmap)
-
-**Heading:** A growing catalog
-**Subhead:** This page is the home for every Project Five app — desktop today, mobile as releases land.
-
-- **Direct Mac releases.** DMG downloads with release notes, source links, Sparkle update feeds, and clear system requirements.
-- **App Store installs.** iPhone and iPad apps will link straight to their official App Store listings.
-- **Support and updates.** Each app carries its own support contact, changelog, and version-specific notes.
-
-## Footer
-
-**Footer note:** myKikau is signed and notarized by Apple. © 2026 Project Five. Licensed under GPL-3.0.
-
-## System requirements
-
-- macOS 14 (Sonoma) or later — Apple Silicon
-- 5.7 MB installer download
-- Full Disk Access permission (requested on first launch; some features are limited without it)
-
-## Open source
-
-myKikau's source is public and licensed under GPL-3.0.
-**Source code:** github.com/ProFiveCK/my-Kikau
+*`scripts/prepare-deploy.sh` copies the `### Version <version>` section below into the GitHub release. The /apps/ page itself is part of the Project Five static site (`src/pages.mjs` in `~/MyProjects/projectfive/website-renew/site`); `scripts/deploy-website.py` sets its version and DMG size through that site's `src/mykikau.json`.*
 
 ## Release notes
+
+### Version 0.10.3 — October 2026
+
+- **A simpler sidebar** — seven places instead of ten. Startup items are now a tab of System care, About is in the app menu, and Network joins Project Purge under Settings → Advanced tools.
+- **Calmer System care** — checks with nothing to do are collapsed, only recommendations have a checkbox, and repeated status lines are gone.
+- **A clearer Overview** — the headline says what the scan found, and scan times are shown once per area.
+- **Faster Storage** — folder sizes are remembered even when a protected folder elsewhere can't be read, so opening a folder no longer measures it again.
+- **Lighter on your Mac** — live readings are collected only while Live activity is open, desktop Macs no longer start a helper process every two seconds, and System care opens without reading the whole activity log.
+- **Updates from the new website** — the update feed moves to projectfive.co.ck/downloads/appcast.xml.
 
 ### Version 0.10.2 — October 2026
 

@@ -31,7 +31,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 RELEASE_DIR="${1:-}"
-DOWNLOAD_URL_PREFIX="${2:-https://www.projectfive.co.ck/downloads/}"
+DOWNLOAD_URL_PREFIX="${2:-https://projectfive.co.ck/downloads/}"
 if [[ -z "$RELEASE_DIR" || ! -d "$RELEASE_DIR" ]]; then
   echo "✘ usage: ./scripts/update-appcast.sh /path/to/release-folder [download-url-prefix]"
   exit 1

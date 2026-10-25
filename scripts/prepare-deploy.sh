@@ -16,12 +16,10 @@ cd "$(dirname "$0")/.."
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/App/Info.plist)"
 DMG="${1:-build/myKikau-${VERSION}.dmg}"
-DOWNLOAD_URL_PREFIX="${2:-https://www.projectfive.co.ck/downloads/}"
+DOWNLOAD_URL_PREFIX="${2:-https://projectfive.co.ck/downloads/}"
 RELEASE_DIR="build/release"
 NOTES_FILE="${RELEASE_DIR}/release-notes-${VERSION}.md"
 UPLOAD_DIR="website-upload/${VERSION}"
-PF_APPS_SOURCE="docs/pf-apps.php"
-PF_APPS_STAGED="${UPLOAD_DIR}/pf-apps.php"
 
 if [[ ! -f "$DMG" ]]; then
   echo "✘ DMG not found: $DMG"
@@ -96,39 +94,20 @@ mkdir -p "$UPLOAD_DIR"
 cp "$DMG" "$UPLOAD_DIR/"
 cp "${RELEASE_DIR}/appcast.xml" "$UPLOAD_DIR/"
 
-# Stage pf-apps.php with the release version and download URL substituted in,
-# so the deploy script uploads a version-correct copy without manual edits.
-python3 - "$VERSION" "$PF_APPS_SOURCE" "$PF_APPS_STAGED" <<'PY'
-import re, sys
-from pathlib import Path
-
-version, src, dst = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
-text = src.read_text()
-# Replace the version field and any myKikau-<version>.dmg references.
-text = re.sub(r"'version'\s+=>\s+'[^']*'", f"'version'  => '{version}'", text)
-text = re.sub(r"myKikau-\d+\.\d+\.\d+\.dmg", f"myKikau-{version}.dmg", text)
-dst.write_text(text)
-print(f"  staged {dst.name} with version {version}")
-PY
-
 cat <<EOF
 
 ✓ deploy artifacts prepared
 
 Files to publish:
   $DMG -> ${DOWNLOAD_URL_PREFIX}${DMG_NAME}
-  ${RELEASE_DIR}/appcast.xml -> https://www.projectfive.co.ck/downloads/appcast.xml
+  ${RELEASE_DIR}/appcast.xml -> https://projectfive.co.ck/downloads/appcast.xml
   GitHub release notes: ${NOTES_FILE}
 
 Website upload folder:
   ${UPLOAD_DIR}/
   - ${DMG_NAME}
   - appcast.xml
-  - pf-apps.php (version ${VERSION}, download URL updated)
 
-Website deploy:
-  python3 scripts/deploy-website.py
-
-  The deploy script edits pf_apps() in the theme functions.php on the server,
-  so the /apps/ page shows version ${VERSION} and the correct DMG download link.
+Website deploy (Hostinger API; sets the /apps/ page to ${VERSION}):
+  python3 scripts/deploy-website.py --version ${VERSION}
 EOF
