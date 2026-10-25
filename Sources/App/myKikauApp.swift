@@ -94,6 +94,7 @@ struct myKikauApp: App {
 
         MenuBarExtra {
             HUDView()
+                .environmentObject(updaterViewModel)
         } label: {
             // .renderingMode(.template) is the important part here: SwiftUI's
             // Image(nsImage:) doesn't reliably inherit NSImage.isTemplate on
