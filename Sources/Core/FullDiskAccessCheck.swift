@@ -39,8 +39,7 @@ public enum FullDiskAccessCheck {
     }
 
     private static func canActuallyOpen(_ path: String) -> Bool {
-        guard FileManager.default.fileExists(atPath: path) else { return false }
-        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        guard FileManager.default.fileExists(atPath: path), let handle = FileHandle(forReadingAtPath: path) else { return false }
         defer { try? handle.close() }
         return true
     }

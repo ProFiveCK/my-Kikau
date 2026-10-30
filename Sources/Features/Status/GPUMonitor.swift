@@ -23,13 +23,12 @@ public enum GPUMonitor {
         let nowTs = now.timeIntervalSince1970
 
         // Static GPU info (cached for hours — the hardware doesn't change).
-        if box.cachedGPU.isEmpty || box.lastInfoAt == nil || nowTs - box.lastInfoAt! >= infoTTL {
-            if let data = captureDisplaysJSON(),
-               let gpus = parseDisplaysJSON(data), !gpus.isEmpty
-            {
-                box.cachedGPU = gpus
-                box.lastInfoAt = nowTs
-            }
+        if box.cachedGPU.isEmpty || box.lastInfoAt == nil || nowTs - box.lastInfoAt! >= infoTTL,
+           let data = captureDisplaysJSON(),
+           let gpus = parseDisplaysJSON(data), !gpus.isEmpty
+        {
+            box.cachedGPU = gpus
+            box.lastInfoAt = nowTs
         }
 
         guard !box.cachedGPU.isEmpty else { return [] }
@@ -56,10 +55,7 @@ public enum GPUMonitor {
 
     /// Parses `system_profiler -json SPDisplaysDataType` JSON into GPU statuses.
     public static func parseDisplaysJSON(_ data: Data) -> [GPUStatus]? {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        guard let displays = root["SPDisplaysDataType"] as? [[String: Any]] else { return nil }
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let displays = root["SPDisplaysDataType"] as? [[String: Any]] else { return nil }
 
         var gpus: [GPUStatus] = []
         for d in displays {

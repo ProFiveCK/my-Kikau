@@ -199,8 +199,8 @@ public final class AppTeardown {
         var helperIDs: [String] = []
         for entry in entries where entry.pathExtension == "app" {
             let info = entry.appendingPathComponent("Contents/Info.plist")
-            guard FileManager.default.fileExists(atPath: info.path) else { continue }
-            guard let bundle = Bundle(path: entry.path),
+            guard FileManager.default.fileExists(atPath: info.path),
+                  let bundle = Bundle(path: entry.path),
                   let id = bundle.bundleIdentifier,
                   isReverseDNSBundleID(id),
                   !isAppleLabel(id)

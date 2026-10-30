@@ -245,8 +245,7 @@ public enum CleanScanner {
             // and TemporaryItems); they are system state, not leftovers.
             let staleTemp = contents(of: tempDir, keys: [.contentModificationDateKey]).filter { entry in
                 let name = entry.lastPathComponent
-                guard !name.hasPrefix("com.apple."), name != "TemporaryItems" else { return false }
-                guard let modified = latestModification(of: entry, cutoff: cutoff, coverage: coverage) else { return false }
+                guard !name.hasPrefix("com.apple."), name != "TemporaryItems", let modified = latestModification(of: entry, cutoff: cutoff, coverage: coverage) else { return false }
                 return modified < cutoff
             }
             return logs + [home.appendingPathComponent("Library/Caches/com.apple.helpd")] + staleTemp

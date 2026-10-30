@@ -93,8 +93,7 @@ public enum ProjectArtifactScanner {
         let fm = FileManager.default
 
         for searchPath in searchPaths(home: home) {
-            guard fm.fileExists(atPath: searchPath.path) else { continue }
-            guard let projects = try? fm.contentsOfDirectory(
+            guard fm.fileExists(atPath: searchPath.path), let projects = try? fm.contentsOfDirectory(
                 at: searchPath,
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]

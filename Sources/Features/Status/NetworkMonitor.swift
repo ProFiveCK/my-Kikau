@@ -83,8 +83,7 @@ public enum NetworkMonitor {
 
     /// Computes an MB/s rate from byte counters, guarding wraparound and negative deltas.
     public static func rateMBs(current: UInt64, previous: UInt64, elapsed: Double) -> Double {
-        guard elapsed > 0 else { return 0 }
-        guard current >= previous else { return 0 }
+        guard elapsed > 0, current >= previous else { return 0 }
         let delta = current - previous
         return Double(delta) / 1024 / 1024 / elapsed
     }
