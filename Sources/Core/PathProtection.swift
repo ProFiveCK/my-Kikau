@@ -144,25 +144,33 @@ public struct PathProtection: Sendable {
     /// *contains* one — removing a folder removes everything in it, so a
     /// folder holding an excluded or protected item can't be removed whole.
     private func isProtected(_ path: String) -> Bool {
-        if path.isEmpty || Self.protectedContainers.contains(path) {
-            return true
-        }
-        for prefix in Self.protectedSubtrees where Self.overlaps(path, prefix) {
-            return true
-        }
-        for relative in Self.protectedHomeContainers where path == homePath(relative) {
-            return true
-        }
-        for relative in Self.protectedHomeSubtrees where Self.overlaps(path, homePath(relative)) {
-            return true
-        }
-        // Exclusions are compared without regard to case: the default macOS
-        // volume format is case-insensitive, so "keep" and "Keep" are one folder.
+        // Every list is compared without regard to case: the default macOS
+        // volume format is case-insensitive, so "~/library/Mail" is Mail.
         let lowered = path.lowercased()
+        if lowered.isEmpty || Self.loweredProtectedContainers.contains(lowered) {
+            return true
+        }
+        for prefix in Self.loweredProtectedSubtrees where Self.overlaps(lowered, prefix) {
+            return true
+        }
+        let home = self.home.lowercased()
+        for relative in Self.protectedHomeContainers where lowered == Self.join(home, relative.lowercased()) {
+            return true
+        }
+        for relative in Self.protectedHomeSubtrees where Self.overlaps(lowered, Self.join(home, relative.lowercased())) {
+            return true
+        }
         for excluded in exclusions() where Self.overlaps(lowered, excluded.lowercased()) {
             return true
         }
         return hasEndpointSecurityComponent(path)
+    }
+
+    private static let loweredProtectedContainers = Set(protectedContainers.map { $0.lowercased() })
+    private static let loweredProtectedSubtrees = protectedSubtrees.map { $0.lowercased() }
+
+    private static func join(_ home: String, _ relative: String) -> String {
+        relative.isEmpty ? home : home + "/" + relative
     }
 
     /// True if one path is the other, or either contains the other.

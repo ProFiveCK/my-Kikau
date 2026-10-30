@@ -2,9 +2,10 @@
 # Package build/myKikau.app as an installer .pkg for managed deployment
 # (Jamf, Intune, Kandji, Mosyle — anything that pushes a flat package).
 #
-# The package installs /Applications/myKikau.app and nothing else: no scripts,
-# no launch daemons. The command-line tool rides along inside the bundle at
-# Contents/Helpers/mykikau-cli.
+# The package installs /Applications/myKikau.app and no launch daemons. One
+# preinstall script asks a running copy (it lives in the menu bar, so there
+# usually is one) to quit, so the new version is what runs next. The
+# command-line tool rides along inside the bundle at Contents/Helpers/mykikau-cli.
 #
 # Usage:
 #   ./scripts/make-pkg.sh                                   # unsigned, for testing
@@ -48,10 +49,31 @@ pkgbuild --analyze --root "$ROOT" "$COMPONENTS" >/dev/null
 # (Newer pkgbuild versions omit the key from the analysis, so add-or-replace.)
 plutil -replace 0.BundleIsRelocatable -bool NO "$COMPONENTS"
 
+SCRIPTS="$WORK/scripts"
+mkdir -p "$SCRIPTS"
+cat > "$SCRIPTS/preinstall" <<'PRE'
+#!/bin/sh
+# Ask the logged-in user's running myKikau to quit, politely (it finishes or
+# cancels its current task first), then wait a little. Nothing is killed.
+console_user="$(stat -f%Su /dev/console 2>/dev/null)"
+console_uid="$(id -u "$console_user" 2>/dev/null)"
+if [ -n "$console_uid" ] && [ "$console_uid" != "0" ]; then
+  launchctl asuser "$console_uid" sudo -u "$console_user" \
+    osascript -e 'tell application id "com.profiveck.myKikau" to if it is running then quit' >/dev/null 2>&1 || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -u "$console_uid" -x myKikau >/dev/null 2>&1 || break
+    sleep 1
+  done
+fi
+exit 0
+PRE
+chmod 755 "$SCRIPTS/preinstall"
+
 UNSIGNED="$WORK/myKikau-unsigned.pkg"
 echo "› pkgbuild myKikau $VERSION"
 pkgbuild \
   --root "$ROOT" \
+  --scripts "$SCRIPTS" \
   --component-plist "$COMPONENTS" \
   --install-location "/" \
   --identifier "$PKG_IDENTIFIER" \

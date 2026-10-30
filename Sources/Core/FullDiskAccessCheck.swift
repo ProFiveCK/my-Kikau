@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Best-effort check for whether the app currently holds Full Disk Access.
@@ -27,6 +28,14 @@ public enum FullDiskAccessCheck {
     /// attempted for this probe to mean anything.
     public static func probe() -> Bool {
         probePaths.contains { canActuallyOpen($0) }
+    }
+
+    /// Opens System Settings on the Full Disk Access list.
+    @MainActor
+    public static func openSystemSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private static func canActuallyOpen(_ path: String) -> Bool {

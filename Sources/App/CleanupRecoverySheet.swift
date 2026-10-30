@@ -85,7 +85,7 @@ struct CleanupRecoverySheet: View {
                     Button(results == nil ? "Cancel" : "Done") { onDone(); dismiss() }
                     if results == nil {
                         Button { restore() } label: {
-                            Text("Restore \(chosen.count) \(chosen.count == 1 ? "File" : "Files")").foregroundStyle(CareTheme.onAccent)
+                            Text("Restore \(chosen.count) \(chosen.count == 1 ? "File" : "Files")")
                         }
                         .carePrimaryAction().disabled(chosen.isEmpty || loading || work.isBusy)
                     }

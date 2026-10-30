@@ -16,6 +16,20 @@ public enum LaunchAtLoginService {
         SMAppService.mainApp.status == .enabled
     }
 
+    /// Set by a configuration profile (`LaunchAtLogin`); the toggle is locked.
+    public static var isManaged: Bool {
+        ManagedPolicy.shared.launchAtLogin != nil
+    }
+
+    /// Applies the managed value, if there is one, at launch. Idempotent:
+    /// nothing is registered or unregistered when the state already matches.
+    public static func applyPolicy() {
+        guard let wanted = ManagedPolicy.shared.launchAtLogin, wanted != isEnabled else { return }
+        if case let .failure(error) = setEnabled(wanted) {
+            Log.app.error("LaunchAtLogin policy could not be applied: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Registers or unregisters the app as a login item. Returns the error on
     /// failure so the caller can revert its toggle state and explain why.
     @discardableResult

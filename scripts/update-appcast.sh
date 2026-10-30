@@ -24,7 +24,7 @@
 # from — it's baked into each <enclosure url="..."> in the generated feed, so
 # it must match wherever you actually upload the DMGs, which is NOT
 # necessarily the same folder as appcast.xml itself (SUFeedURL is
-# .../apps/appcast.xml, but DMGs may live at .../downloads/). Defaults to
+# .../downloads/appcast.xml, but DMGs may live at .../downloads/). Defaults to
 # projectfive.co.ck's downloads folder; pass a second argument to override.
 
 set -euo pipefail
@@ -53,5 +53,5 @@ echo "› DMG download URL prefix: $DOWNLOAD_URL_PREFIX"
 "$GENERATE_APPCAST" --maximum-deltas 0 --download-url-prefix "$DOWNLOAD_URL_PREFIX" "$RELEASE_DIR"
 
 echo "✓ wrote $RELEASE_DIR/appcast.xml"
-echo "  upload appcast.xml to the URL set in Info.plist's SUFeedURL (apps/appcast.xml)"
+echo "  upload appcast.xml to the URL set in Info.plist's SUFeedURL (downloads/appcast.xml)"
 echo "  — the DMG(s) themselves stay wherever \$DOWNLOAD_URL_PREFIX says they are"

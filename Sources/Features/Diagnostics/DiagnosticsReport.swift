@@ -33,6 +33,7 @@ public enum DiagnosticsReport {
         row("Processors", "\(ProcessInfo.processInfo.activeProcessorCount)")
         row("Memory", ByteSizeFormatter.format(Int64(ProcessInfo.processInfo.physicalMemory)))
         row("Administrator account", isAdministrator() ? "yes" : "no")
+        row("Launch at login", LaunchAtLoginService.isEnabled ? "on" : "off")
 
         section("Access")
         row("Full Disk Access", FullDiskAccessCheck.probe() ? "granted" : "not granted")
@@ -45,6 +46,7 @@ public enum DiagnosticsReport {
 
         section("Settings")
         row("Operation log", log.enabled ? "on" : "off")
+        row("Operation log file", log.fileURL.path)
         row("User exclusions", "\(ExclusionStore.shared.userPaths.count)")
         row("Developer tools", AppDefaults.store.bool(forKey: AppStorageKey.developerToolsEnabled) ? "on" : "off")
         row("Background scan (hours)", "\(AppDefaults.store.integer(forKey: AppStorageKey.scheduledScanIntervalHours))")
@@ -58,6 +60,11 @@ public enum DiagnosticsReport {
             row("Force operation log", policy.forceOperationLog ? "yes" : "no")
             row("Automatic updates disabled", policy.disableAutomaticUpdates ? "yes" : "no")
             row("Privileged tools disabled", policy.disablePrivilegedTools ? "yes" : "no")
+            row("Network lookups disabled", policy.disableNetworkLookups ? "yes" : "no")
+            row("Scheduled scan (hours)", policy.scheduledScanIntervalHours.map(String.init) ?? "not set")
+            row("Launch at login", policy.launchAtLogin.map { $0 ? "forced on" : "forced off" } ?? "not set")
+            row("Organisation", policy.organisationName ?? "not set")
+            row("Support contact", policy.supportContact ?? "not set")
         }
 
         section("Operation log")

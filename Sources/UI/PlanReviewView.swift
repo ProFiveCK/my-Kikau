@@ -163,7 +163,7 @@ public struct PlanReviewView: View {
             HStack(alignment: .center, spacing: 12) {
                 AppBrandIcon(size: 36)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(title).font(.system(size: 24, weight: .bold, design: .rounded))
+                    Text(title).font(.system(.title, design: .rounded).weight(.bold))
                     Text(subtitle ?? "Untick anything you want to keep.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -226,12 +226,9 @@ public struct PlanReviewView: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                 Spacer()
-                Menu("More") {
-                    Button("Simulate — Change Nothing") { run(simulate: true) }
-                }
-                .fixedSize()
-                .disabled(selection.isEmpty || activity.isBusy)
-                .help("Runs through the plan and records it in the log without touching any file")
+                Button("Simulate") { run(simulate: true) }
+                    .disabled(selection.isEmpty || activity.isBusy)
+                    .help("Runs through the plan and records it in the log without touching any file")
                 Button("Cancel") { onClose(nil) }
                     .keyboardShortcut(.cancelAction)
                 Button(primaryLabel) {
@@ -241,8 +238,7 @@ public struct PlanReviewView: View {
                         run(simulate: false)
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(permanentCount > 0 ? .red : CareTheme.accent)
+                .buttonStyle(CarePrimaryButtonStyle(fill: permanentCount > 0 ? CareTheme.rose : CareTheme.accent))
                 .keyboardShortcut(.defaultAction)
                 .disabled(selection.isEmpty || activity.isBusy)
             }
@@ -431,7 +427,11 @@ private struct PlanItemRow: View {
         }
         .contentShape(Rectangle())
         .help(item.url.path)
-        .contextMenu { PathMenu(url: item.url) }
+        .contextMenu {
+            // Excluding an item also unticks it, so the plan can't go on to
+            // report it as skipped.
+            PathMenu(url: item.url, onExcluded: { isSelected = false })
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.url.lastPathComponent), \(ByteSizeFormatter.format(item.sizeBytes))")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
@@ -481,9 +481,11 @@ private struct ProtectedItemRow: View {
 /// Context-menu actions for anything that is a path on disk.
 public struct PathMenu: View {
     private let url: URL
+    private let onExcluded: (() -> Void)?
 
-    public init(url: URL) {
+    public init(url: URL, onExcluded: (() -> Void)? = nil) {
         self.url = url
+        self.onExcluded = onExcluded
     }
 
     public var body: some View {
@@ -495,9 +497,14 @@ public struct PathMenu: View {
             NSPasteboard.general.setString(url.path, forType: .string)
         }
         Divider()
-        Button("Never Remove This…") {
-            let store = ExclusionStore.shared
-            store.setUserPaths(store.userPaths + [url.path])
+        if ExclusionStore.shared.userPaths.contains(url.path) {
+            Text("On the Never Remove list")
+        } else {
+            Button("Never Remove This") {
+                let store = ExclusionStore.shared
+                store.setUserPaths(store.userPaths + [url.path])
+                onExcluded?()
+            }
         }
     }
 }

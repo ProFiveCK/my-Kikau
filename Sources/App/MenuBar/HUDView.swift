@@ -30,7 +30,7 @@ struct HUDView: View {
                 HStack(spacing: 11) {
                     AppBrandIcon(size: 36)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("myKikau").font(.system(size: 20, weight: .bold, design: .rounded)).tracking(-0.6)
+                        Text("myKikau").font(.system(.title2, design: .rounded).weight(.bold)).tracking(-0.6)
                         Text("Your Mac, at a glance").font(.caption).foregroundStyle(CareTheme.secondaryInk)
                     }
                     Spacer()
@@ -58,13 +58,15 @@ struct HUDView: View {
                                 tint: CareTheme.teal
                             ) { openProcesses(.memory) }
                             if let disk = snapshot.disks.first {
+                                // No chevron, no dead button, when Storage is
+                                // turned off by policy.
                                 HUDMetric(
                                     label: "Storage",
                                     value: "\(ByteSizeFormatter.format(Int64(disk.total - disk.used))) available",
                                     percent: disk.usedPercent,
-                                    tint: CareTheme.accent
-                                ) { navigate(.analyze) }
-                                    .disabled(ManagedPolicy.shared.isFeatureDisabled("analyze"))
+                                    tint: CareTheme.accent,
+                                    action: ManagedPolicy.shared.isFeatureDisabled("analyze") ? nil : { navigate(.analyze) }
+                                )
                             }
                             HStack {
                                 if let gpu = snapshot.gpu.first, gpu.usage >= 0 {
@@ -83,7 +85,7 @@ struct HUDView: View {
                         ProgressView("Reading live activity…").font(.caption)
                             .frame(maxWidth: .infinity, minHeight: 110).cardSurface()
                     }
-                    if let netInfo {
+                    if let netInfo, ContentView.SidebarItem.visibleCases(developerTools: advancedTools).contains(.network) {
                         network(netInfo)
                     }
                     if let activity = work.activity {
@@ -105,7 +107,7 @@ struct HUDView: View {
                                 .font(.caption)
                         }.buttonStyle(.plain).foregroundStyle(CareTheme.accent)
                             .disabled(work.isBusy || freeingMemory)
-                            .help("Ask macOS to release inactive file cache. An administrator password may be required.")
+                            .help("Asks macOS to release inactive file cache. Nothing is removed from disk.")
                     }
                     if let memoryStatus {
                         Text(memoryStatus).font(.caption).foregroundStyle(CareTheme.secondaryInk)
@@ -127,13 +129,15 @@ struct HUDView: View {
                 // Check for Updates must be reachable from here.
                 VStack(spacing: 8) {
                     HStack {
-                        AppSettingsButton(dismissesSourceWindow: true) { Label("Settings", systemImage: "gearshape") }
+                        AppSettingsButton(dismissesSourceWindow: true) { Label("Settings…", systemImage: "gearshape") }
                         Spacer()
-                        Button("Check for Updates…") {
-                            NSApp.activate(ignoringOtherApps: true)
-                            updaterViewModel.checkForUpdates()
+                        if updaterViewModel.updatesAvailable {
+                            Button("Check for Updates…") {
+                                NSApp.activate(ignoringOtherApps: true)
+                                updaterViewModel.checkForUpdates()
+                            }
+                            .disabled(!updaterViewModel.canCheckForUpdates)
                         }
-                        .disabled(!updaterViewModel.canCheckForUpdates)
                     }
                     HStack {
                         Button("About myKikau") {
@@ -143,6 +147,8 @@ struct HUDView: View {
                         Spacer()
                         // Escape dismisses the popover; it never quits the app.
                         Button("Quit myKikau") { NSApp.terminate(nil) }
+                            .disabled(work.isBusy)
+                            .help(work.isBusy ? "Wait for the current task to finish, or cancel it, before quitting." : "")
                     }
                 }.buttonStyle(.plain).font(.caption).foregroundStyle(CareTheme.secondaryInk)
             }.padding(16).background(CareTheme.panel)
@@ -173,7 +179,7 @@ struct HUDView: View {
 
     private var shortcuts: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("A LITTLE CARE").font(.system(size: 9, weight: .bold)).tracking(1.4).foregroundStyle(CareTheme.secondaryInk)
+            Text("A LITTLE CARE").font(.caption2.weight(.bold)).tracking(1.4).foregroundStyle(CareTheme.secondaryInk)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                 if !ManagedPolicy.shared.isFeatureDisabled("clean") {
                     HUDShortcut("Clean up", detail: "Review everyday clutter", icon: "paintbrush.pointed", tint: CareTheme.accent) {
@@ -212,7 +218,6 @@ struct HUDView: View {
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
-                .disabled(!ContentView.SidebarItem.visibleCases(developerTools: advancedTools).contains(.network))
             if let ip = info.localIPv4 {
                 Button {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString(ip, forType: .string); copiedIP = true
@@ -262,10 +267,10 @@ private struct HUDShortcut: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: icon).font(.system(size: 13, weight: .medium)).foregroundStyle(tint)
-                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(CareTheme.ink)
+                    Image(systemName: icon).font(.body.weight(.medium)).foregroundStyle(tint)
+                    Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(CareTheme.ink)
                 }
-                Text(detail).font(.system(size: 10)).foregroundStyle(CareTheme.secondaryInk).lineLimit(2)
+                Text(detail).font(.caption2).foregroundStyle(CareTheme.secondaryInk).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }.padding(10).frame(maxWidth: .infinity, minHeight: 65, alignment: .topLeading).cardSurface(radius: 13)
                 .opacity(enabled ? 1 : 0.5).contentShape(RoundedRectangle(cornerRadius: 13))
@@ -296,7 +301,7 @@ private struct HUDMetric: View {
                 if action !=
                     nil
                 {
-                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold)).foregroundStyle(CareTheme.secondaryInk)
+                    Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(CareTheme.secondaryInk)
                 }
             }
             SizeBar(percent: percent, color: tint)

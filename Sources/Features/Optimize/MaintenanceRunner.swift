@@ -140,12 +140,10 @@ public final class MaintenanceRunner {
 
     /// Spawns a process and captures combined stdout/stderr. Returns exit code + output.
     /// In dry-run mode, returns a synthetic success (exit 0) without spawning.
-    /// For sudo tasks, prepends `sudo -n` (non-interactive) and reports skipped if
-    /// sudo credentials are not cached.
+    /// Never elevated: every task runs as the user.
     func runProcess(
         _ executable: String,
         arguments: [String],
-        requiresSudo: Bool = false,
         dryRun: Bool = false
     ) async -> (exitCode: Int, output: String) {
         guard !Task.isCancelled else { return (1, "Cancelled") }
@@ -154,15 +152,7 @@ public final class MaintenanceRunner {
             return (0, "[dry-run] \(cmd)")
         }
 
-        if requiresSudo, await !sudoAvailable() {
-            return (1, "sudo credentials not available")
-        }
-
-        let output: ProcessRunner.Output = if requiresSudo {
-            await ProcessRunner.run("/usr/bin/sudo", ["-n", executable] + arguments, timeout: 120)
-        } else {
-            await ProcessRunner.run(executable, arguments, timeout: 120)
-        }
+        let output = await ProcessRunner.run(executable, arguments, timeout: 120)
         if output.launchFailed {
             return (1, "Failed to launch \(executable): \(output.stderr)")
         }
@@ -170,11 +160,6 @@ public final class MaintenanceRunner {
             return (1, "\(executable) timed out")
         }
         return (Int(output.exitCode), output.stdout + output.stderr)
-    }
-
-    /// Checks whether sudo credentials are cached (non-interactive).
-    func sudoAvailable() async -> Bool {
-        await ProcessRunner.run("/usr/bin/sudo", ["-n", "true"], timeout: 10).succeeded
     }
 
     // MARK: - Task: launch_services

@@ -139,22 +139,34 @@ private final class ConnectionHandler: NSObject, PrivilegedHelperProtocol {
             return
         }
 
+        // The organisation's protected paths and software apply here too,
+        // judged from the managed-preference plists, not from the app.
+        let managed = ManagedProtectionPolicy.load(userName: userName())
+        let protection = PathProtection(
+            home: URL(fileURLWithPath: "/var/empty"),
+            exclusions: { managed.normalisedPaths },
+            extraBundlePrefixes: { managed.protectedBundlePrefixes }
+        )
         for path in paths {
-            switch HelperPolicy.validateRemoval(path: path) {
+            switch HelperPolicy.validateRemoval(path: path, protection: protection) {
             case let .failure(rejection):
                 note("refused \(path): \(rejection.reason)")
                 failed[path] = rejection.reason
             case let .success(kind):
-                do {
-                    if kind == .launchItem {
-                        stopLaunchItem(path)
-                    }
-                    let destination = try moveToTrash(path, trash: trash)
+                guard let identity = SecureMove.identity(of: path) else {
+                    failed[path] = "No longer exists."
+                    continue
+                }
+                if kind == .launchItem {
+                    stopLaunchItem(path)
+                }
+                switch moveToTrash(path, trash: trash, expecting: identity) {
+                case let .success(destination):
                     removed[path] = destination
                     note("moved \(path) to the Trash of uid \(userID)")
-                } catch {
-                    note("failed \(path): \(error.localizedDescription)")
-                    failed[path] = error.localizedDescription
+                case let .failure(failure):
+                    note("failed \(path): \(failure.reason)")
+                    failed[path] = failure.reason
                 }
             }
         }
@@ -192,6 +204,11 @@ private final class ConnectionHandler: NSObject, PrivilegedHelperProtocol {
         return status == errAuthorizationSuccess
     }
 
+    private func userName() -> String? {
+        guard let entry = getpwuid(userID), let name = entry.pointee.pw_name else { return nil }
+        return String(cString: name)
+    }
+
     /// The caller's `~/.Trash`, if it is a real folder they own.
     private func userTrash() -> String? {
         guard let entry = getpwuid(userID), let home = entry.pointee.pw_dir else { return nil }
@@ -203,18 +220,20 @@ private final class ConnectionHandler: NSObject, PrivilegedHelperProtocol {
         return trash
     }
 
-    private func moveToTrash(_ path: String, trash: String) throws -> String {
+    /// Moves the validated item into the Trash under a free name. The move
+    /// itself re-checks the item's identity and follows no links.
+    private func moveToTrash(_ path: String, trash: String, expecting identity: SecureMove.Identity) -> Result<String, SecureMove.Failure> {
         let name = (path as NSString).lastPathComponent
-        var destination = trash + "/" + name
+        var destinationName = name
         var counter = 1
-        while FileManager.default.fileExists(atPath: destination) {
+        while FileManager.default.fileExists(atPath: trash + "/" + destinationName) {
             counter += 1
             let base = (name as NSString).deletingPathExtension
             let ext = (name as NSString).pathExtension
-            destination = trash + "/" + base + " \(counter)" + (ext.isEmpty ? "" : "." + ext)
+            destinationName = base + " \(counter)" + (ext.isEmpty ? "" : "." + ext)
         }
-        try FileManager.default.moveItem(atPath: path, toPath: destination)
-        return destination
+        return SecureMove.move(path, toDirectory: trash, name: destinationName, expecting: identity)
+            .map { trash + "/" + destinationName }
     }
 
     /// Unloads a launch daemon or agent so removing its plist takes effect now.

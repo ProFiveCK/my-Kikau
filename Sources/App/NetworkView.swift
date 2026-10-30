@@ -204,19 +204,23 @@ struct NetworkView: View {
                     Text(error).font(.caption).foregroundStyle(.red)
                 }
             }
-            HStack {
-                Button {
-                    Task { await model.fetchPublicIP() }
-                } label: {
-                    if model.fetchingPublicIP {
-                        HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking…") }
-                    } else {
-                        Text(model.publicIP == nil ? "Check Public IP" : "Refresh")
+            if ManagedPolicy.shared.disableNetworkLookups {
+                ManagedNote()
+            } else {
+                HStack {
+                    Button {
+                        Task { await model.fetchPublicIP() }
+                    } label: {
+                        if model.fetchingPublicIP {
+                            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking…") }
+                        } else {
+                            Text(model.publicIP == nil ? "Check Public IP" : "Refresh")
+                        }
                     }
+                    .disabled(model.fetchingPublicIP)
                 }
-                .disabled(model.fetchingPublicIP)
+                .padding(.top, 4)
             }
-            .padding(.top, 4)
         }
     }
 
@@ -289,7 +293,10 @@ struct NetworkView: View {
         Card(title: "Tools", systemImage: "wrench.and.screwdriver", tint: tint) {
             // Both need an administrator password; an organisation can turn
             // those actions off.
-            if !ManagedPolicy.shared.disablePrivilegedTools {
+            if ManagedPolicy.shared.disablePrivilegedTools {
+                ManagedNote("Administrator tools are turned off by your organisation")
+                Divider()
+            } else {
                 toolRow(.flushDNS)
                 Divider()
                 toolRow(.renewDHCP(interface: safeInterface))
@@ -454,8 +461,10 @@ private struct InfoRow: View {
                     Image(systemName: copiedField == label ? "checkmark" : "doc.on.doc")
                         .font(.caption)
                         .foregroundStyle(copiedField == label ? .green : .secondary)
+                        .frame(minWidth: 24, minHeight: 24)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(copiedField == label ? "Copied \(label)" : "Copy \(label)")
                 .help("Copy \(label)")
             }
             .padding(.vertical, 2)

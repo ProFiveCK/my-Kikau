@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import UserNotifications
 import Core
 import Features
@@ -41,6 +42,11 @@ final class BackgroundScanScheduler: NSObject, UNUserNotificationCenterDelegate 
         if notificationsAvailable {
             UNUserNotificationCenter.current().delegate = self
         }
+        // A managed interval never passes through the Settings picker, which
+        // is where permission is otherwise requested.
+        if ManagedPolicy.shared.scheduledScanIntervalHours != nil {
+            requestNotificationPermission()
+        }
         reschedule()
     }
 
@@ -56,6 +62,40 @@ final class BackgroundScanScheduler: NSObject, UNUserNotificationCenterDelegate 
     func requestNotificationPermission() {
         guard notificationsAvailable else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    enum NotificationStatus: Equatable {
+        case allowed
+        case notAsked
+        case denied
+        case unavailable
+
+        var explanation: LocalizedStringKey {
+            switch self {
+            case .allowed: "Notifications are allowed."
+            case .notAsked: "Notifications haven't been allowed yet; macOS will ask."
+            case .denied: "Notifications are turned off for myKikau, so scan results won't be announced."
+            case .unavailable: "Notifications aren't available in this build."
+            }
+        }
+    }
+
+    /// Whether a scan-result notification would actually be shown.
+    func notificationStatus() async -> NotificationStatus {
+        guard notificationsAvailable else { return .unavailable }
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral: return .allowed
+        case .notDetermined: return .notAsked
+        case .denied: return .denied
+        @unknown default: return .denied
+        }
+    }
+
+    static func openNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func tick() async {

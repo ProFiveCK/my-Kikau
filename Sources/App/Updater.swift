@@ -6,25 +6,28 @@ import SwiftUI
 /// Thin SwiftUI wrapper around Sparkle's `SPUStandardUpdaterController`.
 ///
 /// Starts the updater on launch (Sparkle reads `SUFeedURL` / `SUPublicEDKey` /
-/// `SUEnableAutomaticChecks` / `SUScheduledCheckInterval` from Info.plist — see the
-/// placeholders there, which must be filled in with real values before shipping).
+/// `SUEnableAutomaticChecks` / `SUScheduledCheckInterval` from Info.plist).
+///
+/// When an administrator sets `DisableAutomaticUpdates`, the updater is never
+/// started: no background checks, no feed requests, and every "Check for
+/// Updates…" control is hidden. The organisation deploys updates itself.
 @MainActor
 final class UpdaterViewModel: ObservableObject {
     private let updaterController: SPUStandardUpdaterController
     @Published var canCheckForUpdates = false
+    /// False when policy has switched the updater off; views hide their
+    /// update controls instead of showing them disabled.
+    let updatesAvailable: Bool
 
     init() {
+        let disabled = ManagedPolicy.shared.disableAutomaticUpdates
+        updatesAvailable = !disabled
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: !disabled,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
-        // An administrator can turn off background update checks (the app is
-        // then updated by the organisation's own deployment tooling). Manual
-        // "Check for Updates…" still works.
-        if ManagedPolicy.shared.disableAutomaticUpdates {
-            updaterController.updater.automaticallyChecksForUpdates = false
-        }
+        guard !disabled else { return }
         updaterController.updater.publisher(for: \.canCheckForUpdates)
             .receive(on: DispatchQueue.main)
             .assign(to: &$canCheckForUpdates)
@@ -39,6 +42,7 @@ final class UpdaterViewModel: ObservableObject {
     }
 
     func checkForUpdates() {
+        guard updatesAvailable else { return }
         updaterController.updater.checkForUpdates()
     }
 }
@@ -48,9 +52,11 @@ struct CheckForUpdatesCommand: View {
     @ObservedObject var updaterViewModel: UpdaterViewModel
 
     var body: some View {
-        Button("Check for Updates…") {
-            updaterViewModel.checkForUpdates()
+        if updaterViewModel.updatesAvailable {
+            Button("Check for Updates…") {
+                updaterViewModel.checkForUpdates()
+            }
+            .disabled(!updaterViewModel.canCheckForUpdates)
         }
-        .disabled(!updaterViewModel.canCheckForUpdates)
     }
 }

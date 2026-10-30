@@ -129,22 +129,28 @@ public enum OrphanFinder {
         return ids
     }
 
-    /// Newest date among the entry and, for a folder, the entries directly in it.
-    private static func latestModification(of entry: URL) -> Date? {
-        guard var latest = try? entry.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else {
-            return nil
-        }
-        if let children = try? FileManager.default.contentsOfDirectory(
-            at: entry, includingPropertiesForKeys: [.contentModificationDateKey], options: []
-        ) {
-            for child in children {
-                if let date = try? child.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                   date > latest
-                {
-                    latest = date
-                }
+    /// Newest date anywhere inside the entry. A folder's own date doesn't
+    /// change when a file deep inside it is rewritten, so a store a background
+    /// tool updates daily must not look untouched. A read failure returns
+    /// `nil`: it can't be shown to be stale.
+    static func latestModification(of entry: URL) -> Date? {
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isDirectoryKey, .isSymbolicLinkKey]
+        guard let values = try? entry.resourceValues(forKeys: keys),
+              var latest = values.contentModificationDate, values.isSymbolicLink != true else { return nil }
+        guard values.isDirectory == true else { return latest }
+        var failed = false
+        guard let enumerator = FileManager.default.enumerator(
+            at: entry, includingPropertiesForKeys: Array(keys), options: [],
+            errorHandler: { _, _ in failed = true; return false }
+        ) else { return nil }
+        for case let child as URL in enumerator {
+            if Task.isCancelled {
+                return nil
+            }
+            if let date = try? child.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, date > latest {
+                latest = date
             }
         }
-        return latest
+        return failed ? nil : latest
     }
 }

@@ -156,3 +156,95 @@ public enum HelperPolicy {
         return .success(())
     }
 }
+
+/// Moves an item the way the privileged helper must: without following a
+/// symbolic link anywhere in either path, and only if the item is still the
+/// one that was validated. Between the policy check and the move, an
+/// admin-group user could swap a folder under `/Applications` for a link, so
+/// the move walks each path component with `O_NOFOLLOW` and compares the
+/// item's device and file number with the ones captured at validation.
+public enum SecureMove {
+    public struct Identity: Equatable, Sendable {
+        public let device: Int32
+        public let fileNumber: UInt64
+
+        public init(device: Int32, fileNumber: UInt64) {
+            self.device = device
+            self.fileNumber = fileNumber
+        }
+    }
+
+    public struct Failure: Error, Equatable, Sendable {
+        public let reason: String
+
+        public init(reason: String) {
+            self.reason = reason
+        }
+    }
+
+    /// The item's identity from `lstat`, or nil if it can't be read.
+    public static func identity(of path: String) -> Identity? {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return nil }
+        return Identity(device: info.st_dev, fileNumber: info.st_ino)
+    }
+
+    /// Opens a directory by walking every component without following links.
+    private static func openDirectoryNoFollow(_ path: String) -> Result<Int32, Failure> {
+        var fd = open("/", O_RDONLY | O_DIRECTORY)
+        guard fd >= 0 else { return .failure(Failure(reason: "Couldn't open /.")) }
+        for component in path.split(separator: "/") where !component.isEmpty {
+            let next = openat(fd, String(component), O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+            close(fd)
+            guard next >= 0 else {
+                return .failure(Failure(reason: "\(component) is not a real folder."))
+            }
+            fd = next
+        }
+        return .success(fd)
+    }
+
+    /// Moves `source` into `destinationDirectory` under `destinationName`.
+    /// Fails, changing nothing, if any folder on either path is a link, if
+    /// the source is no longer `expected`, or if the destination name exists.
+    public static func move(
+        _ source: String,
+        toDirectory destinationDirectory: String,
+        name destinationName: String,
+        expecting expected: Identity
+    ) -> Result<Void, Failure> {
+        let sourceName = (source as NSString).lastPathComponent
+        let sourceParent = (source as NSString).deletingLastPathComponent
+        guard !sourceName.isEmpty, !destinationName.contains("/"), !destinationName.isEmpty else {
+            return .failure(Failure(reason: "Invalid name."))
+        }
+        let parent: Int32
+        switch openDirectoryNoFollow(sourceParent) {
+        case let .success(fd): parent = fd
+        case let .failure(failure): return .failure(failure)
+        }
+        defer { close(parent) }
+        let trash: Int32
+        switch openDirectoryNoFollow(destinationDirectory) {
+        case let .success(fd): trash = fd
+        case let .failure(failure): return .failure(failure)
+        }
+        defer { close(trash) }
+
+        var info = stat()
+        guard fstatat(parent, sourceName, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+            return .failure(Failure(reason: "No longer exists."))
+        }
+        guard Identity(device: info.st_dev, fileNumber: info.st_ino) == expected else {
+            return .failure(Failure(reason: "The item changed after it was checked."))
+        }
+        var existing = stat()
+        guard fstatat(trash, destinationName, &existing, AT_SYMLINK_NOFOLLOW) != 0 else {
+            return .failure(Failure(reason: "An item with that name is already in the Trash."))
+        }
+        guard renameat(parent, sourceName, trash, destinationName) == 0 else {
+            return .failure(Failure(reason: String(cString: strerror(errno))))
+        }
+        return .success(())
+    }
+}

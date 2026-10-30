@@ -60,7 +60,7 @@ public struct ScreenHeader<Actions: View>: View {
             Image(systemName: systemImage).font(.system(size: 23, weight: .medium))
                 .foregroundStyle(tint).iconBadge(tint: tint, size: 50, radius: 16).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.system(size: 28, weight: .bold, design: .rounded)).tracking(-0.7)
+                Text(title).font(.system(.largeTitle, design: .rounded).weight(.bold)).tracking(-0.7)
                     .foregroundStyle(CareTheme.ink).accessibilityAddTraits(.isHeader)
                 if let subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(CareTheme.secondaryInk)
@@ -145,8 +145,10 @@ public enum CareTheme {
         NSColor(red: 0.15, green: 0.13, blue: 0.21, alpha: 1),
         NSColor(red: 0.97, green: 0.95, blue: 1.0, alpha: 1)
     )
+    /// Light value chosen for 4.5:1 on the lilac gradient behind headers,
+    /// not just on white.
     public static let secondaryInk = adaptive(
-        NSColor(red: 0.46, green: 0.43, blue: 0.50, alpha: 1),
+        NSColor(red: 0.38, green: 0.35, blue: 0.43, alpha: 1),
         NSColor(red: 0.72, green: 0.69, blue: 0.77, alpha: 1)
     )
     public static let onAccent = adaptive(.white, NSColor(red: 0.14, green: 0.09, blue: 0.25, alpha: 1))

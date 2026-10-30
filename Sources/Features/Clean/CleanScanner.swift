@@ -241,7 +241,11 @@ public enum CleanScanner {
                 ? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
                 : home.appendingPathComponent("private/tmp")
             let cutoff = now.addingTimeInterval(-temporaryFileMinimumAge)
+            // macOS agents keep their own working folders here (com.apple.*
+            // and TemporaryItems); they are system state, not leftovers.
             let staleTemp = contents(of: tempDir, keys: [.contentModificationDateKey]).filter { entry in
+                let name = entry.lastPathComponent
+                guard !name.hasPrefix("com.apple."), name != "TemporaryItems" else { return false }
                 guard let modified = latestModification(of: entry, cutoff: cutoff, coverage: coverage) else { return false }
                 return modified < cutoff
             }

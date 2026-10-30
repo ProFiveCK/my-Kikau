@@ -41,7 +41,7 @@ Apps installed for all users (App Store, most installer packages) are owned by r
 
 ## Managed deployment
 
-Installer package, MDM profiles (Full Disk Access, managed settings), audit-log collection and the read-only `mykikau-cli` are covered in [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md).
+Installer package, MDM profiles (Full Disk Access, managed settings), policy keys, audit-log collection and the read-only `mykikau-cli` are covered in [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md). What the app reads, stores and can contact is in [PRIVACY.md](PRIVACY.md); the safety guarantees and how to report a vulnerability are in [SECURITY.md](SECURITY.md).
 
 ## Build
 

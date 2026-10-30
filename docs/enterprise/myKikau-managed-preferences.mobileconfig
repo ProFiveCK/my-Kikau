@@ -49,18 +49,36 @@
             <key>ForceOperationLog</key>
             <true/>
 
-            <!-- Updates are deployed by you, not fetched by the app. -->
+            <!-- Updates are deployed by you, not fetched by the app: no checks,
+                 no "Check for Updates" controls. -->
             <key>DisableAutomaticUpdates</key>
             <true/>
 
             <!-- Hide actions that ask for an administrator password
-                 (Flush DNS, Renew DHCP). -->
+                 (Flush DNS, Renew DHCP) and never use the helper. -->
             <key>DisablePrivilegedTools</key>
+            <true/>
+
+            <!-- Hide the two on-request lookups that contact third parties
+                 (app update check, public IP). -->
+            <key>DisableNetworkLookups</key>
             <true/>
 
             <!-- Measure reclaimable space every N hours. Never removes anything. -->
             <key>ScheduledScanIntervalHours</key>
             <integer>168</integer>
+
+            <!-- Keep the app running in the menu bar so scheduled scans happen. -->
+            <key>LaunchAtLogin</key>
+            <true/>
+
+            <!-- Shown in About, Settings and the welcome screen. -->
+            <key>OrganisationName</key>
+            <string>Your Organisation</string>
+
+            <!-- Where staff go for help: https URL, email address or text. -->
+            <key>SupportContact</key>
+            <string>helpdesk@yourcompany.example</string>
         </dict>
     </array>
     <key>PayloadDisplayName</key>

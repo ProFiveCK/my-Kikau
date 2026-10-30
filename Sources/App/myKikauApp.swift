@@ -19,6 +19,7 @@ struct myKikauApp: App {
     @AppStorage(AppStorageKey.developerToolsEnabled) private var developerTools = false
 
     init() {
+        LaunchAtLoginService.applyPolicy()
         BackgroundScanScheduler.shared.start()
         // Log entries are written asynchronously; make sure the last ones
         // reach the disk before the process exits.
@@ -235,6 +236,14 @@ struct RootView: View {
             ContentView()
         } else {
             OnboardingView(onContinue: { didCompleteOnboarding = true })
+                .onAppear {
+                    // The screen exists to get Full Disk Access granted. On a
+                    // managed Mac a profile has already done that, so go
+                    // straight in.
+                    if FullDiskAccessCheck.probe() {
+                        didCompleteOnboarding = true
+                    }
+                }
         }
     }
 }
@@ -370,27 +379,24 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 9) {
                     AppBrandIcon(size: 36)
-                    Text("myKikau").foregroundStyle(CareTheme.ink).font(.system(size: 23, weight: .bold, design: .rounded)).tracking(-0.8)
+                    Text("myKikau").foregroundStyle(CareTheme.ink).font(.system(.title, design: .rounded).weight(.bold)).tracking(-0.8)
                 }.padding(.horizontal, 18).padding(.top, 20).padding(.bottom, 14)
-                List {
+                List(selection: $selection) {
                     ForEach(SidebarItem.Group.allCases) { group in
                         let groupItems = items.filter { $0.group == group }
                         if !groupItems.isEmpty {
                             Section {
                                 ForEach(groupItems) { item in
-                                    Button { selection = item } label: {
-                                        SidebarRow(item: item, selected: selection == item)
-                                            .padding(.horizontal, 8).padding(.vertical, 4)
-                                            .background(
-                                                selection == item ? CareTheme.lilac : .clear,
-                                                in: RoundedRectangle(cornerRadius: 10)
-                                            )
-                                            .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityAddTraits(selection == item ? [.isSelected] : [])
-                                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-                                    .listRowBackground(Color.clear)
+                                    SidebarRow(item: item, selected: selection == item)
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .background(
+                                            selection == item ? CareTheme.lilac : .clear,
+                                            in: RoundedRectangle(cornerRadius: 10)
+                                        )
+                                        .contentShape(Rectangle())
+                                        .tag(item)
+                                        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                                        .listRowBackground(Color.clear)
                                 }
                             }
                         }
@@ -474,11 +480,11 @@ private struct SidebarRow: View {
                     .fill(item.tint.opacity(selected ? 0.22 : 0.14))
                     .frame(width: 24, height: 24)
                 Image(systemName: item.icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(item.tint)
             }
             Text(item.label)
-                .font(.system(size: 12.5, weight: .medium))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(CareTheme.ink)
                 .lineLimit(1)
             Spacer(minLength: 0)

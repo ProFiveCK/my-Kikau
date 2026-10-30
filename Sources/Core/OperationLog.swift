@@ -246,6 +246,14 @@ public final class OperationLog: @unchecked Sendable {
 
     public func append(_ entry: Entry) {
         guard enabled else { return }
+        Log.audit.notice(
+            """
+            \(entry.action, privacy: .public) \(entry.outcome.rawValue, privacy: .public) \
+            \(entry.mode.rawValue, privacy: .public) \(entry.sizeBytes, privacy: .public)B \
+            dryRun=\(entry.dryRun, privacy: .public) path=\(entry.path, privacy: .private) \
+            \(entry.detail ?? "", privacy: .private)
+            """
+        )
         queue.async { [self] in
             write(entry)
         }
@@ -560,8 +568,15 @@ public final class OperationLog: @unchecked Sendable {
         SHA256.hash(data: line).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func csvEscape(_ field: String) -> String {
-        guard field.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" }) else { return field }
+    /// Quotes a field for CSV. A field that a spreadsheet would read as a
+    /// formula (a file name starting with `=`, `+`, `-`, `@` or a tab) is
+    /// prefixed with an apostrophe so opening the export can't run it.
+    public static func csvEscape(_ field: String) -> String {
+        var field = field
+        if let first = field.first, "=+-@\t\r".contains(first) {
+            field = "'" + field
+        }
+        guard field.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" || $0 == "'" }) else { return field }
         return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 }

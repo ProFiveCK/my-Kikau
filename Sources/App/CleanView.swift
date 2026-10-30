@@ -75,7 +75,7 @@ struct CleanView: View {
             }
             if coordinator.cleanPlans == nil {
                 if !model.isScanning {
-                    CareEmptyState("Make a little room.", systemImage: "internaldrive", description: Text(
+                    CareEmptyState("Make a little room", systemImage: "internaldrive", description: Text(
                         "Find caches, logs, temporary files and Trash contents that are safe to remove. Nothing is removed until you review it."
                     )) {
                         Button("Scan") { model.scan() }.carePrimaryAction().disabled(activity.isBusy)
@@ -117,7 +117,7 @@ struct CleanView: View {
             AppNavigation.shared.pendingTrashReview = false
             prepareTrashReview()
         }
-        .alert("Trash review", isPresented: Binding(get: { trashNotice != nil }, set: {
+        .alert("Nothing to Review", isPresented: Binding(get: { trashNotice != nil }, set: {
             if !$0 {
                 trashNotice = nil
             }

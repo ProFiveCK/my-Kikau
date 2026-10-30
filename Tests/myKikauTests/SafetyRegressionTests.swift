@@ -1130,7 +1130,6 @@ struct SimulationAccountingSafetyTests {
     }
 }
 
-
 @Suite("Session recovery safety")
 struct SessionRecoverySafetyTests {
     @Test("Restore rechecks exclusions and does not move into a newly protected destination")
@@ -1357,5 +1356,172 @@ struct CleanupReviewSafetyTests {
         #expect(count == 0)
         #expect(FileManager.default.fileExists(atPath: state.path))
         #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
+}
+
+// MARK: - Review follow-up, October 2026 (second enterprise pass)
+
+@Suite("Enterprise review follow-up")
+struct EnterpriseReviewFollowUpTests {
+    @Test("macOS agents' temp folders are never cleanup targets, however old")
+    func appleTempFoldersAreNotTargets() {
+        let home = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: home) }
+        for name in ["com.apple.BiomeAgent", "com.apple.AppSSOAgent", "TemporaryItems", "stale-build"] {
+            let folder = home.appendingPathComponent("private/tmp/\(name)")
+            touch(folder.appendingPathComponent("state"))
+            setModDate(folder.appendingPathComponent("state"), daysAgo: 30)
+            setModDate(folder, daysAgo: 30)
+        }
+        let names = CleanScanner.targets(for: .systemLogs, home: home).map(\.lastPathComponent)
+        #expect(names.contains("stale-build"))
+        #expect(!names.contains("com.apple.BiomeAgent"))
+        #expect(!names.contains("com.apple.AppSSOAgent"))
+        #expect(!names.contains("TemporaryItems"))
+    }
+
+    @Test("Protected locations are protected whatever the letter case")
+    func protectionIgnoresCase() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let protection = PathProtection(home: home, exclusions: { [] }, extraBundlePrefixes: { [] })
+        #expect(protection.shouldProtect(URL(fileURLWithPath: "/Users/test/library/Mail/V10")))
+        #expect(protection.shouldProtect(URL(fileURLWithPath: "/users/TEST/.SSH/id_ed25519")))
+        #expect(protection.shouldProtect(URL(fileURLWithPath: "/users/test/Library/caches")))
+        #expect(protection.shouldProtect(URL(fileURLWithPath: "/SYSTEM/Library")))
+        #expect(!protection.shouldProtect(URL(fileURLWithPath: "/Users/test/Library/Caches/com.example")))
+    }
+
+    @Test("A dangling symbolic link in the Trash is an item to remove, not a missing one")
+    func danglingSymlinkIsAnItem() throws {
+        let root = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let link = root.appendingPathComponent("gone-link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appendingPathComponent("nowhere"))
+        let deleter = SafeFileDeleter(protection: PathProtection(home: root, exclusions: { [] }, extraBundlePrefixes: { [] }), opLog: OperationLog(logURL: root.appendingPathComponent("ops.log")))
+        let plan = deleter.preview([link], category: .trash)
+        #expect(plan.items.map(\.url.lastPathComponent) == ["gone-link"])
+        #expect(plan.missingItems.isEmpty)
+    }
+
+    @Test("An orphan whose store is rewritten deep inside is not untouched")
+    func orphanAgeLooksAllTheWayDown() {
+        let root = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = root.appendingPathComponent("com.vendor.tool")
+        let deep = store.appendingPathComponent("data/v2/state.db")
+        touch(deep)
+        setModDate(store.appendingPathComponent("data/v2"), daysAgo: 200)
+        setModDate(store.appendingPathComponent("data"), daysAgo: 200)
+        setModDate(store, daysAgo: 200)
+        let latest = OrphanFinder.latestModification(of: store)
+        #expect(latest != nil)
+        #expect(latest.map { Date().timeIntervalSince($0) < 86_400 } == true)
+    }
+
+    @Test("CSV export neutralises fields a spreadsheet would run as a formula")
+    func csvExportIsFormulaSafe() {
+        #expect(OperationLog.csvEscape("=HYPERLINK(\"http://x\")") == "\"'=HYPERLINK(\"\"http://x\"\")\"")
+        #expect(OperationLog.csvEscape("+1") == "\"'+1\"")
+        #expect(OperationLog.csvEscape("-rf") == "\"'-rf\"")
+        #expect(OperationLog.csvEscape("@cmd") == "\"'@cmd\"")
+        #expect(OperationLog.csvEscape("/Users/a/plain.txt") == "/Users/a/plain.txt")
+    }
+
+    @Test("The helper's move refuses a link on the path and an item that changed since validation")
+    func secureMoveRefusesLinksAndSwaps() throws {
+        let fm = FileManager.default
+        // The move follows no links at all, and /var is one: use the real
+        // path (Foundation's resolver strips /private again, so ask libc).
+        let scratch = makeTempDir()
+        let root = URL(fileURLWithPath: String(cString: realpath(scratch.path, nil)))
+        defer { try? fm.removeItem(at: root) }
+        let apps = root.appendingPathComponent("Applications")
+        let trash = root.appendingPathComponent("Trash")
+        let elsewhere = root.appendingPathComponent("Elsewhere")
+        makeDir(apps); makeDir(trash); makeDir(elsewhere)
+        let app = apps.appendingPathComponent("Foo.app")
+        makeDir(app)
+        let identity = try #require(SecureMove.identity(of: app.path))
+
+        // Straight case: moves, and the identity is intact.
+        let moved = SecureMove.move(app.path, toDirectory: trash.path, name: "Foo.app", expecting: identity)
+        #expect((try? moved.get()) != nil)
+        #expect(SecureMove.identity(of: trash.appendingPathComponent("Foo.app").path) == identity)
+        #expect(!fm.fileExists(atPath: app.path))
+
+        // Swapped: the validated item was replaced by another after the check.
+        makeDir(app)
+        let swapped = SecureMove.move(app.path, toDirectory: trash.path, name: "Foo 2.app", expecting: identity)
+        #expect((try? swapped.get()) == nil)
+        if case let .failure(failure) = swapped { #expect(failure.reason == "The item changed after it was checked.") }
+        #expect(fm.fileExists(atPath: app.path))
+
+        // A link in the parent path: /Applications/Sub -> Elsewhere.
+        let victim = elsewhere.appendingPathComponent("Victim.app")
+        makeDir(victim)
+        try fm.createSymbolicLink(at: apps.appendingPathComponent("Sub"), withDestinationURL: elsewhere)
+        let viaLink = apps.appendingPathComponent("Sub/Victim.app")
+        let victimIdentity = try #require(SecureMove.identity(of: victim.path))
+        let linked = SecureMove.move(viaLink.path, toDirectory: trash.path, name: "Victim.app", expecting: victimIdentity)
+        #expect((try? linked.get()) == nil)
+        if case let .failure(failure) = linked { #expect(failure.reason == "Sub is not a real folder.") }
+        #expect(fm.fileExists(atPath: victim.path))
+
+        // A link as the Trash itself is refused too.
+        try fm.createSymbolicLink(at: root.appendingPathComponent("FakeTrash"), withDestinationURL: elsewhere)
+        let fakeTrash = SecureMove.move(victim.path, toDirectory: root.appendingPathComponent("FakeTrash").path, name: "Victim.app", expecting: victimIdentity)
+        #expect((try? fakeTrash.get()) == nil)
+        if case let .failure(failure) = fakeTrash { #expect(failure.reason == "FakeTrash is not a real folder.") }
+    }
+
+    @Test("Managed protection read from profile plists applies to the helper's policy")
+    func helperReadsManagedProtection() throws {
+        let fm = FileManager.default
+        let root = makeTempDir()
+        defer { try? fm.removeItem(at: root) }
+        let prefs = root.appendingPathComponent("Managed Preferences")
+        makeDir(prefs.appendingPathComponent("alice"))
+        (["ProtectedPaths": ["/Applications/Finance.app"], "ProtectedBundlePrefixes": ["com.acme.security."]] as NSDictionary)
+            .write(to: prefs.appendingPathComponent("com.profiveck.myKikau.plist"), atomically: true)
+        (["ProtectedPaths": ["/Applications/HR.app"]] as NSDictionary)
+            .write(to: prefs.appendingPathComponent("alice/com.profiveck.myKikau.plist"), atomically: true)
+
+        let policy = ManagedProtectionPolicy.load(userName: "alice", root: prefs.path)
+        #expect(policy.protectedPaths == ["/Applications/Finance.app", "/Applications/HR.app"])
+        #expect(policy.protectedBundlePrefixes == ["com.acme.security."])
+        // A user name can't walk out of the folder.
+        #expect(ManagedProtectionPolicy.load(userName: "../alice", root: prefs.path).protectedPaths == ["/Applications/Finance.app"])
+
+        let protection = PathProtection(
+            home: URL(fileURLWithPath: "/var/empty"),
+            exclusions: { policy.normalisedPaths }, extraBundlePrefixes: { policy.protectedBundlePrefixes }
+        )
+        #expect(protection.shouldProtect(URL(fileURLWithPath: "/Applications/Finance.app")))
+        #expect(protection.shouldProtect(URL(fileURLWithPath: "/Applications/HR.app/Contents")))
+        #expect(protection.isEndpointSecurityBundle("com.acme.security.agent"))
+        #expect(!protection.shouldProtect(URL(fileURLWithPath: "/Applications/Other.app")))
+    }
+
+    @Test("New policy keys: organisation, support contact, launch at login, network lookups")
+    func newPolicyKeys() throws {
+        let suite = "myKikau.policy.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("  Acme Ltd ", forKey: ManagedPolicy.Key.organisationName)
+        defaults.set("helpdesk@acme.example", forKey: ManagedPolicy.Key.supportContact)
+        defaults.set(true, forKey: ManagedPolicy.Key.launchAtLogin)
+        defaults.set(true, forKey: ManagedPolicy.Key.disableNetworkLookups)
+        let policy = ManagedPolicy(defaults: defaults, requireForced: false)
+        #expect(policy.isManaged)
+        #expect(policy.organisationName == "Acme Ltd")
+        #expect(policy.supportContact == "helpdesk@acme.example")
+        #expect(policy.launchAtLogin == true)
+        #expect(policy.disableNetworkLookups)
+
+        // Unforced values are not policy.
+        let unforced = ManagedPolicy(defaults: defaults)
+        #expect(unforced.organisationName == nil)
+        #expect(unforced.launchAtLogin == nil)
+        #expect(!unforced.disableNetworkLookups)
     }
 }

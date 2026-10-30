@@ -48,7 +48,7 @@ struct PurgeView: View {
                              ("Selected", selectedArtifacts.count.formatted())])
             }
             if model.isScanning {
-                ScanProgressBar("Measuring build artifacts")
+                ScanProgressBar("Measuring build artifacts", onCancel: activity.canCancel ? { activity.cancel() } : nil)
                     .padding([.horizontal, .bottom])
             }
 
@@ -56,7 +56,7 @@ struct PurgeView: View {
                 if model.isScanning {
                     Spacer()
                 } else {
-                    CareEmptyState("Room for your next build.", systemImage: "hammer", description: Text(
+                    CareEmptyState("Room for your next build", systemImage: "hammer", description: Text(
                         "Review dependencies and build output that your tools can recreate. Recently used projects are flagged before you decide."
                     )) {
                         Button("Scan Projects") { model.scan() }.carePrimaryAction().disabled(activity.isBusy)

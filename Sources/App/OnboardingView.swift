@@ -40,7 +40,7 @@ struct OnboardingView: View {
 
             HStack(spacing: 12) {
                 Button("Open System Settings…") {
-                    openFullDiskAccessSettings()
+                    FullDiskAccessCheck.openSystemSettings()
                 }
                 .carePrimaryAction()
 
@@ -50,9 +50,18 @@ struct OnboardingView: View {
                 .buttonStyle(.bordered)
             }
 
-            Text("You can grant access later in System Settings. Scan coverage shows any locations that could not be checked.")
+            Text("You can grant access later in Settings → Safety. Scan coverage shows any locations that could not be checked.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if ManagedPolicy.shared.isManaged {
+                Label(
+                    ManagedPolicy.shared.organisationName.map { "Some settings are managed by \($0)." }
+                        ?? "Some settings are managed by your organisation.",
+                    systemImage: "building.2"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
         }
         .padding(40)
         .frame(minWidth: 520, minHeight: 420)
@@ -61,12 +70,6 @@ struct OnboardingView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // Re-probe when the user comes back from System Settings.
             hasFullDiskAccess = FullDiskAccessCheck.probe()
-        }
-    }
-
-    private func openFullDiskAccessSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-            NSWorkspace.shared.open(url)
         }
     }
 }
