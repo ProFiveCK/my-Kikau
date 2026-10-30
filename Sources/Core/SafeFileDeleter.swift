@@ -213,10 +213,13 @@ public final class SafeFileDeleter: @unchecked Sendable {
                 protectedItems.append(Item(url: url, sizeBytes: 0, category: category, protected: true))
                 continue
             }
-            guard fileManager.fileExists(atPath: url.path) else {
-                if let coverage {
-                    do { _ = try fileManager.attributesOfItem(atPath: url.path) }
-                    catch { coverage.failed(url, error: error) }
+            // `attributesOfItem` is an lstat: a dangling symbolic link is still
+            // an item to remove, where `fileExists` would call it missing.
+            do {
+                _ = try fileManager.attributesOfItem(atPath: url.path)
+            } catch {
+                if (error as NSError).code != NSFileReadNoSuchFileError {
+                    coverage?.failed(url, error: error)
                 }
                 missingItems.append(Item(url: url, sizeBytes: 0, category: category, protected: false))
                 continue

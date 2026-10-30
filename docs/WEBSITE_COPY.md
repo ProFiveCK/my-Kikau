@@ -4,6 +4,15 @@
 
 ## Release notes
 
+### Version 0.11.0 — October 2026
+
+- **Built for managed Macs** — new policy keys for organisations: `OrganisationName` and `SupportContact` (shown in About, Settings and the welcome screen), `LaunchAtLogin`, and `DisableNetworkLookups`. `DisableAutomaticUpdates` now switches the updater off entirely, and `DisablePrivilegedTools` also stops an already-installed administrator helper. The helper enforces an organisation's protected paths and software too.
+- **Audit trail for log collectors** — every operation-log entry is also written to the macOS unified log (category `audit`), with the file path kept private, so Jamf, Splunk and friends pick it up without reading home folders. CSV exports are safe to open in a spreadsheet.
+- **Settings that answer support's first questions** — version and a Managed badge in the header; Full Disk Access status with a one-click fix; the operation log's location with Reveal, Export and Check Integrity; notification status for scheduled scans; the policy in force listed in full; Save Diagnostics shows the file it wrote.
+- **Clearer, more consistent screens** — progress and Cancel on every scan (Applications rescan, System care, Startup, Project Purge); a rose "remove" button wherever something is deleted; "Set by your organisation" beside every control a profile hides; the sidebar responds to arrow keys; Storage rows and treemap cells work with the keyboard and VoiceOver; secondary text is darker for contrast; text follows the system text size in the shared components.
+- **Safety** — the administrator helper moves items without following links and re-checks each item at the moment it moves it; macOS agents' temporary folders are never cleanup candidates; protected locations are matched whatever the letter case; a dangling link in the Trash is emptied with the rest; "untouched for 90 days" looks all the way inside a leftover folder.
+- **Installer** — the package quits a running copy before replacing it, so the new version is the one that runs next.
+
 ### Version 0.10.6 — October 2026
 
 - **No false scan warning** — a startup file that only its owner (root) can read, such as NordVPN's background service, is now listed as such instead of reported as a partial scan that no permission could fix.

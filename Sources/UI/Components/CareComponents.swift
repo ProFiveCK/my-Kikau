@@ -27,7 +27,7 @@ public struct CareWindowHeader<Actions: View>: View {
         HStack(spacing: 12) {
             AppBrandIcon(size: 40)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 23, weight: .bold, design: .rounded)).foregroundStyle(CareTheme.ink)
+                Text(title).font(.system(.title, design: .rounded).weight(.bold)).foregroundStyle(CareTheme.ink)
                 Text(subtitle).font(.caption).foregroundStyle(CareTheme.secondaryInk)
             }
             Spacer(minLength: 12)
@@ -49,11 +49,11 @@ public struct CareEmptyState<Actions: View>: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Image(systemName: systemImage).font(.system(size: 30, weight: .medium))
+                Image(systemName: systemImage).font(.system(.largeTitle).weight(.medium))
                     .foregroundStyle(CareTheme.accent).frame(width: 70, height: 70)
                     .background(CareTheme.lilac, in: RoundedRectangle(cornerRadius: 20)).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(title).font(.system(size: 27, weight: .bold, design: .rounded)).tracking(-0.5)
+                    Text(title).font(.system(.title, design: .rounded).weight(.bold)).tracking(-0.5)
                         .foregroundStyle(CareTheme.ink).accessibilityAddTraits(.isHeader)
                     description.font(.callout).foregroundStyle(CareTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 470, alignment: .leading)
@@ -91,9 +91,10 @@ public struct CareSummary: View {
             ForEach(values.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 6) {
                     Text(values[index].0).font(.caption).foregroundStyle(CareTheme.secondaryInk)
-                    Text(values[index].1).font(.system(size: 20, weight: .semibold, design: .rounded))
+                    Text(values[index].1).font(.system(.title2, design: .rounded).weight(.semibold))
                         .foregroundStyle(CareTheme.ink).monospacedDigit().fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
             }
         }.padding(18).cardSurface(radius: 16).padding(.horizontal, 22).padding(.bottom, 14)
     }
@@ -109,6 +110,13 @@ public extension View {
 
     func carePrimaryAction() -> some View {
         buttonStyle(CarePrimaryButtonStyle())
+    }
+
+    /// The primary button for an action that removes something: same shape
+    /// as `carePrimaryAction`, filled rose, so a destructive step never
+    /// looks like the ordinary next step.
+    func careDestructiveAction() -> some View {
+        buttonStyle(CarePrimaryButtonStyle(fill: CareTheme.rose))
     }
 
     func careToolbar() -> some View {
@@ -130,15 +138,49 @@ public extension View {
 
 public struct CarePrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
-    public init() {}
+    private let fill: Color
+    public init(fill: Color = CareTheme.accent) {
+        self.fill = fill
+    }
+
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 12, weight: .semibold))
+        configuration.label.font(.subheadline.weight(.semibold))
             .foregroundStyle(enabled ? CareTheme.onAccent : CareTheme.secondaryInk)
             .padding(.horizontal, 13).padding(.vertical, 9)
             .background(
-                enabled ? CareTheme.accent.opacity(configuration.isPressed ? 0.8 : 1) : CareTheme.lilac,
+                enabled ? fill.opacity(configuration.isPressed ? 0.8 : 1) : CareTheme.lilac,
                 in: RoundedRectangle(cornerRadius: 9)
             )
             .contentShape(RoundedRectangle(cornerRadius: 9))
+    }
+}
+
+/// One line explaining that a control is set by a configuration profile.
+public struct ManagedNote: View {
+    private let text: LocalizedStringKey
+    public init(_ text: LocalizedStringKey = "Set by your organisation") {
+        self.text = text
+    }
+
+    public var body: some View {
+        Label(text, systemImage: "building.2")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel(Text(text))
+    }
+}
+
+public extension View {
+    /// Disables the view and, when `managed`, says why beneath it.
+    @ViewBuilder
+    func managedBy(_ managed: Bool, note: LocalizedStringKey = "Set by your organisation") -> some View {
+        if managed {
+            VStack(alignment: .leading, spacing: 4) {
+                disabled(true)
+                ManagedNote(note)
+            }
+        } else {
+            self
+        }
     }
 }

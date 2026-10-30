@@ -15,7 +15,7 @@ import Features
 AppDefaults.store = UserDefaults(suiteName: AppDefaults.appDomain) ?? .standard
 
 /// Kept in step with Info.plist by scripts/bump-version.sh.
-let cliVersion = "0.10.6"
+let cliVersion = "0.11.0"
 
 let usage = """
 Usage: mykikau-cli <command> [options]
@@ -72,7 +72,11 @@ struct PolicyReport: Encodable {
     let forceOperationLog: Bool
     let disableAutomaticUpdates: Bool
     let disablePrivilegedTools: Bool
+    let disableNetworkLookups: Bool
     let scheduledScanIntervalHours: Int?
+    let launchAtLogin: Bool?
+    let organisationName: String?
+    let supportContact: String?
 }
 
 func runScan(json: Bool) {
@@ -149,7 +153,11 @@ func runPolicy(json: Bool) {
         forceOperationLog: policy.forceOperationLog,
         disableAutomaticUpdates: policy.disableAutomaticUpdates,
         disablePrivilegedTools: policy.disablePrivilegedTools,
-        scheduledScanIntervalHours: policy.scheduledScanIntervalHours
+        disableNetworkLookups: policy.disableNetworkLookups,
+        scheduledScanIntervalHours: policy.scheduledScanIntervalHours,
+        launchAtLogin: policy.launchAtLogin,
+        organisationName: policy.organisationName,
+        supportContact: policy.supportContact
     )
     if json {
         emit(report)
@@ -178,8 +186,20 @@ func runPolicy(json: Bool) {
     if report.disablePrivilegedTools {
         print("  Administrator actions: disabled")
     }
+    if report.disableNetworkLookups {
+        print("  Network lookups: disabled")
+    }
     if let hours = report.scheduledScanIntervalHours {
         print("  Background scan: every \(hours) hours")
+    }
+    if let launch = report.launchAtLogin {
+        print("  Launch at login: \(launch ? "on" : "off")")
+    }
+    if let name = report.organisationName {
+        print("  Organisation: \(name)")
+    }
+    if let contact = report.supportContact {
+        print("  Support: \(contact)")
     }
 }
 

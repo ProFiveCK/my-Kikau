@@ -123,7 +123,7 @@ struct UninstallView: View {
                 }
                 if model.isCheckingUpdates {
                     Button("Stop Checking\(model.updateProgress.map { " (\($0))" } ?? "")") { model.cancelUpdateCheck() }
-                } else if coordinator.apps != nil {
+                } else if coordinator.apps != nil, !ManagedPolicy.shared.disableNetworkLookups {
                     Button("Check for Updates") { model.checkForUpdates(apps) }
                         .help(
                             "Asks each app's own update feed, and the App Store, whether a newer version exists. "
@@ -155,12 +155,14 @@ struct UninstallView: View {
                 filterBar
             }
 
+            if model.isScanning {
+                ScanProgressBar("Measuring installed apps", onCancel: activity.canCancel ? { activity.cancel() } : nil)
+                    .padding(.horizontal).padding(.bottom, 8)
+            }
             if model.isScanning, apps.isEmpty {
-                ScanProgressBar("Measuring installed apps")
-                    .padding(.horizontal)
                 Spacer()
             } else if coordinator.apps == nil {
-                CareEmptyState("Space for the apps you use.", systemImage: "app.dashed", description: Text(
+                CareEmptyState("Space for the apps you use", systemImage: "app.dashed", description: Text(
                     "List installed applications, see which are large or unused, and remove them with their leftovers."
                 )) {
                     Button("Scan Apps") { model.scan() }.carePrimaryAction().disabled(activity.isBusy)
@@ -173,7 +175,11 @@ struct UninstallView: View {
                         description: Text("No installed app fits the “\(filter.rawValue)” filter.")
                     )
                 } else {
-                    ContentUnavailableView.search(text: searchText)
+                    CareEmptyState(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("No installed app matches “\(searchText)”.")
+                    )
                 }
             } else {
                 appsTable(visible).careResults()
@@ -189,8 +195,7 @@ struct UninstallView: View {
                         Button("Uninstall \(selected.count) App\(selected.count == 1 ? "" : "s")…") {
                             beginUninstall(selected)
                         }
-                        .carePrimaryAction()
-                        .tint(tint)
+                        .careDestructiveAction()
                         .disabled(preparing || activity.isBusy)
                     }
                     .padding()

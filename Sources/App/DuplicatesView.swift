@@ -147,7 +147,7 @@ struct DuplicatesView: View {
                 if model.isScanning {
                     Spacer()
                 } else {
-                    CareEmptyState("Find your space to breathe.", systemImage: "doc.on.doc", description: Text(
+                    CareEmptyState("Find your space to breathe", systemImage: "doc.on.doc", description: Text(
                         "Find exact duplicates and large files in your own folders. Similar-photo comparison runs only when you choose it."
                     )) {
                         Button("Scan Files") { model.scan() }.carePrimaryAction().disabled(activity.isBusy)
@@ -243,15 +243,18 @@ struct DuplicatesView: View {
                                 coordinator.setKeeper(groupID: group.id, fileID: file.id)
                             }
                         }
-                        Button(
-                            "Remove \(group.files.count - 1) Other Cop\(group.files.count == 2 ? "y" : "ies")… (\(ByteSizeFormatter.format(group.reclaimableBytes)))"
-                        ) {
-                            openDuplicateReview(
-                                [group],
-                                subtitle: "Keeping \(group.keeper?.url.lastPathComponent ?? "one copy")."
-                            )
+                        HStack {
+                            Text("\(ByteSizeFormatter.format(group.reclaimableBytes)) in \(group.files.count - 1) other cop\(group.files.count == 2 ? "y" : "ies")")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Review…") {
+                                openDuplicateReview(
+                                    [group],
+                                    subtitle: "Keeping \(group.keeper?.url.lastPathComponent ?? "one copy")."
+                                )
+                            }
+                            .controlSize(.small)
                         }
-                        .font(.caption)
                     }
                 }
             }.careResults()
@@ -351,7 +354,7 @@ struct DuplicatesView: View {
         } else if model.isScanning {
             Spacer()
         } else {
-            CareEmptyState("A fresh look at your pictures.", systemImage: "photo.on.rectangle.angled", description: Text(
+            CareEmptyState("A fresh look at your pictures", systemImage: "photo.on.rectangle.angled", description: Text(
                 "Find pictures that look alike, including resized copies and re-saved exports. Analysis stays on this Mac; your Photos library is not touched."
             )) {
                 Button("Find Similar Pictures") { model.findSimilar() }.carePrimaryAction().disabled(activity.isBusy)
@@ -506,8 +509,7 @@ private struct SimilarPhotoRow: View {
             Group {
                 if let thumbnail {
                     Image(nsImage: thumbnail)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
+                        .resizable().scaledToFill()
                 } else {
                     Rectangle().fill(.quaternary)
                 }

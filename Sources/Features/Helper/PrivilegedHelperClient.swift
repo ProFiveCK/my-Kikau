@@ -50,8 +50,11 @@ public enum PrivilegedHelperClient {
         }
     }
 
+    /// Installed, approved, and not forbidden by policy. A Mac that had the
+    /// helper before `DisablePrivilegedTools` was set keeps it installed but
+    /// stops using it.
     public static var isEnabled: Bool {
-        status == .enabled
+        status == .enabled && !ManagedPolicy.shared.disablePrivilegedTools
     }
 
     /// Registers the helper with launchd. macOS then asks an administrator
@@ -80,6 +83,9 @@ public enum PrivilegedHelperClient {
             return result
         }
         guard !paths.isEmpty else { return result }
+        guard !ManagedPolicy.shared.disablePrivilegedTools else {
+            return failAll("Administrator actions are disabled by your organisation.")
+        }
         guard isEnabled else { return failAll("The administrator helper isn't installed.") }
 
         // The reference behind the external form must outlive the call: the

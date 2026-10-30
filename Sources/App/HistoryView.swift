@@ -327,10 +327,10 @@ private struct HistoryRow: View {
     static func actionLabel(_ action: String) -> String {
         if action.hasPrefix("optimize.") {
             let id = String(action.dropFirst("optimize.".count))
-            return "Optimise — " + (MaintenanceCatalog.tasks.first { $0.id == id }?.name ?? id)
+            return ContentView.SidebarItem.optimize.label + " — " + (MaintenanceCatalog.tasks.first { $0.id == id }?.name ?? id)
         }
         switch action {
-        case "clean": return String(localized: "Clean")
+        case "clean": return ContentView.SidebarItem.clean.label
         case "uninstall", "uninstall.app", "uninstall.leftovers": return String(localized: "Uninstall")
         case "uninstall.admin": return String(localized: "Uninstall — administrator helper")
         case "uninstall.orphans": return String(localized: "Leftovers from removed apps")
@@ -341,7 +341,7 @@ private struct HistoryRow: View {
         case "largeFiles": return String(localized: "Large Files")
         case "similarPhotos": return String(localized: "Similar Photos")
         case "purge": return String(localized: "Project Purge")
-        case "analyze": return String(localized: "Disk Analyser")
+        case "analyze": return ContentView.SidebarItem.analyze.label
         case "menubar.emptyTrash": return String(localized: "Empty Trash")
         case "putBack": return String(localized: "Put Back")
         default: return action

@@ -178,17 +178,18 @@ struct OptimizeView: View {
                         "Checks \(MaintenanceCatalog.tasks.count) safe, reversible maintenance tasks — broken preferences, "
                             + "stale caches, orphaned launch agents — and recommends exactly what to fix."
                     )
-                )
-            case .scanning:
-                VStack(spacing: 10) {
-                    ProgressView()
-                    Text(coordinator
-                        .isScanning ? (coordinator.phase?.label ?? "Scanning your Mac…") :
-                        "Checking \(MaintenanceCatalog.tasks.count) maintenance tasks…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                ) {
+                    Button(scanButtonTitle) { model.scan() }.carePrimaryAction().disabled(activity.isBusy)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .scanning:
+                ScanProgressBar(
+                    coordinator.isScanning ? (coordinator.phase?.label ?? "Scanning your Mac…")
+                        : "Checking \(MaintenanceCatalog.tasks.count) maintenance tasks",
+                    detail: "Inspection only. Nothing is changed until you review the recommendations.",
+                    onCancel: activity.canCancel ? { activity.cancel() } : nil
+                )
+                .padding(.horizontal).padding(.bottom, 8)
+                Spacer()
             case .scanned:
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {

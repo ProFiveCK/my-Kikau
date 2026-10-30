@@ -136,10 +136,11 @@ struct StartupView: View {
                     .padding()
                 }
             } else if loading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScanProgressBar("Listing startup items", onCancel: activity.canCancel ? { activity.cancel() } : nil)
+                    .padding(.horizontal).padding(.bottom, 8)
+                Spacer()
             } else {
-                CareEmptyState("A clearer start for your Mac.", systemImage: "power", description: Text(
+                CareEmptyState("A clearer start for your Mac", systemImage: "power", description: Text(
                     "Review the helpers and updaters that start in the background, and choose which ones you still need."
                 )) {
                     Button("Scan Startup Items") { load() }.carePrimaryAction().disabled(activity.isBusy)

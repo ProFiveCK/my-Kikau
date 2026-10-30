@@ -115,7 +115,7 @@ struct AnalyzeView: View {
             }
 
             if session.entries.isEmpty, !session.isScanning {
-                CareEmptyState("See where your space goes.", systemImage: "chart.pie", description: Text(
+                CareEmptyState("See where your space goes", systemImage: "chart.pie", description: Text(
                     "Explore used and available disk space, then open the folders taking up the most storage."
                 )) {
                     Button("Analyse Disk") { session.scanVolumeOverview() }.carePrimaryAction().disabled(activity.isBusy)
@@ -152,18 +152,14 @@ struct AnalyzeView: View {
                     .frame(minWidth: 360)
 
                     List(mapEntries) { entry in
-                        AnalyzeRow(entry: entry, tint: tint, maxSize: mapEntries.map(\.sizeBytes).max() ?? 1)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if entry.isNavigable {
-                                    session.scan(entry.url)
-                                }
+                        AnalyzeRowButton(entry: entry, tint: tint, maxSize: mapEntries.map(\.sizeBytes).max() ?? 1) {
+                            session.scan(entry.url)
+                        }
+                        .contextMenu {
+                            if entry.isNavigable {
+                                PathMenu(url: entry.url)
                             }
-                            .contextMenu {
-                                if entry.isNavigable {
-                                    PathMenu(url: entry.url)
-                                }
-                            }
+                        }
                     }
                     .frame(minWidth: 260, idealWidth: 320)
                 }
@@ -171,18 +167,14 @@ struct AnalyzeView: View {
             } else {
                 let maxSize = session.entries.map(\.sizeBytes).max() ?? 1
                 List(session.entries) { entry in
-                    AnalyzeRow(entry: entry, tint: tint, maxSize: maxSize)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if entry.isNavigable {
-                                session.scan(entry.url)
-                            }
+                    AnalyzeRowButton(entry: entry, tint: tint, maxSize: maxSize) {
+                        session.scan(entry.url)
+                    }
+                    .contextMenu {
+                        if entry.url.path.hasPrefix("/"), !entry.id.hasPrefix("synthetic://") {
+                            PathMenu(url: entry.url)
                         }
-                        .contextMenu {
-                            if entry.url.path.hasPrefix("/"), !entry.id.hasPrefix("synthetic://") {
-                                PathMenu(url: entry.url)
-                            }
-                        }
+                    }
                 }
             }
         }
@@ -521,7 +513,26 @@ private struct AnalyzeRow: View {
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(entry.name), \(ByteSizeFormatter.format(entry.sizeBytes))")
-        .accessibilityHint(entry.isNavigable ? "Opens this folder" : "")
-        .accessibilityAddTraits(entry.isNavigable ? .isButton : [])
+    }
+}
+
+/// A row that opens its folder: a real button (keyboard, VoiceOver) when the
+/// entry can be opened, plain text when it can't.
+private struct AnalyzeRowButton: View {
+    let entry: DiskScanner.Entry
+    let tint: Color
+    let maxSize: Int64
+    let open: () -> Void
+
+    var body: some View {
+        if entry.isNavigable {
+            Button(action: open) {
+                AnalyzeRow(entry: entry, tint: tint, maxSize: maxSize).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this folder")
+        } else {
+            AnalyzeRow(entry: entry, tint: tint, maxSize: maxSize)
+        }
     }
 }

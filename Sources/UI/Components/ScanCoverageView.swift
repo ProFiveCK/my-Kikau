@@ -61,10 +61,8 @@ public struct ScanCoverageView: View {
     }
 
     private func openSettings(_ pane: String) {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
-            if !NSWorkspace.shared.open(url) {
-                NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
-            }
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)"), !NSWorkspace.shared.open(url) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
         }
     }
 }

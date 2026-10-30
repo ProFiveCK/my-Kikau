@@ -16,4 +16,9 @@ public enum Log {
     public static let scan = Logger(subsystem: subsystem, category: "scan")
     public static let process = Logger(subsystem: subsystem, category: "process")
     public static let app = Logger(subsystem: subsystem, category: "app")
+    /// One line per operation-log entry, so log shippers that collect the
+    /// unified log (Jamf, Splunk, `log collect`) get the audit trail without
+    /// reading the user's home folder. Action, outcome and size are public;
+    /// the path is private (redacted unless private logging is enabled).
+    public static let audit = Logger(subsystem: subsystem, category: "audit")
 }

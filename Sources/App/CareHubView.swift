@@ -14,6 +14,7 @@ struct CareHubView: View {
     @AppStorage(AppStorageKey.careScanMode) private var scanMode: ScanEverythingCoordinator.ScanMode = .quick
     @State private var volume: DiskScanner.VolumeInfo?
     @State private var showingCoverage = false
+    @State private var hasFullDiskAccess = FullDiskAccessCheck.probe()
     private var cleanBytes: Int64 {
         coordinator.cleanPlans?.values.reduce(0) { $0 + $1.totalReclaimable } ?? 0
     }
@@ -59,7 +60,7 @@ struct CareHubView: View {
             let short = geometry.size.height < 700
             VStack(alignment: .leading, spacing: short ? 12 : 18) {
                 HStack {
-                    Text("OVERVIEW").font(.system(size: 10, weight: .bold)).tracking(1.8).foregroundStyle(.secondary)
+                    Text("OVERVIEW").font(.caption2.weight(.bold)).tracking(1.8).foregroundStyle(.secondary)
                     Spacer()
                     Button(action: onShowActivity) { Label("Live activity", systemImage: "waveform.path.ecg") }
                         .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
@@ -94,12 +95,20 @@ struct CareHubView: View {
         let partial = ScanEverythingCoordinator.Area.allCases.compactMap { area in
             coordinator.coverage[area].flatMap { $0.isPartial ? (area, $0) : nil }
         }
+        if !hasFullDiskAccess {
+            HStack(spacing: 6) {
+                Image(systemName: "lock.circle").foregroundStyle(.orange)
+                Text("Full Disk Access is off, so other apps’ caches and leftovers can’t be seen").font(.caption)
+                Button("Grant…") { FullDiskAccessCheck.openSystemSettings() }
+                    .controlSize(.small)
+            }
+        }
         if !partial.isEmpty {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
                 Text("Some locations couldn’t be checked").font(.caption)
                 Button("Details") { showingCoverage = true }
-                    .buttonStyle(.plain).font(.caption.weight(.semibold)).foregroundStyle(CareTheme.accent)
+                    .controlSize(.small)
                     .popover(isPresented: $showingCoverage) {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 10) {

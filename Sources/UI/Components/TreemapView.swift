@@ -37,10 +37,14 @@ public struct TreemapView<Item: Identifiable>: View {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     let rect = rects[index]
                     if rect.width > 0.5, rect.height > 0.5 {
-                        TreemapCell(title: label(item), subtitle: sublabel(item), color: color(item, index), size: rect.size)
-                            .frame(width: rect.width, height: rect.height)
-                            .position(x: rect.midX, y: rect.midY)
-                            .onTapGesture { onSelect(item) }
+                        Button { onSelect(item) } label: {
+                            TreemapCell(title: label(item), subtitle: sublabel(item), color: color(item, index), size: rect.size)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(label(item)), \(sublabel(item))")
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
                     }
                 }
             }

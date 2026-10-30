@@ -103,14 +103,12 @@ public enum HealthScore {
         }
 
         // Thermal penalty
-        if snapshot.thermal.cpuTemp > 0 {
-            if snapshot.thermal.cpuTemp > thermalNormal {
-                if snapshot.thermal.cpuTemp > thermalHigh {
-                    score -= thermalWeight
-                    issues.append("Overheating")
-                } else {
-                    score -= thermalWeight * (snapshot.thermal.cpuTemp - thermalNormal) / (thermalHigh - thermalNormal)
-                }
+        if snapshot.thermal.cpuTemp > 0, snapshot.thermal.cpuTemp > thermalNormal {
+            if snapshot.thermal.cpuTemp > thermalHigh {
+                score -= thermalWeight
+                issues.append("Overheating")
+            } else {
+                score -= thermalWeight * (snapshot.thermal.cpuTemp - thermalNormal) / (thermalHigh - thermalNormal)
             }
         }
 
