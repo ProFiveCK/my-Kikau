@@ -32,14 +32,38 @@ if [[ -z "$IDENTITY" ]]; then
   exit 1
 fi
 
+# macOS sometimes attaches a freshly built DMG in the background (no volume
+# mounted, so nothing shows in Finder). While attached, the image is locked:
+# notarytool then sits on "Conducting pre-submission checks..." forever and
+# stapler can't write the ticket. Seen on the 0.11.1 release. Detach any
+# attachment of this exact file before each step that opens it.
+detach_if_attached() {
+  local abs devs dev
+  abs="$(cd "$(dirname "$DMG")" && pwd -P)/$(basename "$DMG")"
+  devs="$(hdiutil info -plist | python3 -c '
+import plistlib, sys
+path = sys.argv[1]
+for image in plistlib.loads(sys.stdin.buffer.read()).get("images", []):
+    if image.get("image-path") == path and image.get("system-entities"):
+        print(image["system-entities"][0]["dev-entry"])
+' "$abs")"
+  for dev in $devs; do
+    echo "› detaching $dev: macOS left $DMG attached, which blocks notarytool"
+    hdiutil detach "$dev" -force >/dev/null 2>&1
+  done
+}
+
+detach_if_attached
 echo "› signing $DMG"
 codesign --force --sign "$IDENTITY" --timestamp "$DMG"
 
+detach_if_attached
 echo "› submitting to Apple's notary service (usually a few minutes; can be longer)"
 xcrun notarytool submit "$DMG" \
   --keychain-profile "$KEYCHAIN_PROFILE" \
-  --wait
+  --wait --timeout 1h
 
+detach_if_attached
 echo "› stapling the notarization ticket"
 xcrun stapler staple "$DMG"
 
