@@ -4,6 +4,10 @@
 
 ## Release notes
 
+### Version 0.11.1 — November 2026
+
+- **Storage overview no longer hangs** — on Macs with OneDrive, Dropbox, Google Drive or iCloud Drive, the launch-time storage overview could wait forever on the cloud provider and hold up every other task. Cloud-storage folders are now skipped when measuring; whatever they keep on the Mac is counted under "System & unmeasured".
+
 ### Version 0.11.0 — October 2026
 
 - **Built for managed Macs** — new policy keys for organisations: `OrganisationName` and `SupportContact` (shown in About, Settings and the welcome screen), `LaunchAtLogin`, and `DisableNetworkLookups`. `DisableAutomaticUpdates` now switches the updater off entirely, and `DisablePrivilegedTools` also stops an already-installed administrator helper. The helper enforces an organisation's protected paths and software too.
