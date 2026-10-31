@@ -1,5 +1,5 @@
 import Testing
-import Core
+@testable import Core
 @testable import Features
 import Foundation
 
@@ -1232,6 +1232,47 @@ struct CleanupReviewSafetyTests {
         #expect(result.recoverable == 0)
         #expect(FileManager.default.fileExists(atPath: outside.path))
         #expect(!FileManager.default.fileExists(atPath: link.path))
+    }
+
+    private func isLocked(_ url: URL) -> Bool {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.immutable] as? Bool) == true
+    }
+
+    @Test("Emptying the Trash removes items the user locked, like Finder; locked items elsewhere stay locked")
+    func lockedItemsInTrash() throws {
+        let root = makeTempDir()
+        let fm = FileManager.default
+        let trash = root.appendingPathComponent(".Trash")
+        let locked = trash.appendingPathComponent("locked.txt")
+        let folder = trash.appendingPathComponent("Folder")
+        let inner = folder.appendingPathComponent("inner.txt")
+        let outside = root.appendingPathComponent("Documents/locked-keep.txt")
+        let link = trash.appendingPathComponent("link-to-locked")
+        touch(locked); touch(inner); touch(outside)
+        try fm.createSymbolicLink(at: link, withDestinationURL: outside)
+        for url in [locked, inner, outside] {
+            try fm.setAttributes([.immutable: true], ofItemAtPath: url.path)
+        }
+        defer {
+            for url in [locked, inner, outside] {
+                try? fm.setAttributes([.immutable: false], ofItemAtPath: url.path)
+            }
+            try? fm.removeItem(at: root)
+        }
+        let deleter = SafeFileDeleter(opLog: OperationLog(logURL: root.appendingPathComponent("audit/operations.log")))
+        let result = deleter.execute(
+            deleter.preview([locked, folder, link], category: .trash), mode: .permanent, dryRun: false, action: "fixture"
+        )
+        #expect(result.failed == 0)
+        #expect(!fm.fileExists(atPath: locked.path))
+        #expect(!fm.fileExists(atPath: folder.path))
+        // The link went; what it pointed at is untouched and still locked.
+        #expect(!fm.fileExists(atPath: link.path))
+        #expect(fm.fileExists(atPath: outside.path) && isLocked(outside))
+
+        // Permanent mode outside a Trash never unlocks anything.
+        #expect(!SafeFileDeleter.unlockUserLockedItems(at: outside))
+        #expect(isLocked(outside))
     }
 
     @Test("Trash failure guidance tells the user to empty it in Finder")

@@ -304,7 +304,13 @@ public final class SafeFileDeleter: @unchecked Sendable {
                     trashedFileNumber = trashedPath.flatMap(fileNumber(atPath:))
                     recoverable += 1
                 } else {
-                    try fileManager.removeItem(at: item.url)
+                    do {
+                        try fileManager.removeItem(at: item.url)
+                    } catch where Self.unlockUserLockedItems(at: item.url) {
+                        // Like Finder's Empty Trash: items the user locked
+                        // (Get Info > Locked) are emptied too.
+                        try fileManager.removeItem(at: item.url)
+                    }
                 }
                 opLog.append(.init(
                     sessionID: sessionID, action: action, path: item.url.path,
@@ -430,6 +436,33 @@ public final class SafeFileDeleter: @unchecked Sendable {
 
     private func fileNumber(atPath path: String) -> UInt64? {
         ((try? fileManager.attributesOfItem(atPath: path))?[.systemFileNumber] as? NSNumber)?.uint64Value
+    }
+
+    /// Clears the user "Locked" flag (UF_IMMUTABLE) on `url` and everything
+    /// inside it, never following links. Called only for permanent removal,
+    /// which `execute` honours only inside a Trash folder. Returns true if
+    /// any flag was cleared, so the caller retries. The system flag (schg)
+    /// needs root and is left alone; so are items owned by another user.
+    static func unlockUserLockedItems(at url: URL) -> Bool {
+        guard isInsideTrash(url) else { return false }
+        var unlocked = false
+        func unlock(_ path: String) {
+            var info = stat()
+            guard lstat(path, &info) == 0, info.st_flags & UInt32(UF_IMMUTABLE) != 0 else { return }
+            if lchflags(path, info.st_flags & ~UInt32(UF_IMMUTABLE)) == 0 {
+                unlocked = true
+            }
+        }
+        unlock(url.path)
+        var info = stat()
+        if lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+           let walker = FileManager.default.enumerator(atPath: url.path)
+        {
+            while let relative = walker.nextObject() as? String {
+                unlock(url.appendingPathComponent(relative).path)
+            }
+        }
+        return unlocked
     }
 
     /// True if `url` is inside a Trash folder (`~/.Trash`, or a volume's `.Trashes`).

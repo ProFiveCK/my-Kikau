@@ -197,7 +197,7 @@ struct HUDView: View {
                     }
                 }
                 if !ManagedPolicy.shared.isFeatureDisabled("clean") {
-                    HUDShortcut("Review Trash", detail: "Choose exact items first", icon: "trash", tint: CareTheme.rose) {
+                    HUDShortcut("Empty Trash…", detail: "See the items, then erase", icon: "trash", tint: CareTheme.rose) {
                         AppNavigation.shared.pendingTrashReview = true
                         navigate(.clean)
                     }.disabled(work.isBusy)

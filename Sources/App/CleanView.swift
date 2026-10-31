@@ -7,6 +7,7 @@ struct CleanView: View {
     @ObservedObject private var coordinator = ScanEverythingCoordinator.shared
     @ObservedObject private var model = CleanModel.shared
     @State private var trashNotice: String?
+    @State private var trashNoticeTitle = "Nothing to Review"
     @State private var preparingReview = false
     @State private var reviewTask: Task<Void, Never>?
     @State private var review: ReviewRequest?
@@ -44,6 +45,9 @@ struct CleanView: View {
                         .tint(tint)
                         .disabled(activity.isBusy)
                 }
+                Button("Empty Trash…") { prepareTrashReview() }
+                    .disabled(activity.isBusy || preparingReview)
+                    .help("Review what's in the Trash, then erase it permanently, like Finder's Empty Trash")
                 scanButton
             }
 
@@ -101,7 +105,11 @@ struct CleanView: View {
                                     tint: tint,
                                     maxReclaimable: maxReclaimable
                                 ) {
-                                    openReview(plan, title: section.displayName, subtitle: section.explanation)
+                                    if section == .trash {
+                                        prepareTrashReview()
+                                    } else {
+                                        openReview(plan, title: section.displayName, subtitle: section.explanation)
+                                    }
                                 }
                             }
                         }
@@ -117,7 +125,7 @@ struct CleanView: View {
             AppNavigation.shared.pendingTrashReview = false
             prepareTrashReview()
         }
-        .alert("Nothing to Review", isPresented: Binding(get: { trashNotice != nil }, set: {
+        .alert(trashNoticeTitle, isPresented: Binding(get: { trashNotice != nil }, set: {
             if !$0 {
                 trashNotice = nil
             }
@@ -163,7 +171,8 @@ struct CleanView: View {
         guard !preparingReview, review == nil,
               let lease = activity.begin("Preparing Trash review", cancel: { reviewTask?.cancel() })
         else {
-            trashNotice = "Finish or cancel the current task before reviewing the Trash."
+            trashNoticeTitle = "Busy"
+            trashNotice = "Finish or cancel the current task before emptying the Trash."
             return
         }
         preparingReview = true
@@ -173,16 +182,18 @@ struct CleanView: View {
             let prepared = await withTaskCancellationHandler { await read.value } onCancel: { read.cancel() }
             guard !Task.isCancelled else { return }
             if prepared.plan.items.isEmpty {
+                trashNoticeTitle = prepared.coverage.isPartial ? "Trash Not Fully Checked" : "The Trash Is Empty"
                 trashNotice = prepared.coverage.isPartial
                     ? "The Trash could not be fully checked. Review its permissions in System Settings or open it in Finder."
-                    : "No removable items were found in the Trash."
+                    : "There's nothing in the Trash to erase."
             } else {
                 review = ReviewRequest(
                     plan: prepared.plan,
-                    title: "Review Trash",
-                    subtitle: "Choose the exact items to delete permanently. This cannot be undone."
+                    title: "Empty Trash",
+                    // Finder's own Empty Trash question, above the exact items.
+                    subtitle: "Are you sure you want to permanently erase the items in the Trash? You can't undo this action."
                         + (prepared.coverage.isPartial ? " Some locations could not be checked; only the listed items are included." : ""),
-                    action: "menubar.emptyTrash"
+                    action: PlanReviewView.emptyTrashAction
                 )
             }
         }
@@ -213,6 +224,7 @@ struct CleanView: View {
                 coordinator.removeCleanItems(ids: Set(plan.items.map(\.id)).subtracting(current.items.map(\.id)))
             }
             guard !current.items.isEmpty else {
+                trashNoticeTitle = "Nothing to Review"
                 trashNotice = "These items are now in use or no longer eligible. Rescan after closing build tools and apps."
                 return
             }

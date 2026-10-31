@@ -67,6 +67,11 @@ public struct PlanReviewView: View {
         case finished(SafeFileDeleter.ExecutionResult, notes: [String])
     }
 
+    /// Action name for emptying the Trash. That review is Finder's single
+    /// "Empty Trash" question with the exact items listed, so it runs on the
+    /// first confirmation instead of asking a second time.
+    public static let emptyTrashAction = "menubar.emptyTrash"
+
     @ObservedObject private var activity = WorkCoordinator.shared
     @State private var stage: Stage = .review
     @State private var selection: Set<String>
@@ -232,7 +237,7 @@ public struct PlanReviewView: View {
                 Button("Cancel") { onClose(nil) }
                     .keyboardShortcut(.cancelAction)
                 Button(primaryLabel) {
-                    if permanentCount > 0 {
+                    if permanentCount > 0, action != Self.emptyTrashAction {
                         confirmingPermanent = true
                     } else {
                         run(simulate: false)
@@ -259,6 +264,9 @@ public struct PlanReviewView: View {
     private var primaryLabel: String {
         let count = selection.count
         let noun = "\(count) Item\(count == 1 ? "" : "s")"
+        if action == Self.emptyTrashAction {
+            return count == plan.items.count ? "Empty Trash" : "Erase \(noun)"
+        }
         if permanentCount == count, count > 0 {
             return "Delete \(noun) Permanently"
         }

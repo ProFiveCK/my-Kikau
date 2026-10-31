@@ -24,7 +24,7 @@ public struct ScanCoverageView: View {
                         }
                         ForEach(coverage.issues) { issue in
                             VStack(alignment: .leading, spacing: 2) {
-                                Label(issue.path, systemImage: issue.kind == .missing ? "minus.circle" : "exclamationmark.circle")
+                                Label(issue.path, systemImage: icon(for: issue.kind))
                                     .lineLimit(2).truncationMode(.middle).textSelection(.enabled).help(issue.path)
                                 Text(issue.kind == .missing ? "Not present · skipped" : issue.detail).foregroundStyle(.secondary)
                             }
@@ -43,7 +43,8 @@ public struct ScanCoverageView: View {
                 Label {
                     Text(coverage.isPartial
                         ? "Partial scan · \(coverage.unavailableCount) read failure\(coverage.unavailableCount == 1 ? "" : "s")"
-                        : "Scan coverage · \(coverage.checkedPaths.count) locations checked")
+                        : "Scan coverage · \(coverage.checkedPaths.count) locations checked"
+                        + (coverage.restrictedCount > 0 ? " · \(coverage.restrictedCount) protected folders not measured" : ""))
                 } icon: { Image(systemName: coverage.isPartial ? "exclamationmark.circle" : "checkmark.circle") }
                     .font(.caption).foregroundStyle(coverage.isPartial ? Color.orange : .secondary)
             }
@@ -58,6 +59,14 @@ public struct ScanCoverageView: View {
         .padding(12)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityHint("Expand to see checked, unavailable and skipped locations")
+    }
+
+    private func icon(for kind: ScanCoverage.Kind) -> String {
+        switch kind {
+        case .missing: "minus.circle"
+        case .restricted: "lock.circle"
+        case .denied, .unavailable: "exclamationmark.circle"
+        }
     }
 
     private func openSettings(_ pane: String) {
