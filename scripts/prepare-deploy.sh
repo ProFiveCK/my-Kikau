@@ -28,6 +28,16 @@ if [[ ! -f "$DMG" ]]; then
   exit 1
 fi
 
+# Publish only code that is on main: the GitHub release tags HEAD, and the
+# DMG was built from this checkout. Merge the PR first, then fast-forward.
+git fetch -q origin main
+if ! git merge-base --is-ancestor HEAD origin/main; then
+  echo "✘ HEAD ($(git rev-parse --short HEAD)) is not on origin/main."
+  echo "  Merge the release PR, run: git merge --ff-only origin/main"
+  echo "  then rebuild with scripts/release.sh before deploying."
+  exit 1
+fi
+
 # Avoid the confusing "appcast in build/ plus appcast in build/release/" state
 # when update-appcast.sh was run manually against build/. build/release is the
 # only canonical appcast folder.
@@ -35,14 +45,10 @@ rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 rm -f build/appcast.xml build/*.delta
 
-# Keep all root-level versioned DMGs in build/release so Sparkle can decide
-# whether to generate delta updates. The release folder itself is generated
-# output, not source-of-truth.
-shopt -s nullglob
-for release_dmg in build/myKikau-*.dmg; do
-  cp "$release_dmg" "$RELEASE_DIR/"
-done
-shopt -u nullglob
+# The feed lists only the version being released. Older DMGs left in build/
+# are often local rebuilds whose size and signature differ from the file on
+# the website; listing them (as this script did until 0.11.1) publishes feed
+# entries that fail Sparkle's signature check. No deltas are published.
 cp "$DMG" "$RELEASE_DIR/"
 
 echo "› generating appcast from $RELEASE_DIR"

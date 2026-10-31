@@ -104,8 +104,10 @@ against `build/`:
 scripts/prepare-deploy.sh
 ```
 
-This cleans and regenerates the canonical `build/release/` folder, copies the
-versioned DMGs into it, writes `build/release/appcast.xml`, creates
+It refuses to run unless HEAD is on `origin/main`. It cleans and regenerates
+the canonical `build/release/` folder, copies only this version's DMG into it
+(the feed lists one version; older local DMGs are often rebuilds that don't
+match the website's files), writes `build/release/appcast.xml`, creates
 `build/release/release-notes-${VERSION}.md`, creates a versioned
 `website-upload/${VERSION}/` handoff folder, pushes the current branch to
 `origin`, and creates/updates the GitHub Release when `gh` is installed and
@@ -207,16 +209,43 @@ Report back a short pass/fail list rather than assuming success.
 
 ## Quick reference — the whole sequence
 
+Agents: steps 4 onward are public (main, GitHub release, website). Do them
+only after the owner explicitly says to release, in this conversation. That
+includes a website-only upload with `deploy-website.py --only`.
+
 ```
-1. Make changes, swift build && swift test
-2. Bump Info.plist version
-3. scripts/release.sh
-4. scripts/prepare-deploy.sh
-5. python3 scripts/deploy-website.py --version X.Y.Z             [agent — Hostinger API]
-6. Release notes in docs/WEBSITE_COPY.md (before step 4)          [agent]
-7. GitHub release is created/updated by prepare-deploy.sh         [agent]
-8. Verify all three URLs reflect the new release                  [agent]
+1. On a branch: code + swift build && swift test && scripts/lint.sh
+2. In the same branch: scripts/bump-version.sh patch|minor, and a
+   "### Version X.Y.Z" section in docs/WEBSITE_COPY.md
+3. Open the PR; wait for CI to pass
+4. Merge the PR (merge commit), then in the release checkout:
+     git fetch origin && git merge --ff-only origin/main
+5. scripts/release.sh            # build, sign, DMG, notarise (5–15 min)
+6. scripts/prepare-deploy.sh     # refuses unless HEAD is on origin/main
+7. python3 scripts/deploy-website.py --version X.Y.Z --dry-run, then without --dry-run
+8. Verify: feed and /apps/ show X.Y.Z, public DMG checksum matches build/,
+   GitHub release vX.Y.Z exists with the DMG attached
 ```
+
+Release from the checkout that holds earlier `build/myKikau-*.dmg` files only
+if you like; nothing depends on them any more.
+
+## Troubleshooting
+
+- **Notarisation sits on "Conducting pre-submission checks…"** — macOS had
+  attached the new DMG in the background, which locks it. `notarize.sh` now
+  detaches it before signing, submitting and stapling. If it still hangs,
+  check `hdiutil info` for the DMG path and `hdiutil detach /dev/diskN`, then
+  re-run only `scripts/notarize.sh build/myKikau-X.Y.Z.dmg` (the build and
+  DMG are fine). `--timeout 1h` stops a stuck wait from running forever.
+- **notarytool: "must be a zip archive, flat installer package, or UDIF disk
+  image"** — it was interrupted while reading a locked DMG. Re-run
+  `notarize.sh` on the same file.
+- **prepare-deploy: "HEAD is not on origin/main"** — the PR isn't merged, or
+  this checkout hasn't been fast-forwarded. Never release a feature branch.
+- **Cloudflare purge: HTTP 401** — the token in `~/.hermes/secrets/cloudflare.env`
+  has expired. Only a warning: Cloudflare doesn't cache the feed or pages.
+  The owner renews it in the Cloudflare dashboard.
 
 ## Scriptability status
 

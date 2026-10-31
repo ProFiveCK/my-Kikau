@@ -40,6 +40,15 @@ swift build
 swift test
 ```
 
+## Release
+
+Follow `docs/DEPLOY_WORKFLOW.md` step by step; its scripts do the work.
+- Bump the version (`scripts/bump-version.sh`) and add release notes to `docs/WEBSITE_COPY.md` in the PR, not after.
+- Release only after the PR is merged and the checkout is fast-forwarded to `origin/main`; `prepare-deploy.sh` enforces this.
+- Merging to main, the GitHub release and any website upload are public: do them only when the owner explicitly asks for a release in the current conversation.
+- If notarisation stalls, see the runbook's Troubleshooting section before retrying anything.
+- Finish with the runbook's verification step and report each check.
+
 ## Git
 
 - Do not add AI attribution trailers to commits.
