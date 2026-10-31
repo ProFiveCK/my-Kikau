@@ -329,6 +329,9 @@ public enum DiskScanner {
         if token?.isCancelled == true {
             return (0, false)
         }
+        if isCloudProviderRoot(url) {
+            return (0, true)
+        }
         let entries: [URL]
         do {
             let values = try url.resourceValues(forKeys: [.isDirectoryKey])
@@ -366,6 +369,16 @@ public enum DiskScanner {
             cache?.record(url.path, total)
         }
         return (total, complete)
+    }
+
+    /// Folders served by a File Provider (OneDrive, Dropbox, Google Drive,
+    /// iCloud Drive). Listing them asks the provider's daemon, which can block
+    /// forever when it is offline or busy, and the files are mostly dataless
+    /// placeholders anyway. Their real local usage falls into
+    /// "System & unmeasured".
+    static func isCloudProviderRoot(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        return path.hasSuffix("/Library/CloudStorage") || path.hasSuffix("/Library/Mobile Documents")
     }
 
     private static func fileSize(_ values: URLResourceValues?) -> Int64? {

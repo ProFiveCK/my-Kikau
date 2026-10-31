@@ -25,6 +25,22 @@ struct DiskScannerTests {
         #expect(hidden.sizeBytes > 0)
     }
 
+    @Test("Size walk never lists cloud-provider folders, which can block forever")
+    func skipsCloudProviderFolders() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let library = dir.appendingPathComponent("Library")
+        for name in ["CloudStorage/OneDrive-Personal", "Mobile Documents/com~apple~CloudDocs", "Caches"] {
+            let folder = library.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data(repeating: 0xAB, count: 65536).write(to: folder.appendingPathComponent("f.bin"))
+        }
+        let entries = DiskScanner.scan(library)
+        #expect(entries.first { $0.name == "CloudStorage" }?.sizeBytes == 0)
+        #expect(entries.first { $0.name == "Mobile Documents" }?.sizeBytes == 0)
+        #expect((entries.first { $0.name == "Caches" }?.sizeBytes ?? 0) > 0)
+    }
+
     @Test("includeHidden: true shows dot-prefixed entries as their own rows")
     func hiddenShownWhenIncluded() throws {
         let dir = try makeTempDir()
