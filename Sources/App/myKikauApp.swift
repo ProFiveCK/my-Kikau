@@ -278,8 +278,8 @@ struct ContentView: View {
 
         /// Sidebar items shown to the user, in order. Purge and Network are
         /// advanced tools, shown only when "Advanced tools" is on in Settings.
-        /// Startup is a part of System care rather than a row of its own, and
-        /// About lives in the app menu. Any feature an administrator has
+        /// Startup is a part of System care rather than a row of its own. About
+        /// and Settings are buttons at the foot of the sidebar. Any feature an administrator has
         /// disabled by policy is left out.
         static func visibleCases(developerTools: Bool) -> [SidebarItem] {
             let policy = ManagedPolicy.shared
@@ -368,6 +368,9 @@ struct ContentView: View {
     @ObservedObject private var navigation = AppNavigation.shared
     @ObservedObject private var deletionActivity = DeletionActivity.shared
     @ObservedObject private var work = WorkCoordinator.shared
+    @Environment(\.openWindow) private var openWindow
+
+    static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
 
     private var visibleItems: [SidebarItem] {
         SidebarItem.visibleCases(developerTools: developerTools)
@@ -379,7 +382,11 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 9) {
                     AppBrandIcon(size: 36)
-                    Text("myKikau").foregroundStyle(CareTheme.ink).font(.system(.title, design: .rounded).weight(.bold)).tracking(-0.8)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("myKikau").foregroundStyle(CareTheme.ink).font(.system(.title, design: .rounded).weight(.bold)).tracking(-0.8)
+                        Text("Version \(Self.appVersion)").font(.caption).foregroundStyle(CareTheme.secondaryInk)
+                            .textSelection(.enabled)
+                    }
                 }.padding(.horizontal, 18).padding(.top, 20).padding(.bottom, 14)
                 List(selection: $selection) {
                     ForEach(SidebarItem.Group.allCases) { group in
@@ -417,8 +424,16 @@ struct ContentView: View {
                     }.padding(16)
                 } else {
                     Label(Host.current().localizedName ?? "This Mac", systemImage: "laptopcomputer")
-                        .font(.caption).foregroundStyle(CareTheme.secondaryInk).lineLimit(2).padding(16)
+                        .font(.caption).foregroundStyle(CareTheme.secondaryInk).lineLimit(2)
+                        .padding(.horizontal, 16).padding(.top, 12)
                 }
+                // Also in the app menu, which is gone when the Dock icon is hidden.
+                HStack(spacing: 14) {
+                    Button { openWindow(id: "about") } label: { Label("About", systemImage: "info.circle") }
+                    AppSettingsButton { Label("Settings", systemImage: "gearshape") }
+                }
+                .buttonStyle(.plain).font(.caption).foregroundStyle(CareTheme.secondaryInk)
+                .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 14)
             }
             .background(CareTheme.sidebar)
             .navigationSplitViewColumnWidth(min: 190, ideal: 200, max: 230)

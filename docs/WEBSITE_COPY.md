@@ -4,6 +4,12 @@
 
 ## Release notes
 
+### Version 0.11.2 — November 2026
+
+- **Empty Trash works like Finder** — an Empty Trash… button is always on the Clean up screen (and in the menu bar). It shows exactly what's in the Trash with Finder's own question, and one click erases it. Items you locked in Get Info are emptied too, instead of being left behind with a misleading permission error.
+- **No false "Partial scan" warning** — folders that only their owner (root or a system service) can open, and folders macOS seals off from every app, are now listed as protected rather than as read failures. "Review access in System Settings" appears only when Full Disk Access would actually help.
+- **Version, About and Settings in the main window** — the version is shown under the app name, and About and Settings are at the foot of the sidebar, not only in the app and menu bar menus.
+
 ### Version 0.11.1 — November 2026
 
 - **Storage overview no longer hangs** — on Macs with OneDrive, Dropbox, Google Drive or iCloud Drive, the launch-time storage overview could wait forever on the cloud provider and hold up every other task. Cloud-storage folders are now skipped when measuring; whatever they keep on the Mac is counted under "System & unmeasured".

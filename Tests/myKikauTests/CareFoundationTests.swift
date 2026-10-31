@@ -59,16 +59,60 @@ struct CareFoundationTests {
 
     @Test("Unavailable reads are distinct from absent optional locations")
     func coverageClassification() {
-        let c = ScanCoverageRecorder(), url = URL(fileURLWithPath: "/fixture")
+        let c = ScanCoverageRecorder(fullDiskAccess: { false }), url = URL(fileURLWithPath: "/fixture")
         c.failed(url, error: NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoSuchFileError))
         #expect(!c.snapshot.isPartial)
-        c.failed(url.appendingPathComponent("denied"), error: NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES)))
+        c.failed(url.appendingPathComponent("denied"), error: NSError(domain: NSPOSIXErrorDomain, code: Int(EPERM)))
         c.failed(url.appendingPathComponent("disk"), error: NSError(domain: NSPOSIXErrorDomain, code: Int(EIO)))
         c.cloudSkipped()
         #expect(c.snapshot.isPartial)
         #expect(c.snapshot.unavailableCount == 2)
         #expect(c.snapshot.missingCount == 1)
         #expect(c.snapshot.skippedCloudOnly == 1)
+    }
+
+    /// Foundation's own error for a folder read, as the scanners see it.
+    private func folderReadError(_ posix: Int32) -> NSError {
+        NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError, userInfo: [
+            NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(posix)),
+        ])
+    }
+
+    @Test("Owner-only and macOS-sealed folders aren't a partial scan; a privacy block without Full Disk Access is")
+    func restrictedIsNotAGap() {
+        let url = URL(fileURLWithPath: "/fixture")
+        let withAccess = ScanCoverageRecorder(fullDiskAccess: { true })
+        withAccess.failed(url.appendingPathComponent("root-only"), error: folderReadError(EACCES))
+        withAccess.failed(url.appendingPathComponent("datavault"), error: folderReadError(EPERM))
+        #expect(!withAccess.snapshot.isPartial)
+        #expect(withAccess.snapshot.restrictedCount == 2)
+        #expect(!withAccess.snapshot.issues.contains { $0.kind == .denied })
+
+        let withoutAccess = ScanCoverageRecorder(fullDiskAccess: { false })
+        withoutAccess.failed(url.appendingPathComponent("root-only"), error: folderReadError(EACCES))
+        withoutAccess.failed(url.appendingPathComponent("tcc"), error: folderReadError(EPERM))
+        #expect(withoutAccess.snapshot.isPartial)
+        #expect(withoutAccess.snapshot.unavailableCount == 1)
+        #expect(withoutAccess.snapshot.issues.contains { $0.kind == .denied && $0.path.hasSuffix("tcc") })
+    }
+
+    @Test("A real owner-only folder is reported, not counted as a read failure")
+    func ownerOnlyFolderInWalk() throws {
+        let dir = try folder()
+        let locked = dir.appendingPathComponent("locked")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try Data("data".utf8).write(to: dir.appendingPathComponent("a.txt"))
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        let c = ScanCoverageRecorder(fullDiskAccess: { false })
+        #expect(!DiskScanner.scan(dir, coverage: c).isEmpty)
+        #expect(!c.snapshot.isPartial)
+        let issue = try #require(c.snapshot.issues.first)
+        #expect(issue.kind == .restricted)
+        #expect(issue.detail.contains(NSUserName()))
     }
 
     @Test("Bounded coverage evidence never drops the partial-scan state")
